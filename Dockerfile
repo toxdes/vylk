@@ -15,9 +15,9 @@ COPY . .
 RUN apk add --no-cache python3
 
 RUN VERSION="${VERSION}" python3 build.py \
-    --target-os "${TARGETOS}" \
-    --target-arch "${TARGETARCH}" \
-    --output /build/vylk
+    --all \
+    --output-dir /build/release \
+    && cp "/build/release/vylk_${TARGETOS}_${TARGETARCH}_${VERSION}" /build/vylk
 
 FROM debian:bookworm AS package
 
@@ -41,10 +41,12 @@ RUN apt-get update \
 
 WORKDIR /build
 COPY --from=build /build/vylk ./vylk
+COPY --from=build /build/release ./release
 COPY VERSION release.toml ./
 COPY yesb/package.py ./yesb/package.py
 
-RUN python3 yesb/package.py
+RUN python3 yesb/package.py \
+    && cp -a /build/release/. /output/
 
 FROM scratch
 
