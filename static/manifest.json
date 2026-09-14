@@ -1,7 +1,7 @@
 {
-  "name": "vylk",
-  "short_name": "vylk",
-  "description": "Markdown note editor",
+  "name": "VYLK",
+  "short_name": "VYLK",
+  "description": "A lightweight, self-hosted Markdown notes app with offline support.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#fafafa",

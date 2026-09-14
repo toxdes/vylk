@@ -5,8 +5,8 @@ const safeRevision = /^[A-Za-z0-9._-]{1,128}$/.test(revisionFromURL) ? revisionF
 const CACHE = `${CACHE_PREFIX}${safeRevision}`;
 const ASSETS = [
   '/', '/index.html', '/style.css', '/themes.js', '/app.js', '/merge.js', '/marked.min.js',
-  '/manifest.json', '/favicon.ico', '/favicon.svg',
-  '/icon-192.png', '/icon-512.png', '/logo.svg'
+  '/manifest.json', '/favicon.ico',
+  '/icon-192.png', '/icon-512.png'
 ];
 const SHELL_ASSETS = new Set(ASSETS);
 const FONT_CACHE = 'vylk-fonts';

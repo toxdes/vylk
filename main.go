@@ -40,10 +40,8 @@ var frontendRevisionFiles = []string{
 	"static/marked.min.js",
 	"static/manifest.json",
 	"static/favicon.ico",
-	"static/favicon.svg",
 	"static/icon-192.png",
 	"static/icon-512.png",
-	"static/logo.svg",
 	"static/sw.js",
 }
 
