@@ -47,16 +47,6 @@ platform = "linux"
 architecture = "arm64"
 
 [[release.artifacts]]
-name = "vylk_darwin_amd64_{version}"
-platform = "macos"
-architecture = "x86_64"
-
-[[release.artifacts]]
-name = "vylk_darwin_arm64_{version}"
-platform = "macos"
-architecture = "arm64"
-
-[[release.artifacts]]
 name = "vylk-{version}-macos-amd64.zip"
 platform = "macos"
 architecture = "x86_64"
