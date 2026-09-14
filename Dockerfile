@@ -12,9 +12,12 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 
-RUN GOOS="${TARGETOS}" GOARCH="${TARGETARCH}" CGO_ENABLED=0 \
-    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" \
-    -o /build/vylk .
+RUN apk add --no-cache python3
+
+RUN VERSION="${VERSION}" python3 build.py \
+    --target-os "${TARGETOS}" \
+    --target-arch "${TARGETARCH}" \
+    --output /build/vylk
 
 FROM debian:bookworm AS package
 

@@ -17,6 +17,14 @@ platforms = ["linux/amd64", "linux/arm64"]
 [build.args]
 INCLUDE_APPIMAGE = "0"
 
+[docker]
+image = "docker.io/toxdes/vylk"
+dockerfile = "Dockerfile.runtime"
+context = "."
+platforms = ["linux/amd64", "linux/arm64"]
+target = "runtime"
+publish_latest = true
+
 [release]
 [[release.artifacts]]
 name = "vylk_{version}_amd64.tar.gz"
