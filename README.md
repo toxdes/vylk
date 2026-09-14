@@ -1,6 +1,6 @@
 # vylk
 
-Lightweight, low-resources single-binary markdown files editor with SQLite metadata and optional AES-256-GCM file encryption.
+Lightweight, low-resource single-binary Markdown files editor with SQLite metadata and optional AES-256-GCM file encryption.
 
 ## Features
 
@@ -98,12 +98,72 @@ Run the default frontend behavior suite with `npm run test:frontend`. The opt-in
 
 ## Docker
 
+The published image supports Linux amd64 and arm64. Use a versioned tag for
+stable deployments:
+
 ```
-docker build -t vylk .
-docker run -d -p 8080:8080 \
+docker run -d --name vylk -p 8080:8080 \
   -e VYLK_PASSWORD=<password> \
   -v vylk-data:/data \
-  vylk
+  docker.io/toxdes/vylk:<version>
 ```
 
-Mount `/data` to persist notes and SQLite database across restarts.
+`/data` persists notes and the SQLite database across container replacements.
+The published image is a small Distroless Linux runtime image for amd64 and
+arm64. It starts VYLK directly and uses `/data/notes` and `/data/vylk.db` by
+default. For a quick start, `docker.io/toxdes/vylk:latest` is also published.
+
+To update a versioned deployment, pull the new tag and recreate the container
+with the same volume and environment settings:
+
+```
+docker pull docker.io/toxdes/vylk:<new-version>
+docker rm -f vylk
+docker run -d --name vylk -p 8080:8080 \
+  -e VYLK_PASSWORD=<password> \
+  -v vylk-data:/data \
+  docker.io/toxdes/vylk:<new-version>
+```
+
+Build the runtime image locally from source with:
+
+```
+docker build --target runtime -t "vylk:$(cat VERSION)" -f Dockerfile.runtime .
+```
+
+After logging in to Docker Hub, Yesb publishes both tags for the configured
+version with:
+
+```
+./yesb/release_docker.py --env <release-env-file>
+```
+
+Use `./yesb/release_docker.py --dry-run` to inspect the command without
+publishing.
+
+## Landing page
+
+The landing page lives in the separate `vylk-lander` repository so it can be
+deployed independently from the application. It is a static HTML, CSS, and
+JavaScript site with no runtime dependency on the VYLK server.
+
+Cloudflare Pages should use these settings:
+
+- Build command: `./build.sh`
+- Build output directory: `dist`
+- Production branch: the lander repository's deployment branch
+
+During the Pages build, `build.sh` fetches the public `VERSION` file from
+`https://raw.githubusercontent.com/toxdes/vylk/main/VERSION` and writes the
+value into `dist/version.js`. The generated lander uses that value for its
+release links and Docker examples. Visitors do not query the VYLK repository
+or package host for version information.
+
+Set `VYLK_VERSION_URL` to a different public version endpoint when the source
+repository moves. Set `VYLK_VERSION` only when producing a reproducible local
+build without a network request.
+
+The Pages deploy hook can be called by the release system after a successful
+VYLK release if the lander should be rebuilt for every release. Because the
+version is read during the build, no version file needs to be published to
+R2.
