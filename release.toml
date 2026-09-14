@@ -57,6 +57,16 @@ platform = "macos"
 architecture = "arm64"
 
 [[release.artifacts]]
+name = "vylk-{version}-macos-amd64.zip"
+platform = "macos"
+architecture = "x86_64"
+
+[[release.artifacts]]
+name = "vylk-{version}-macos-arm64.zip"
+platform = "macos"
+architecture = "arm64"
+
+[[release.artifacts]]
 name = "vylk_windows_amd64_{version}.exe"
 platform = "windows"
 architecture = "x86_64"
@@ -68,6 +78,23 @@ archive = ["*.tar.gz"]
 
 [package]
 binary = "vylk"
+
+[homebrew]
+tap = "toxdes/tap"
+remote = "git@github.com:toxdes/homebrew-tap.git"
+branch = "main"
+formula = "vylk"
+binary = "vylk"
+
+[[homebrew.archives]]
+artifact = "vylk-{version}-macos-amd64.zip"
+architecture = "x86_64"
+url = "https://packages.toxdes.com/releases/vylk-{version}-macos-amd64.zip"
+
+[[homebrew.archives]]
+artifact = "vylk-{version}-macos-arm64.zip"
+architecture = "arm64"
+url = "https://packages.toxdes.com/releases/vylk-{version}-macos-arm64.zip"
 
 [deb]
 package_name = "vylk"
