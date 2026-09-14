@@ -83,6 +83,8 @@ def build_all(version, output_dir, upx):
             version,
             output_dir,
         )
+        if os_name == "darwin":
+            binaries[(os_name, arch)].unlink()
 
 
 def target_output(args, version):
