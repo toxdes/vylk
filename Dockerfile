@@ -14,10 +14,16 @@ COPY . .
 
 RUN apk add --no-cache python3
 
-RUN VERSION="${VERSION}" python3 build.py \
-    --all \
-    --output-dir /build/release \
-    && cp "/build/release/vylk_${TARGETOS}_${TARGETARCH}_${VERSION}" /build/vylk
+RUN mkdir -p /build/release \
+    && if [ "${TARGETARCH}" = "amd64" ]; then \
+        VERSION="${VERSION}" python3 build.py --all --output-dir /build/release \
+        && cp "/build/release/vylk_${TARGETOS}_${TARGETARCH}_${VERSION}" /build/vylk; \
+    else \
+        VERSION="${VERSION}" python3 build.py \
+            --target-os "${TARGETOS}" \
+            --target-arch "${TARGETARCH}" \
+            --output /build/vylk; \
+    fi
 
 FROM debian:bookworm AS package
 
