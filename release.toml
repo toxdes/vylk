@@ -75,7 +75,7 @@ architectures = ["x86_64", "aarch64"]
 [aur]
 binary_package = "vylk-bin"
 git_package = "vylk-git"
-srcinfo_helper_image = "ghcr.io/toxdes/yesb-aur-helper@sha256:ebbaabcc04796060b67ff38ea81192dce08b298854821002e00d684559b76a00"
+srcinfo_helper_image = "docker.io/toxdes/yesb-aur-helper@sha256:e0b511b58baf4d1e281b154a50fd15125f886472dc7166a4aa578cb7a40435ea"
 architectures = ["x86_64", "aarch64"]
 git_pkgbuild = "PKGBUILD"
 
