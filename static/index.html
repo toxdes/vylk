@@ -5,12 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#ae2448">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="vylk">
+<meta name="apple-mobile-web-app-title" content="VYLK">
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="icon" href="/logo.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/icon-192.png">
-<title>vylk</title>
+<title>VYLK</title>
 <link rel="stylesheet" href="/style.css">
 <script src="/themes.js"></script>
 </head>
@@ -41,6 +40,7 @@ SOFTWARE.
 -->
 <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
   <symbol id="icon-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+  <symbol id="icon-save" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h8V3"/><path d="M8 21v-6h8v6"/></symbol>
   <symbol id="icon-settings" viewBox="0 0 256 256"><path fill="currentColor" stroke="none" d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z"/></symbol>
   <symbol id="icon-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
   <symbol id="icon-x" viewBox="0 0 24 24"><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></symbol>
@@ -77,11 +77,11 @@ SOFTWARE.
 <div id="app" class="booting">
   <div id="boot-screen" role="status" aria-live="polite" hidden>
     <span class="boot-spinner" aria-hidden="true"></span>
-    <span class="sr-only">Loading vylk</span>
+    <span class="sr-only">Loading VYLK</span>
   </div>
   <div id="login-screen">
     <form id="login-form">
-      <h1>vylk</h1>
+      <h1 class="app-brand"><img src="/icon-192.png" width="28" height="28" alt=""><span>VYLK</span></h1>
       <label class="sr-only" for="login-password">Password</label>
       <input type="password" id="login-password" name="password" placeholder="password" required autocomplete="current-password">
       <button type="submit">Sign in</button>
@@ -91,10 +91,12 @@ SOFTWARE.
 
   <div id="dashboard" class="hidden">
     <header>
-      <h1>vylk</h1>
-      <div class="header-right">
-        <span id="sync-status" class="sync-indicator" data-state="online" role="status" aria-live="polite"><span class="sync-indicator-dot" aria-hidden="true"></span><span class="sync-indicator-label">Saved</span></span>
-        <button id="prefs-btn" class="prefs-btn" type="button" title="Preferences" aria-label="Preferences"><svg class="icon" aria-hidden="true"><use href="#icon-settings-2"></use></svg></button>
+      <div class="header-inner">
+        <h1 class="app-brand"><img src="/icon-192.png" width="28" height="28" alt=""><span>VYLK</span></h1>
+        <div class="header-right">
+          <span id="sync-status" class="sync-indicator" data-state="online" role="status" aria-live="polite"><span class="sync-indicator-dot" aria-hidden="true"></span><span class="sync-indicator-label">Saved</span></span>
+          <button id="prefs-btn" class="prefs-btn" type="button" title="Preferences" aria-label="Preferences"><svg class="icon" aria-hidden="true"><use href="#icon-settings-2"></use></svg></button>
+        </div>
       </div>
     </header>
     <div class="offline-notice hidden" role="status" aria-live="polite">
@@ -126,7 +128,7 @@ SOFTWARE.
       </aside>
       <main class="prefs-content">
         <div class="prefs-content-header">
-          <h3 id="prefs-title">Appearance</h3>
+          <h2 id="prefs-title">Appearance</h2>
           <button id="prefs-close" class="modal-close" type="button" aria-label="Close preferences"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg></button>
         </div>
         <section id="prefs-panel-appearance" class="prefs-section active" role="tabpanel" aria-labelledby="prefs-tab-appearance" data-pref-panel="appearance">
@@ -144,6 +146,7 @@ SOFTWARE.
           <label class="pref-row"><span>Fullscreen in editor hides header</span><input type="checkbox" id="pref-hideheader"></label>
           <label class="pref-row"><span>Hide Editor Toolbar</span><input type="checkbox" id="pref-hidetoolbar"></label>
           <label class="pref-row"><span>Hide Save button</span><input type="checkbox" id="pref-hidesave"></label>
+          <label class="pref-control"><span><strong>Save button location</strong><small>Choose where the manual save control appears.</small></span><select id="pref-save-location"><option value="panel">Panel header</option><option value="header">App header</option></select></label>
           <label class="pref-row"><span>Collapse Details by default</span><input type="checkbox" id="pref-collapse"></label>
           <label class="pref-row"><span>Hide cursor position preview</span><input type="checkbox" id="pref-hidecursor"></label>
           <label class="pref-control"><span><strong>Status</strong><small>Choose how sync status is shown.</small></span><select id="pref-status"><option value="normal">Normal</option><option value="compact">Compact</option><option value="off">Off</option></select></label>
@@ -225,11 +228,16 @@ SOFTWARE.
 
   <div id="editor" class="hidden">
     <header>
-      <button id="back-btn" class="btn-text" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-arrow-left"></use></svg>Back</button>
-      <div class="header-right">
-        <span id="editor-status" class="sync-indicator" data-state="online" role="status" aria-live="polite"><span class="sync-indicator-dot" aria-hidden="true"></span><span class="sync-indicator-label">Saved</span></span>
-        <button id="save-btn" class="btn-primary" type="button">Save</button>
-        <button id="editor-prefs-btn" class="prefs-btn" type="button" title="Preferences" aria-label="Preferences"><svg class="icon" aria-hidden="true"><use href="#icon-settings-2"></use></svg></button>
+      <div class="header-inner">
+        <div class="header-left">
+          <button id="back-btn" class="btn-text icon-btn" type="button" title="Back to notes" aria-label="Back to notes"><svg class="icon back-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+          <h1 class="app-brand"><img src="/icon-192.png" width="28" height="28" alt=""><span>VYLK</span></h1>
+        </div>
+        <div class="header-right">
+          <span id="editor-status" class="sync-indicator" data-state="online" role="status" aria-live="polite"><span class="sync-indicator-dot" aria-hidden="true"></span><span class="sync-indicator-label">Saved</span></span>
+          <span id="header-save-slot" class="save-slot"></span>
+          <button id="editor-prefs-btn" class="prefs-btn icon-btn" type="button" title="Preferences" aria-label="Preferences"><svg class="icon" aria-hidden="true"><use href="#icon-settings-2"></use></svg></button>
+        </div>
       </div>
     </header>
     <div class="offline-notice hidden" role="status" aria-live="polite">
@@ -269,6 +277,7 @@ SOFTWARE.
               <button type="button" class="panel-width" title="Use full width" aria-label="Use full width">
                 <svg class="icon" aria-hidden="true"><use href="#icon-width-full"></use></svg>
               </button>
+              <span id="panel-save-slot" class="save-slot"><button id="save-btn" class="prefs-btn icon-btn save-note-btn" type="button" title="Save note" aria-label="Save note"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg></button></span>
               <button type="button" class="panel-switch" data-panel-switch="preview" title="Show preview" aria-label="Show preview" aria-controls="preview-panel" aria-expanded="false">
                 <svg class="icon" aria-hidden="true"><use href="#icon-eye-bolt"></use></svg>
               </button>

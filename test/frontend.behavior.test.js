@@ -188,6 +188,13 @@ describe('editor display preferences', () => {
     const statusLabel = app.window.document.querySelector('#editor-status .sync-indicator-label');
     expect(app.window.document.querySelector('#pref-status')).not.toBeNull();
     expect(app.window.document.querySelector('#pref-hidesave')).not.toBeNull();
+    expect(app.window.document.querySelector('#pref-save-location')).not.toBeNull();
+    expect(app.window.document.querySelector('#panel-save-slot #save-btn')).not.toBeNull();
+
+    await app.hooks.savePref('saveButtonLocation', 'header');
+    expect(app.window.document.querySelector('#header-save-slot #save-btn')).not.toBeNull();
+    await app.hooks.savePref('saveButtonLocation', 'panel');
+    expect(app.window.document.querySelector('#panel-save-slot #save-btn')).not.toBeNull();
 
     await app.hooks.savePref('statusDisplay', 'compact');
     expect(root.dataset.statusDisplay).toBe('compact');

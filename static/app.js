@@ -19,7 +19,7 @@ let isDirty = false;
 let panelState = 'both';
 let savedSnapshot = { title: '', tags: '', content: '' };
 let editorSessionGeneration = 0;
-const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, collapseDetails:false, hideCursorHighlight:false, statusDisplay:'normal', theme:'default-light', accentColor:'', fontFamily:'system-sans', fontFamilyGoogle:false, editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, previewFontFamily:'system-sans', previewFontFamilyGoogle:false};
+const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel', collapseDetails:false, hideCursorHighlight:false, statusDisplay:'normal', theme:'default-light', accentColor:'', fontFamily:'system-sans', fontFamilyGoogle:false, editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, previewFontFamily:'system-sans', previewFontFamilyGoogle:false};
 const FONT_CACHE_NAME = 'vylk-fonts';
 const SYSTEM_FONT_STACK = 'ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
 const SYSTEM_SERIF_STACK = 'ui-serif,Georgia,Cambria,"Times New Roman",Times,serif';
@@ -1407,13 +1407,23 @@ function closeConflictResolver() {
 
 function closePreferences() {
   if (isAppPreferencesRoute()) {
-    history.back();
+    const returnRoute = history.state?.returnRoute;
+    if (returnRoute?.screen === 'note' && noteRouteIDPattern.test(returnRoute.noteID || '')) {
+      history.replaceState(noteRouteState(returnRoute.noteID), '', `/${encodeURIComponent(returnRoute.noteID)}`);
+    } else {
+      history.replaceState(dashboardRouteState(), '', '/');
+    }
+    closeModal($('#prefs-modal'));
     return;
   }
   closeModal($('#prefs-modal'));
 }
 
 function openModal(modal) {
+  if (modal.__closeTimer) {
+    window.clearTimeout(modal.__closeTimer);
+    modal.__closeTimer = null;
+  }
   if (!modal.__keyboardBound) {
     modal.addEventListener('keydown', handleModalKeydown);
     modal.__keyboardBound = true;
@@ -1474,7 +1484,10 @@ function closeModal(modal) {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     finish();
   } else {
-    window.setTimeout(finish, 170);
+    modal.__closeTimer = window.setTimeout(() => {
+      modal.__closeTimer = null;
+      finish();
+    }, 190);
   }
 }
 
@@ -2580,11 +2593,28 @@ function applyEditorPrefs() {
   $('#editor').classList.toggle('header-hidden', prefs.hideHeaderOnFullscreen && panelState !== 'both');
   document.documentElement.dataset.statusDisplay = prefs.statusDisplay;
   $('#editor').classList.toggle('hide-save-button', Boolean(prefs.hideSaveButton));
+  placeSaveButton();
   if (prefs.hideToolbar) {
     $('.fmt-bar').classList.add('hidden');
   } else {
     $('.fmt-bar').classList.remove('hidden');
   }
+}
+
+function placeSaveButton() {
+  const saveButton = $('#save-btn');
+  const headerSlot = $('#header-save-slot');
+  const panelSlot = $('#panel-save-slot');
+  const panelActions = $('#editor-panel .panel-header-actions');
+  const previewSwitch = $('#editor-panel .panel-switch');
+  if (!saveButton || !headerSlot || !panelSlot || !panelActions || !previewSwitch) return;
+  if (prefs.saveButtonLocation === 'header') {
+    headerSlot.append(saveButton);
+    return;
+  }
+  panelSlot.append(saveButton);
+  if (panelState === 'both') panelActions.append(panelSlot);
+  else panelActions.insertBefore(panelSlot, previewSwitch);
 }
 
 // --- Editor ---
@@ -2695,7 +2725,16 @@ async function followWikiLink(title) {
 }
 
 async function restoreRoute({fetchRemote = false} = {}) {
-  if (!isAppPreferencesRoute() && !$('#prefs-modal').classList.contains('hidden')) closeModal($('#prefs-modal'));
+  if (!isAppPreferencesRoute() && !$('#prefs-modal').classList.contains('hidden')) {
+    closeModal($('#prefs-modal'));
+    // Preferences is an overlay route. When the underlying screen is already
+    // rendered, rebuilding it here would compete with the modal's exit frame.
+    if (isAppDashboardRoute() && !screens.dashboard.classList.contains('hidden')) return;
+    if (isAppNoteRoute() && !screens.editor.classList.contains('hidden') && currentNoteId === history.state.noteID) {
+      if (isDirty) await saveCurrentNote(false);
+      return;
+    }
+  }
   if (isAppPreferencesRoute()) {
     const returnRoute = history.state?.returnRoute;
     const noteID = returnRoute?.screen === 'note' ? returnRoute.noteID : null;
@@ -3158,9 +3197,9 @@ $('.meta-toggle')?.addEventListener('click', () => {
 });
 
 // --- Panel toggle ---
-function setPanelState(state) {
+function setPanelState(state, {preservePanelWide = false} = {}) {
   panelState = state;
-  if (state === 'both') panelWide = false;
+  if (state === 'both' && !preservePanelWide) panelWide = false;
   const wrap = $('#editor-panels');
   const ed = $('.panel-editor');
   const pv = $('.panel-preview');
@@ -3174,8 +3213,9 @@ function setPanelState(state) {
     ed.classList.add('panel-hidden');
     wrap.classList.add('panels-single');
   }
-  wrap.classList.toggle('panel-wide', panelWide && state !== 'both');
+  wrap.classList.toggle('panel-wide', panelWide);
   $('#editor').classList.toggle('header-hidden', prefs.hideHeaderOnFullscreen && state !== 'both');
+  placeSaveButton();
   document.querySelectorAll('.panel-layout').forEach(button => {
     const focused = state === button.dataset.panel;
     button.title = focused ? 'Show split view' : `Focus ${button.dataset.panel}`;
@@ -3184,7 +3224,7 @@ function setPanelState(state) {
     button.querySelector('use').setAttribute('href', focused ? '#icon-minimize' : '#icon-maximize');
   });
   document.querySelectorAll('.panel-width').forEach(button => {
-    const label = panelWide ? 'Use reading width' : 'Use full width';
+    const label = panelWide ? 'Use content width' : 'Use full width';
     button.title = label;
     button.setAttribute('aria-label', label);
     button.setAttribute('aria-pressed', String(panelWide));
@@ -3206,10 +3246,8 @@ $('#editor-panels').addEventListener('click', e => {
   }
   const widthButton = e.target.closest('.panel-width');
   if (widthButton) {
-    if (panelState !== 'both') {
-      panelWide = !panelWide;
-      setPanelState(panelState);
-    }
+    panelWide = !panelWide;
+    setPanelState(panelState, {preservePanelWide: true});
     return;
   }
   const btn = e.target.closest('.panel-layout');
@@ -3669,6 +3707,7 @@ function normalizePrefs(value = {}, fallback = {}) {
   const merged = {...DEFAULT_PREFS, ...fallback, ...value};
   merged.revision = Number.isSafeInteger(Number(merged.revision)) && Number(merged.revision) > 0 ? Number(merged.revision) : 1;
   if (!['normal', 'compact', 'off'].includes(merged.statusDisplay)) merged.statusDisplay = DEFAULT_PREFS.statusDisplay;
+  if (!['panel', 'header'].includes(merged.saveButtonLocation)) merged.saveButtonLocation = DEFAULT_PREFS.saveButtonLocation;
   if (!value.theme && !fallback.theme) merged.theme = legacyThemeID();
   if (!themeByID.has(merged.theme)) merged.theme = legacyThemeID();
   if (!validAccentColor(merged.accentColor)) merged.accentColor = '';
@@ -3828,6 +3867,7 @@ function openPreferences({route = 'push'} = {}) {
   $('#pref-hideheader').checked = prefs.hideHeaderOnFullscreen;
   $('#pref-hidetoolbar').checked = prefs.hideToolbar;
   $('#pref-hidesave').checked = prefs.hideSaveButton;
+  $('#pref-save-location').value = prefs.saveButtonLocation;
   $('#pref-collapse').checked = prefs.collapseDetails;
   $('#pref-hidecursor').checked = prefs.hideCursorHighlight;
   $('#pref-status').value = prefs.statusDisplay;
@@ -3880,6 +3920,7 @@ $('#pref-hidetoolbar').addEventListener('change', function () {
 $('#pref-hidesave').addEventListener('change', function () {
   savePref('hideSaveButton', this.checked);
 });
+$('#pref-save-location').addEventListener('change', function () { void savePref('saveButtonLocation', this.value); });
 $('#pref-collapse').addEventListener('change', function () {
   savePref('collapseDetails', this.checked);
 });
@@ -3968,7 +4009,10 @@ async function init() {
     const res = await api('/api/check');
     if (res) {
       cacheAppVersion(res);
-      void loadPrefs();
+      // Apply the saved theme and appearance variables before restoring the
+      // authenticated screen. Rendering the dashboard first caused a brief
+      // fallback-theme paint where borders and surfaces could appear missing.
+      await loadPrefs();
       await restoreRoute({fetchRemote: true});
       connectServerEvents();
       scheduleSync({reconcile: true});
