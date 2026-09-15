@@ -19,7 +19,10 @@ let isDirty = false;
 let panelState = 'both';
 let savedSnapshot = { title: '', tags: '', content: '' };
 let editorSessionGeneration = 0;
-const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel', collapseDetails:false, hideCursorHighlight:false, statusDisplay:'normal', contentWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans', fontFamilyGoogle:false, fontSize:'1rem', editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, editorFontSize:'1rem', previewFontFamily:'system-sans', previewFontFamilyGoogle:false, previewFontSize:'1rem'};
+const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel',
+  collapseDetails:false, hideCursorHighlight:false, interactivePreview:false, statusDisplay:'normal', contentWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans',
+  fontFamilyGoogle:false, fontSize:'1rem', editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, editorFontSize:'1rem', previewFontFamily:'system-sans',
+  previewFontFamilyGoogle:false, previewFontSize:'1rem'};
 const CONTENT_WIDTH_VALUES = ['compact', 'standard', 'wide', 'full'];
 const FONT_SIZE_OPTIONS = [
   {value: '0.8rem', label: 'Small (80%)'},
@@ -40,6 +43,15 @@ let fontApplyQueue = Promise.resolve();
 let renderedPreviewSource = null;
 let previewCheckFrame = null;
 let highlightFrame = null;
+let editorCaretFrame = null;
+let interactivePreviewActive = false;
+let interactiveSourceLocked = false;
+let interactiveSourceMutation = false;
+let interactiveHistory = [];
+let interactiveListItems = [];
+let interactiveBlockItems = [];
+let activePreviewDrag = null;
+let suppressNextPreviewAlignment = false;
 let currentRevision = 0;
 let currentBaseRevision = null;
 let syncInFlight = false;
@@ -2608,6 +2620,21 @@ function applyEditorPrefs() {
   } else {
     $('.fmt-bar').classList.remove('hidden');
   }
+  let interactiveModeChanged = false;
+  if (prefs.interactivePreview && !interactivePreviewActive) {
+    interactivePreviewActive = true;
+    interactiveHistory = [];
+    renderedPreviewSource = null;
+    interactiveModeChanged = true;
+  } else if (!prefs.interactivePreview && interactivePreviewActive) {
+    cancelPreviewDrag({animateReturn:false});
+    interactivePreviewActive = false;
+    interactiveHistory = [];
+    renderedPreviewSource = null;
+    interactiveModeChanged = true;
+  }
+  syncInteractivePreviewUI();
+  if (interactiveModeChanged && isPreviewVisible()) updatePreview();
 }
 
 function applyContentWidth() {
@@ -2636,6 +2663,7 @@ function startNewNote(title = '') {
   if (localSaveTimer) clearTimeout(localSaveTimer);
   if (previewTimer) clearTimeout(previewTimer);
   setPanelState(prefs.hidePreview ? 'editor' : 'both');
+  resetInteractivePreviewSession();
   editorSessionGeneration++;
   currentNoteId = newLocalNoteID();
   currentRevision = 0;
@@ -2685,6 +2713,7 @@ $('#back-btn').addEventListener('click', async () => {
 
 function showNoteInEditor(data) {
   setPanelState(prefs.hidePreview ? 'editor' : 'both');
+  resetInteractivePreviewSession();
   editorSessionGeneration++;
   currentNoteId = data.id;
   currentRevision = data.revision || 0;
@@ -3091,6 +3120,7 @@ document.addEventListener('keydown', e => {
 window.addEventListener('resize', hideTablePicker);
 
 function insertFmt(type) {
+  if (interactiveSourceLocked) return;
   const ta = $('#note-content');
   const start = ta.selectionStart;
   const end = ta.selectionEnd;
@@ -3204,6 +3234,7 @@ document.querySelector('.fmt-bar')?.addEventListener('click', e => {
 
 // Shortcuts for bold/italic in textarea
 $('#note-content').addEventListener('keydown', e => {
+  if (interactiveSourceLocked) return;
   if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'i')) {
     e.preventDefault();
     insertFmt(e.key === 'b' ? 'bold' : 'italic');
@@ -3219,6 +3250,9 @@ $('.meta-toggle')?.addEventListener('click', () => {
 
 // --- Panel toggle ---
 function setPanelState(state) {
+  // Panel transitions must never preserve a half-finished drag. A hidden
+  // source element or placeholder would otherwise leak into the next layout.
+  if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
   panelState = state;
   const wrap = $('#editor-panels');
   const ed = $('.panel-editor');
@@ -3247,6 +3281,7 @@ function setPanelState(state) {
     button.setAttribute('aria-expanded', String(targetVisible));
   });
   applyPanelRatio();
+  scheduleEditorCaretCue();
   if (state !== 'editor') schedulePreviewCheck();
 }
 
@@ -3306,6 +3341,202 @@ applyPanelRatio();
 let previewBlocks = [];
 let previewBlockRanges = [];
 let previewRangeSource = null;
+function resetInteractivePreviewSession() {
+  cancelPreviewDrag({animateReturn:false});
+  suppressNextPreviewAlignment = false;
+  interactivePreviewActive = false;
+  interactiveSourceLocked = false;
+  interactiveHistory = [];
+  interactiveListItems = [];
+  interactiveBlockItems = [];
+  syncInteractivePreviewUI();
+}
+
+function syncInteractivePreviewUI() {
+  const textarea = $('#note-content');
+  const preview = $('#preview');
+  if (!textarea || !preview) return;
+  textarea.readOnly = interactiveSourceLocked;
+  textarea.setAttribute('aria-label', interactiveSourceLocked ? 'Markdown source, read-only during drag' : 'Markdown note content');
+  preview.classList.toggle('interactive-preview-active', interactivePreviewActive);
+  $('.fmt-bar')?.classList.toggle('interactive-preview-locked', interactiveSourceLocked);
+}
+
+function createPreviewDragHandle() {
+  const handle = document.createElement('span');
+  handle.className = 'preview-drag-handle';
+  handle.dataset.previewDragIndicator = 'true';
+  handle.setAttribute('aria-hidden', 'true');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('icon');
+  svg.setAttribute('viewBox', '0 0 12 18');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', '#icon-drag-indicator');
+  svg.append(use);
+  handle.append(svg);
+  return handle;
+}
+
+function createPreviewEditButton() {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'preview-edit-button';
+  button.title = 'Edit';
+  button.setAttribute('aria-label', 'Edit this block in source');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('icon');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', '#icon-edit');
+  svg.append(use);
+  button.append(svg);
+  return button;
+}
+
+function orderedListItemNumber(item) {
+  const list = item.parentElement;
+  if (!list || list.tagName !== 'OL') return null;
+  const siblings = [...list.children].filter(child => child.tagName === 'LI');
+  const reversed = list.hasAttribute('reversed');
+  const startAttribute = list.getAttribute('start');
+  const explicitStart = startAttribute === null ? NaN : Number(startAttribute);
+  let number = Number.isInteger(explicitStart) ? explicitStart : reversed ? siblings.length : 1;
+  const step = reversed ? -1 : 1;
+  for (const sibling of siblings) {
+    const valueAttribute = sibling.getAttribute('value');
+    const explicitValue = valueAttribute === null ? NaN : Number(valueAttribute);
+    if (Number.isInteger(explicitValue)) number = explicitValue;
+    if (sibling === item) return number;
+    number += step;
+  }
+  return null;
+}
+
+function createPreviewListMarker(item, taskItem) {
+  if (taskItem && item.parentElement?.tagName !== 'OL') return null;
+  const marker = document.createElement('span');
+  marker.className = 'preview-list-marker';
+  marker.setAttribute('aria-hidden', 'true');
+  const number = orderedListItemNumber(item);
+  if (number === null) {
+    marker.dataset.kind = 'bullet';
+  } else {
+    marker.textContent = `${number}.`;
+  }
+  return marker;
+}
+
+function decoratePreviewListItem(entry) {
+  const item = entry.element;
+  const nestedLists = [];
+  const body = document.createElement('div');
+  body.className = 'preview-list-item-body';
+  for (const node of [...item.childNodes]) {
+    if (node.nodeType === Node.ELEMENT_NODE && ['UL', 'OL'].includes(node.tagName)) nestedLists.push(node);
+    else body.append(node);
+  }
+
+  const taskItem = Boolean(body.querySelector('input[type="checkbox"]'));
+  const card = document.createElement('div');
+  card.className = `interactive-preview-card interactive-preview-list-card${taskItem ? ' is-task' : ''}`;
+  const content = document.createElement('div');
+  content.className = 'preview-drag-content preview-list-content';
+  const marker = createPreviewListMarker(item, taskItem);
+  if (marker) {
+    card.classList.add('has-marker');
+    content.append(marker);
+  }
+  content.append(body);
+  card.append(createPreviewDragHandle(), content, createPreviewEditButton());
+  item.classList.add('interactive-preview-list-item');
+  item.prepend(card);
+  nestedLists.forEach(list => item.append(list));
+  entry.card = card;
+  entry.visualElement = item;
+}
+
+function decoratePreviewBlock(entry) {
+  const block = entry.element;
+  const card = document.createElement('div');
+  card.className = 'interactive-preview-card interactive-preview-block-card';
+  if (block.tagName === 'HR') card.classList.add('interactive-preview-rule-card');
+  card.dataset.interactiveStart = String(entry.start);
+  card.dataset.interactiveScope = entry.scope;
+  const content = document.createElement('div');
+  content.className = 'preview-drag-content preview-block-content';
+  block.before(card);
+  block.removeAttribute('data-interactive-start');
+  block.removeAttribute('data-interactive-scope');
+  content.append(block);
+  card.append(createPreviewDragHandle(), content, createPreviewEditButton());
+  entry.element = card;
+  entry.card = card;
+  entry.visualElement = card;
+  entry.contentElement = block;
+}
+
+function decorateInteractivePreview() {
+  if (!interactivePreviewActive) return;
+  interactiveListItems.forEach(decoratePreviewListItem);
+  interactiveBlockItems.forEach(decoratePreviewBlock);
+}
+
+function setInteractiveSourceLocked(locked) {
+  interactiveSourceLocked = Boolean(locked && interactivePreviewActive);
+  syncInteractivePreviewUI();
+}
+
+function updatePreviewPreservingViewport() {
+  const preview = $('#preview');
+  const scrollTop = preview?.scrollTop || 0;
+  suppressNextPreviewAlignment = true;
+  updatePreview();
+  if (preview) preview.scrollTop = scrollTop;
+}
+
+function applyInteractiveSource(nextSource, transaction) {
+  const textarea = $('#note-content');
+  const before = textarea.value;
+  if (!transaction || !nextSource || nextSource === before) return false;
+  interactiveHistory.push({...transaction, selectionStart: textarea.selectionStart, selectionEnd: textarea.selectionEnd});
+  if (interactiveHistory.length > 50) interactiveHistory.shift();
+  interactiveSourceMutation = true;
+  textarea.value = nextSource;
+  textarea.dispatchEvent(new Event('input', {bubbles:true}));
+  interactiveSourceMutation = false;
+  if (previewTimer) {
+    clearTimeout(previewTimer);
+    previewTimer = null;
+  }
+  updatePreviewPreservingViewport();
+  return true;
+}
+
+function undoInteractivePreview() {
+  const transaction = interactiveHistory.pop();
+  const textarea = $('#note-content');
+  if (!transaction || !textarea) return false;
+  const current = textarea.value;
+  if (current.slice(transaction.start, transaction.start + transaction.inserted.length) !== transaction.inserted) {
+    interactiveHistory = [];
+    return false;
+  }
+  const restored = current.slice(0, transaction.start) + transaction.removed + current.slice(transaction.start + transaction.inserted.length);
+  interactiveSourceMutation = true;
+  textarea.value = restored;
+  textarea.selectionStart = transaction.selectionStart;
+  textarea.selectionEnd = transaction.selectionEnd;
+  textarea.dispatchEvent(new Event('input', {bubbles:true}));
+  interactiveSourceMutation = false;
+  if (previewTimer) {
+    clearTimeout(previewTimer);
+    previewTimer = null;
+  }
+  updatePreviewPreservingViewport();
+  return true;
+}
 function isPreviewVisible() {
   return !screens.editor.classList.contains('hidden') && panelState !== 'editor';
 }
@@ -3399,6 +3630,26 @@ function measureEditorCaret() {
   };
 }
 
+function updateEditorCaretCue() {
+  editorCaretFrame = null;
+  const textarea = $('#note-content');
+  const wrap = $('.editor-source-wrap');
+  if (!textarea || !wrap) return;
+  const focused = document.activeElement === textarea && !textarea.readOnly;
+  wrap.classList.toggle('is-caret-visible', focused);
+  if (!focused) return;
+  const caret = measureEditorCaret();
+  if (!caret) return;
+  const textareaRect = textarea.getBoundingClientRect();
+  wrap.style.setProperty('--editor-caret-top', `${Math.max(0, caret.top - textareaRect.top)}px`);
+  wrap.style.setProperty('--editor-caret-height', `${Math.max(1, caret.height)}px`);
+}
+
+function scheduleEditorCaretCue() {
+  if (editorCaretFrame !== null) return;
+  editorCaretFrame = requestAnimationFrame(updateEditorCaretCue);
+}
+
 function previewBlockIndexAtPosition(position) {
   let previous = -1;
   let next = -1;
@@ -3413,6 +3664,12 @@ function previewBlockIndexAtPosition(position) {
   const distanceToPrevious = position - previewBlockRanges[previous].end;
   const distanceToNext = previewBlockRanges[next].start - position;
   return distanceToPrevious <= distanceToNext ? previous : next;
+}
+
+function previewListItemAtPosition(position, sourceLength) {
+  return interactiveListItems
+    .filter(entry => entry.start <= position && (position < entry.end || position === sourceLength && entry.end === position))
+    .sort((left, right) => right.indent - left.indent || right.start - left.start || left.end - right.end)[0] || null;
 }
 
 function alignPreviewWithCaret(block, range) {
@@ -3442,10 +3699,12 @@ function alignPreviewWithCaret(block, range) {
 
 function cachePreviewBlocks() {
   const pv = $('#preview');
-  previewBlocks = Array.from(pv.children).filter(c => c.tagName && !['STYLE','SCRIPT'].includes(c.tagName));
+  previewBlocks = Array.from(pv.children).filter(c => c.tagName && !['STYLE','SCRIPT'].includes(c.tagName) && !c.dataset.previewDragIndicator);
   previewBlockRanges = [];
   previewRangeSource = null;
   const source = $('#note-content').value;
+  interactiveListItems = [];
+  interactiveBlockItems = [];
   if (!source || typeof marked === 'undefined' || typeof marked.lexer !== 'function') return;
   try {
     const ranges = [];
@@ -3469,16 +3728,47 @@ function cachePreviewBlocks() {
       }
       const contentEnd = start + raw.replace(/[\s\r\n]+$/, '').length;
       ranges.push({start, end: Math.max(start, contentEnd)});
+      if (token.type === 'list' && window.VylkInteractive?.listItemRanges) {
+        const listEntries = window.VylkInteractive.listItemRanges(raw, start, `list:${start}`);
+        const listElements = [...block.querySelectorAll('li')];
+        if (listEntries.length === listElements.length) {
+          listEntries.forEach((entry, index) => {
+            const element = listElements[index];
+            entry.element = element;
+            element.dataset.interactiveStart = String(entry.start);
+            element.dataset.interactiveScope = entry.scope;
+            const lineEnd = source.indexOf('\n', entry.start);
+            const line = source.slice(entry.start, lineEnd < 0 ? entry.end : Math.min(entry.end, lineEnd));
+            const checkbox = element.querySelector(':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]');
+            if (checkbox && /\[[ xX]\]/.test(line)) {
+              checkbox.disabled = !interactivePreviewActive;
+              checkbox.setAttribute('aria-label', checkbox.checked ? 'Mark task incomplete' : 'Mark task complete');
+            }
+            interactiveListItems.push(entry);
+          });
+        }
+      }
     }
     if (!previewGapDoesNotRender(source.slice(offset)) || blockIndex !== previewBlocks.length) return;
     previewBlockRanges = ranges;
     previewRangeSource = source;
+    interactiveBlockItems = previewBlocks.flatMap((element, index) => {
+      if (['UL', 'OL'].includes(element.tagName) || !ranges[index]) return [];
+      const entry = {...ranges[index], indent:0, ordered:false, parent:null, kind:'block', scope:'blocks', element};
+      element.dataset.interactiveStart = String(entry.start);
+      element.dataset.interactiveScope = entry.scope;
+      return [entry];
+    });
+    decorateInteractivePreview();
+    syncInteractivePreviewUI();
   } catch (_) {
     previewBlockRanges = [];
   }
 }
 function highlightBlock() {
   if (!isPreviewVisible()) return;
+  const skipAlignment = suppressNextPreviewAlignment;
+  suppressNextPreviewAlignment = false;
   if (prefs.hideCursorHighlight) {
     clearPreviewHighlight();
     return;
@@ -3491,8 +3781,17 @@ function highlightBlock() {
   const idx = previewBlockIndexAtPosition(pos);
   const block = previewBlocks[idx];
   if (!block) return;
-  block.classList.add('highlight');
-  alignPreviewWithCaret(block, previewBlockRanges[idx]);
+  let range = previewBlockRanges[idx];
+  let highlightTarget = interactivePreviewActive ? block.closest('.interactive-preview-card') || block : block;
+  if (['UL', 'OL'].includes(block.tagName)) {
+    const listItem = previewListItemAtPosition(pos, text.length);
+    if (listItem?.element?.isConnected) {
+      range = listItem;
+      highlightTarget = interactivePreviewActive ? listItem.card || listItem.element : listItem.element;
+    }
+  }
+  highlightTarget.classList.add('highlight');
+  if (!skipAlignment) alignPreviewWithCaret(highlightTarget, range);
 }
 
 // --- Delete ---
@@ -3529,16 +3828,22 @@ $('#delete-btn').addEventListener('click', async () => {
 
 // --- Live Preview ---
 $('#note-content').addEventListener('input', () => {
+  if (!interactiveSourceMutation) interactiveHistory = [];
   markDirty();
   scheduleSave();
   previewRangeSource = null;
   previewBlockRanges = [];
   scheduleHighlight();
+  scheduleEditorCaretCue();
   if (previewTimer) clearTimeout(previewTimer);
   previewTimer = setTimeout(updatePreview, 500);
 });
-$('#note-content').addEventListener('click', scheduleHighlight);
-$('#note-content').addEventListener('keyup', scheduleHighlight);
+$('#note-content').addEventListener('click', () => { scheduleHighlight(); scheduleEditorCaretCue(); });
+$('#note-content').addEventListener('keyup', () => { scheduleHighlight(); scheduleEditorCaretCue(); });
+$('#note-content').addEventListener('focus', scheduleEditorCaretCue);
+$('#note-content').addEventListener('blur', scheduleEditorCaretCue);
+$('#note-content').addEventListener('scroll', scheduleEditorCaretCue, {passive:true});
+window.addEventListener('resize', scheduleEditorCaretCue, {passive:true});
 
 function linkifyWikiLinks(container) {
   const matcher = /\[\[([^\[\]\n]+)\]\]/g;
@@ -3640,11 +3945,326 @@ function markdownRenderOptions() {
   return options;
 }
 
+function interactiveEntryForElement(element) {
+  const owner = element?.closest('[data-interactive-start]');
+  if (!owner) return null;
+  const start = Number(owner.dataset.interactiveStart);
+  const scope = owner.dataset.interactiveScope;
+  if (!Number.isFinite(start) || !scope) return null;
+  return [...interactiveBlockItems, ...interactiveListItems]
+    .find(entry => entry.start === start && entry.scope === scope) || null;
+}
+
+function previewEditPosition(entry, source = $('#note-content').value) {
+  if (!entry || typeof source !== 'string') return 0;
+  const raw = source.slice(entry.start, entry.end);
+  let prefix = '';
+  if (entry.kind === 'list-item') {
+    prefix = raw.match(/^[ \t]*(?:[-+*]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/)?.[0] || '';
+  } else {
+    prefix = raw.match(/^[ \t]{0,3}#{1,6}[ \t]+/)?.[0]
+      || raw.match(/^[ \t]{0,3}>[ \t]?/)?.[0]
+      || raw.match(/^[ \t]{0,3}(?:`{3,}|~{3,})[^\r\n]*(?:\r?\n|$)/)?.[0]
+      || '';
+  }
+  return Math.min(entry.end, entry.start + prefix.length);
+}
+
+function editPreviewEntry(entry) {
+  const textarea = $('#note-content');
+  if (!interactivePreviewActive || !entry || !textarea) return false;
+  if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
+  const position = previewEditPosition(entry, textarea.value);
+  if (panelState === 'preview') setPanelState('editor', {preservePanelWide:true});
+  textarea.focus({preventScroll:true});
+  textarea.setSelectionRange(position, position);
+  updateEditorCaretCue();
+  scheduleHighlight();
+  return true;
+}
+
+function selectInteractivePreviewCard(card) {
+  $('#preview').querySelectorAll('.interactive-preview-card.is-selected').forEach(current => {
+    if (current !== card) current.classList.remove('is-selected');
+  });
+  card?.classList.add('is-selected');
+}
+
 $('#preview').addEventListener('click', event => {
+  const editButton = event.target.closest('.preview-edit-button');
+  if (interactivePreviewActive && editButton) {
+    event.preventDefault();
+    editPreviewEntry(interactiveEntryForElement(editButton));
+    return;
+  }
   const link = event.target.closest('a[data-wiki-title]');
-  if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  if (link && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    event.preventDefault();
+    void followWikiLink(link.dataset.wikiTitle);
+    return;
+  }
+  const checkbox = event.target.closest('input[type="checkbox"]');
+  if (interactivePreviewActive && checkbox && !checkbox.disabled) {
+    const item = checkbox.closest('li[data-interactive-start]');
+    const entry = interactiveListItems.find(candidate => candidate.start === Number(item?.dataset.interactiveStart));
+    const change = window.VylkInteractive?.toggleTask($('#note-content').value, entry);
+    if (!change) return;
+    event.preventDefault();
+    applyInteractiveSource(change.source, {start:change.start, removed:$('#note-content').value.slice(change.start, change.end), inserted:change.inserted});
+    return;
+  }
+  if (interactivePreviewActive && window.matchMedia('(hover: none), (pointer: coarse)').matches) {
+    selectInteractivePreviewCard(event.target.closest('.interactive-preview-card'));
+  }
+});
+
+document.addEventListener('pointerdown', event => {
+  if (!interactivePreviewActive || event.target.closest('#preview .interactive-preview-card')) return;
+  selectInteractivePreviewCard(null);
+});
+
+function previewDragTarget(clientX, clientY, sourceStart, sourceScope) {
+  const preview = $('#preview');
+  const previewRect = preview.getBoundingClientRect();
+  if (clientX < previewRect.left || clientX > previewRect.right || clientY < previewRect.top || clientY > previewRect.bottom) return null;
+  const entries = [...interactiveBlockItems, ...interactiveListItems];
+  const source = entries.find(entry => entry.start === sourceStart && entry.scope === sourceScope);
+  if (!source) return null;
+  let best = null;
+  for (const entry of entries) {
+    if (entry === source || !entry.element?.isConnected || (source.start < entry.end && entry.start < source.end)) continue;
+    const rect = (entry.visualElement || entry.element).getBoundingClientRect();
+    if (!rect.height) continue;
+    const verticalDistance = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+    const horizontalDistance = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
+    const score = verticalDistance * 1000 + horizontalDistance;
+    if (!best || score < best.score) best = {entry, rect, score};
+  }
+  if (!best) return null;
+  return {
+    element:best.entry.element,
+    start:best.entry.start,
+    scope:best.entry.scope,
+    placement:clientY < best.rect.top + best.rect.height / 2 ? 'before' : 'after',
+  };
+}
+
+function capturePreviewLayout(parent, excludedElement) {
+  if (!parent) return new Map();
+  return new Map([...parent.children]
+    .filter(element => element !== excludedElement && !element.classList.contains('preview-drag-placeholder'))
+    .map(element => [element, element.getBoundingClientRect()]));
+}
+
+function animatePreviewReflow(before) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  for (const [element, first] of before) {
+    if (!element.isConnected || typeof element.animate !== 'function') continue;
+    element.getAnimations?.().filter(animation => animation.id === 'preview-reflow').forEach(animation => animation.cancel());
+    const last = element.getBoundingClientRect();
+    const deltaX = first.left - last.left;
+    const deltaY = first.top - last.top;
+    if (Math.abs(deltaX) < .5 && Math.abs(deltaY) < .5) continue;
+    const animation = element.animate([
+      {transform:`translate3d(${deltaX}px,${deltaY}px,0)`},
+      {transform:'translate3d(0,0,0)'},
+    ], {duration:180, easing:'cubic-bezier(.16,1,.3,1)'});
+    animation.id = 'preview-reflow';
+  }
+}
+
+function createPreviewPlaceholder(drag, parent) {
+  const tagName = ['UL', 'OL'].includes(parent?.tagName) ? 'li' : 'div';
+  if (drag.placeholder?.tagName === tagName.toUpperCase()) return drag.placeholder;
+  drag.placeholder?.remove();
+  const placeholder = document.createElement(tagName);
+  placeholder.className = 'preview-drag-placeholder';
+  placeholder.setAttribute('aria-hidden', 'true');
+  placeholder.style.width = `${drag.placeholderWidth}px`;
+  placeholder.style.height = `${drag.placeholderHeight}px`;
+  drag.placeholder = placeholder;
+  return placeholder;
+}
+
+function previewAutoScrollDelta(preview, clientY, elapsedMilliseconds = 16.67) {
+  const rect = preview.getBoundingClientRect();
+  const edgeSize = Math.min(72, Math.max(44, rect.height * .18));
+  let intensity = 0;
+  if (clientY < rect.top + edgeSize) intensity = -Math.min(1, (rect.top + edgeSize - clientY) / edgeSize);
+  else if (clientY > rect.bottom - edgeSize) intensity = Math.min(1, (clientY - (rect.bottom - edgeSize)) / edgeSize);
+  const maxScrollTop = Math.max(0, preview.scrollHeight - preview.clientHeight);
+  if (!intensity || (intensity < 0 && preview.scrollTop <= 0) || (intensity > 0 && preview.scrollTop >= maxScrollTop - 1)) return 0;
+  return Math.sign(intensity) * Math.max(1, .75 * Math.min(32, elapsedMilliseconds) * intensity * intensity);
+}
+
+function renderPreviewDrag(frameTime = performance.now()) {
+  const drag = activePreviewDrag;
+  if (!drag) return;
+  drag.frame = null;
+  if (!drag.armed) return;
+  drag.ghost.style.transform = `translate3d(${drag.x - drag.startX}px,${drag.y - drag.startY}px,0)`;
+  const preview = $('#preview');
+  const previewRect = preview.getBoundingClientRect();
+  const outsidePreview = drag.x < previewRect.left || drag.x > previewRect.right || drag.y < previewRect.top || drag.y > previewRect.bottom;
+  document.documentElement.classList.toggle('preview-drag-outside', outsidePreview);
+  const elapsed = drag.lastFrameAt ? frameTime - drag.lastFrameAt : 16.67;
+  drag.lastFrameAt = frameTime;
+  const scrollDelta = outsidePreview ? 0 : previewAutoScrollDelta(preview, drag.y, elapsed);
+  const previousScrollTop = preview.scrollTop;
+  if (scrollDelta) preview.scrollTop += scrollDelta;
+  const didScroll = Math.abs(preview.scrollTop - previousScrollTop) > .1;
+  const nextTarget = previewDragTarget(drag.x, drag.y, drag.sourceStart, drag.scope);
+  const previous = drag.target;
+  if (previous?.element !== nextTarget?.element || previous?.placement !== nextTarget?.placement) {
+    if (previous) previous.element.removeAttribute('data-preview-drop');
+    if (nextTarget) nextTarget.element.dataset.previewDrop = nextTarget.placement;
+    drag.target = nextTarget;
+    if (nextTarget) {
+      const parent = nextTarget.element.parentNode;
+      const placeholder = createPreviewPlaceholder(drag, parent);
+      const insertionPoint = nextTarget.placement === 'before' ? nextTarget.element : nextTarget.element.nextSibling;
+      if (insertionPoint !== placeholder) {
+        const before = capturePreviewLayout(parent, drag.sourceElement);
+        parent.insertBefore(placeholder, insertionPoint);
+        animatePreviewReflow(before);
+      }
+    }
+  }
+  if (didScroll && drag.frame === null) drag.frame = requestAnimationFrame(renderPreviewDrag);
+}
+
+function cancelPreviewDrag({animateReturn = true} = {}) {
+  const drag = activePreviewDrag;
+  if (!drag) return;
+  if (drag.frame !== null) cancelAnimationFrame(drag.frame);
+  const returnLayout = drag.armed && animateReturn ? capturePreviewLayout(drag.placeholder?.parentNode, drag.sourceElement) : null;
+  if (drag.armed) {
+    drag.sourceElement?.classList.remove('preview-dragging');
+    drag.visualElement?.classList.remove('preview-dragging');
+    if (drag.sourceElement) drag.sourceElement.style.display = drag.sourceDisplay;
+  }
+  drag.target?.element?.removeAttribute('data-preview-drop');
+  drag.placeholder?.remove();
+  if (returnLayout) animatePreviewReflow(returnLayout);
+  drag.portal?.remove();
+  drag.ghost?.remove();
+  document.documentElement.classList.remove('preview-drag-active', 'preview-drag-outside');
+  activePreviewDrag = null;
+  if (drag.armed) setInteractiveSourceLocked(false);
+}
+
+$('#preview').addEventListener('pointerdown', event => {
+  if (!interactivePreviewActive || event.button !== 0 || event.isPrimary === false) return;
+  const item = event.target.closest('#preview > [data-interactive-start], #preview li[data-interactive-start]');
+  if (!item || event.target.closest('a,input,button,select,textarea')) return;
+  const sourceStart = Number(item.dataset.interactiveStart);
+  const entry = [...interactiveBlockItems, ...interactiveListItems].find(candidate => candidate.start === sourceStart && candidate.scope === item.dataset.interactiveScope);
+  if (!entry) return;
+  if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
+  activePreviewDrag = {
+    pointerID:event.pointerId,
+    sourceStart,
+    scope:item.dataset.interactiveScope,
+    sourceElement:entry.element,
+    visualElement:entry.visualElement || entry.element,
+    startedOnHandle:Boolean(event.target.closest('.preview-drag-handle')),
+    startedAt:performance.now(),
+    startX:event.clientX,
+    startY:event.clientY,
+    x:event.clientX,
+    y:event.clientY,
+    armed:false,
+    frame:null,
+    lastFrameAt:null,
+    target:null,
+  };
+});
+
+$('#preview').addEventListener('selectstart', () => {
+  if (activePreviewDrag && !activePreviewDrag.armed && !activePreviewDrag.startedOnHandle) activePreviewDrag = null;
+});
+
+document.addEventListener('pointermove', event => {
+  const drag = activePreviewDrag;
+  if (!drag || drag.pointerID !== event.pointerId) return;
+  drag.x = event.clientX;
+  drag.y = event.clientY;
+  if (!drag.armed && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 6) return;
+  if (!drag.armed && !drag.startedOnHandle && event.pointerType === 'touch' && performance.now() - drag.startedAt < 220) {
+    activePreviewDrag = null;
+    return;
+  }
+  if (!drag.armed) {
+    event.preventDefault();
+    drag.armed = true;
+    window.getSelection()?.removeAllRanges();
+    const preview = $('#preview');
+    preview.setPointerCapture?.(event.pointerId);
+    const sourceRect = drag.sourceElement.getBoundingClientRect();
+    const visualRect = drag.visualElement.getBoundingClientRect();
+    const ghost = drag.visualElement.cloneNode(true);
+    ghost.removeAttribute('data-interactive-start');
+    ghost.removeAttribute('data-interactive-scope');
+    ghost.classList.add('preview-drag-ghost');
+    ghost.style.width = `${visualRect.width}px`;
+    ghost.style.height = `${visualRect.height}px`;
+    ghost.style.left = `${visualRect.left}px`;
+    ghost.style.top = `${visualRect.top}px`;
+    drag.sourceDisplay = drag.sourceElement.style.display;
+    drag.placeholderWidth = sourceRect.width;
+    drag.placeholderHeight = sourceRect.height;
+    drag.placeholder = null;
+    const placeholder = createPreviewPlaceholder(drag, drag.sourceElement.parentNode);
+    drag.sourceElement.style.display = 'none';
+    drag.sourceElement.before(placeholder);
+    setInteractiveSourceLocked(true);
+    drag.ghost = ghost;
+    const portal = document.createElement('div');
+    portal.className = 'preview preview-drag-portal interactive-preview-active';
+    portal.setAttribute('aria-hidden', 'true');
+    portal.append(ghost);
+    drag.portal = portal;
+    document.body.append(portal);
+    drag.sourceElement.classList.add('preview-dragging');
+    drag.visualElement.classList.add('preview-dragging');
+    document.documentElement.classList.add('preview-drag-active');
+  }
+  if (drag.frame === null) drag.frame = requestAnimationFrame(renderPreviewDrag);
+});
+
+function finishPreviewDrag(event) {
+  const drag = activePreviewDrag;
+  if (!drag || drag.pointerID !== event.pointerId) return;
+  if (event.type === 'pointerup' && drag.armed && drag.target) {
+    const source = $('#note-content').value;
+    const entries = [...interactiveBlockItems, ...interactiveListItems];
+    const change = window.VylkInteractive?.moveMarkdownUnit(source, entries, drag.sourceStart, drag.scope, drag.target.start, drag.target.scope, drag.target.placement);
+    cancelPreviewDrag({animateReturn:false});
+    if ($('#preview').hasPointerCapture?.(event.pointerId)) $('#preview').releasePointerCapture(event.pointerId);
+    if (change) applyInteractiveSource(change.source, {start:change.start, removed:source.slice(change.start, change.end), inserted:change.inserted});
+    return;
+  }
+  cancelPreviewDrag();
+  if ($('#preview').hasPointerCapture?.(event.pointerId)) $('#preview').releasePointerCapture(event.pointerId);
+}
+
+document.addEventListener('pointerup', finishPreviewDrag);
+document.addEventListener('pointercancel', finishPreviewDrag);
+$('#preview').addEventListener('lostpointercapture', event => {
+  if (activePreviewDrag?.pointerID === event.pointerId) cancelPreviewDrag();
+});
+
+window.addEventListener('blur', () => cancelPreviewDrag());
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && activePreviewDrag) {
+    event.preventDefault();
+    cancelPreviewDrag();
+    return;
+  }
+  if (!interactivePreviewActive || !(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'z') return;
   event.preventDefault();
-  void followWikiLink(link.dataset.wikiTitle);
+  undoInteractivePreview();
 });
 
 function updatePreview() {
@@ -3902,6 +4522,7 @@ function openPreferences({route = 'push'} = {}) {
   $('#pref-save-location').value = prefs.saveButtonLocation;
   $('#pref-collapse').checked = prefs.collapseDetails;
   $('#pref-hidecursor').checked = prefs.hideCursorHighlight;
+  $('#pref-interactive-preview').checked = prefs.interactivePreview;
   $('#pref-status').value = prefs.statusDisplay;
   $('#pref-content-width').value = prefs.contentWidth;
   $('#pref-theme').value = prefs.theme;
@@ -3961,6 +4582,9 @@ $('#pref-collapse').addEventListener('change', function () {
 });
 $('#pref-hidecursor').addEventListener('change', function () {
   savePref('hideCursorHighlight', this.checked);
+});
+$('#pref-interactive-preview').addEventListener('change', function () {
+  savePref('interactivePreview', this.checked);
 });
 $('#pref-theme').addEventListener('change', function () { void savePref('theme', this.value); });
 $('#pref-accent').addEventListener('change', function () { void savePref('accentColor', this.value); });

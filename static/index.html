@@ -43,6 +43,8 @@ SOFTWARE.
   <symbol id="icon-save" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h8V3"/><path d="M8 21v-6h8v6"/></symbol>
   <symbol id="icon-settings" viewBox="0 0 256 256"><path fill="currentColor" stroke="none" d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm109.94-52.79a8,8,0,0,0-3.89-5.4l-29.83-17-.12-33.62a8,8,0,0,0-2.83-6.08,111.91,111.91,0,0,0-36.72-20.67,8,8,0,0,0-6.46.59L128,41.85,97.88,25a8,8,0,0,0-6.47-.6A112.1,112.1,0,0,0,54.73,45.15a8,8,0,0,0-2.83,6.07l-.15,33.65-29.83,17a8,8,0,0,0-3.89,5.4,106.47,106.47,0,0,0,0,41.56,8,8,0,0,0,3.89,5.4l29.83,17,.12,33.62a8,8,0,0,0,2.83,6.08,111.91,111.91,0,0,0,36.72,20.67,8,8,0,0,0,6.46-.59L128,214.15,158.12,231a7.91,7.91,0,0,0,3.9,1,8.09,8.09,0,0,0,2.57-.42,112.1,112.1,0,0,0,36.68-20.73,8,8,0,0,0,2.83-6.07l.15-33.65,29.83-17a8,8,0,0,0,3.89-5.4A106.47,106.47,0,0,0,237.94,107.21Zm-15,34.91-28.57,16.25a8,8,0,0,0-3,3c-.58,1-1.19,2.06-1.81,3.06a7.94,7.94,0,0,0-1.22,4.21l-.15,32.25a95.89,95.89,0,0,1-25.37,14.3L134,199.13a8,8,0,0,0-3.91-1h-.19c-1.21,0-2.43,0-3.64,0a8.08,8.08,0,0,0-4.1,1l-28.84,16.1A96,96,0,0,1,67.88,201l-.11-32.2a8,8,0,0,0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.09,8.09,0,0,0-3-3.06l-28.6-16.29a90.49,90.49,0,0,1,0-28.26L61.67,97.63a8,8,0,0,0,3-3c.58-1,1.19-2.06,1.81-3.06a7.94,7.94,0,0,0,1.22-4.21l.15-32.25a95.89,95.89,0,0,1,25.37-14.3L122,56.87a8,8,0,0,0,4.1,1c1.21,0,2.43,0,3.64,0a8.08,8.08,0,0,0,4.1-1l28.84-16.1A96,96,0,0,1,188.12,55l.11,32.2a8,8,0,0,0,1.22,4.22c.62,1,1.23,2,1.8,3.06a8.09,8.09,0,0,0,3,3.06l28.6,16.29A90.49,90.49,0,0,1,222.9,142.12Z"/></symbol>
   <symbol id="icon-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="icon-drag-indicator" viewBox="0 0 12 18"><circle cx="3" cy="3" r="1.35"/><circle cx="9" cy="3" r="1.35"/><circle cx="3" cy="9" r="1.35"/><circle cx="9" cy="9" r="1.35"/><circle cx="3" cy="15" r="1.35"/><circle cx="9" cy="15" r="1.35"/></symbol>
+  <symbol id="icon-edit" viewBox="0 0 24 24"><path d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></symbol>
   <symbol id="icon-x" viewBox="0 0 24 24"><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></symbol>
   <symbol id="icon-eye-bolt" viewBox="0 0 24 24"><path d="M10 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M13.1 17.936a9.28 9.28 0 0 1 -1.1 .064c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"/><path d="M19 16l-2 3h4l-2 3"/></symbol>
   <symbol id="icon-settings-2" viewBox="0 0 24 24"><path d="M19.875 6.27a2.225 2.225 0 0 1 1.125 1.948v7.284c0 .809 -.443 1.555 -1.158 1.948l-6.75 4.27a2.269 2.269 0 0 1 -2.184 0l-6.75 -4.27a2.225 2.225 0 0 1 -1.158 -1.948v-7.285c0 -.809 .443 -1.554 1.158 -1.947l6.75 -3.98a2.33 2.33 0 0 1 2.25 0l6.75 3.98h-.033"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/></symbol>
@@ -148,6 +150,7 @@ SOFTWARE.
           <label class="pref-control"><span><strong>Save button location</strong><small>Choose where the manual save control appears.</small></span><select id="pref-save-location"><option value="panel">Panel header</option><option value="header">App header</option></select></label>
           <label class="pref-row"><span>Collapse Details by default</span><input type="checkbox" id="pref-collapse"></label>
           <label class="pref-row"><span>Hide cursor position preview</span><input type="checkbox" id="pref-hidecursor"></label>
+          <label class="pref-row"><span><strong>Interactive preview</strong><small>Toggle tasks and move list items in preview. Markdown stays the source of truth.</small></span><input type="checkbox" id="pref-interactive-preview"></label>
           <label class="pref-control"><span><strong>Status</strong><small>Choose how sync status is shown.</small></span><select id="pref-status"><option value="normal">Normal</option><option value="compact">Compact</option><option value="off">Off</option></select></label>
         </section>
         <section id="prefs-panel-account" class="prefs-section" role="tabpanel" aria-labelledby="prefs-tab-account" data-pref-panel="account" hidden>
@@ -304,7 +307,10 @@ SOFTWARE.
             <button type="button" data-fmt="table" title="Insert table" aria-label="Insert table" aria-haspopup="dialog" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#icon-table"></use></svg></button>
           </div>
           <label class="sr-only" for="note-content">Markdown note content</label>
-          <textarea id="note-content" placeholder="Write markdown here..."></textarea>
+          <div class="editor-source-wrap">
+            <div class="editor-current-line" aria-hidden="true"></div>
+            <textarea id="note-content" placeholder="Write markdown here..."></textarea>
+          </div>
         </div>
         <div id="panel-resizer" class="panel-resizer" role="separator" aria-orientation="vertical" aria-label="Resize editor and preview" aria-valuemin="20" aria-valuemax="80" aria-valuenow="50" tabindex="0"></div>
         <div id="preview-panel" class="panel panel-preview">
@@ -327,6 +333,7 @@ SOFTWARE.
 </div>
     <script src="/marked.min.js"></script>
     <script src="/merge.js"></script>
+    <script src="/interactive-preview.js"></script>
     <script src="/app.js"></script>
 </body>
 </html>

@@ -23,6 +23,15 @@ function track(app) {
   return app;
 }
 
+function pointerEvent(window, type, {pointerId = 1, pointerType = 'mouse', ...init} = {}) {
+  const event = new window.MouseEvent(type, {bubbles:true, cancelable:true, ...init});
+  Object.defineProperties(event, {
+    pointerId: {value:pointerId},
+    pointerType: {value:pointerType},
+    isPrimary: {value:true},
+  });
+  return event;
+}
 const styleSource = fs.readFileSync(new URL('../static/style.css', import.meta.url), 'utf8');
 
 describe('font preferences', () => {
@@ -290,6 +299,190 @@ describe('editor display preferences', () => {
 });
 
 describe('markdown preview policy', () => {
+  test('interactive preview is opt-in, keeps source editing available, and toggles task Markdown', async () => {
+    const app = track(await createApp({realMarked: true}));
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Tasks', content: '- [ ] ship this\n- [x] review that'});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const textarea = app.window.document.querySelector('#note-content');
+    const checkbox = app.window.document.querySelector('#preview input[type="checkbox"]');
+    expect(app.window.document.querySelector('#preview-edit-toggle')).toBeNull();
+    expect(textarea.readOnly).toBe(false);
+    app.hooks.setInteractiveSourceLocked(true);
+    expect(textarea.readOnly).toBe(true);
+    app.hooks.setInteractiveSourceLocked(false);
+    expect(textarea.readOnly).toBe(false);
+    expect(checkbox.disabled).toBe(false);
+    expect(app.window.document.querySelectorAll('#preview [data-preview-drag-indicator]')).toHaveLength(2);
+    const preview = app.window.document.querySelector('#preview');
+    preview.scrollTop = 37;
+    checkbox.click();
+    expect(textarea.value).toContain('- [x] ship this');
+    expect(preview.scrollTop).toBe(37);
+    expect(app.window.document.querySelector('#toast-region').children).toHaveLength(0);
+
+    expect(app.hooks.undoInteractivePreview()).toBe(true);
+    expect(textarea.value).toContain('- [ ] ship this');
+    expect(preview.scrollTop).toBe(37);
+    expect(app.window.document.querySelector('#toast-region').children).toHaveLength(0);
+    await app.hooks.savePref('interactivePreview', false);
+    expect(textarea.readOnly).toBe(false);
+    expect(app.window.document.querySelector('#preview').classList.contains('interactive-preview-active')).toBe(false);
+    expect(app.window.document.querySelectorAll('#preview [data-preview-drag-indicator]')).toHaveLength(0);
+  });
+
+  test('keeps panel layout state clean when reopening preview after full width', async () => {
+    const app = track(await createApp({realMarked: true}));
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '# Heading\n\nA paragraph.'});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const wrap = app.window.document.querySelector('#editor-panels');
+    const editor = app.window.document.querySelector('.panel-editor');
+    const preview = app.window.document.querySelector('.panel-preview');
+    app.hooks.setPanelState('preview');
+    expect(wrap.classList.contains('panels-single')).toBe(true);
+    expect(editor.classList.contains('panel-hidden')).toBe(true);
+    expect(preview.classList.contains('panel-hidden')).toBe(false);
+
+    app.window.document.querySelector('.panel-preview .panel-width').click();
+    expect(wrap.classList.contains('panel-wide')).toBe(true);
+    app.hooks.setPanelState('both');
+    expect(wrap.classList.contains('panels-single')).toBe(false);
+    expect(wrap.classList.contains('panel-wide')).toBe(false);
+    expect(editor.classList.contains('panel-hidden')).toBe(false);
+    expect(preview.classList.contains('panel-hidden')).toBe(false);
+
+    app.hooks.setPanelState('preview');
+    expect(wrap.classList.contains('panels-single')).toBe(true);
+    expect(wrap.classList.contains('panel-wide')).toBe(false);
+    expect(preview.classList.contains('panel-hidden')).toBe(false);
+  });
+
+  test('renders interactive blocks as gutter, handle, and content cards', async () => {
+    const app = track(await createApp({realMarked: true}));
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '13. [ ] first\n14. second\n\n---\n\nParagraph'});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const preview = app.window.document.querySelector('#preview');
+    const listItem = preview.querySelector('li[data-interactive-start]');
+    const listCard = listItem.querySelector(':scope > .interactive-preview-card');
+    expect(listCard.children[0].classList.contains('preview-drag-handle')).toBe(true);
+    expect(listCard.children[1].classList.contains('preview-drag-content')).toBe(true);
+    expect(listCard.children[2].classList.contains('preview-edit-button')).toBe(true);
+    expect(listCard.children[2].getAttribute('aria-label')).toBe('Edit this block in source');
+    expect(listCard.children[2].querySelector('use').getAttribute('href')).toBe('#icon-edit');
+    expect(listCard.querySelector('.preview-list-marker').textContent).toBe('13.');
+    expect(listCard.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(listCard.children[0].compareDocumentPosition(listCard.querySelector('.preview-list-marker')) & app.window.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const blockCard = preview.querySelector(':scope > .interactive-preview-block-card');
+    expect(blockCard.querySelector(':scope > .preview-drag-handle')).not.toBeNull();
+    const ruleCard = preview.querySelector(':scope > .interactive-preview-rule-card');
+    expect(ruleCard.querySelector(':scope > .preview-block-content > hr')).not.toBeNull();
+    expect(preview.querySelector(':scope > .interactive-preview-block-card .preview-block-content > p')?.textContent).toBe('Paragraph');
+  });
+
+  test('moves the source caret to an interactive block and leaves preview-only mode', async () => {
+    const app = track(await createApp({realMarked: true}));
+    const source = '# Heading\n\n13. [ ] first task';
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: source});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const textarea = app.window.document.querySelector('#note-content');
+    app.window.document.querySelector('.interactive-preview-block-card .preview-edit-button').click();
+    expect(app.window.document.activeElement).toBe(textarea);
+    expect(textarea.selectionStart).toBe(source.indexOf('Heading'));
+    expect(textarea.selectionEnd).toBe(source.indexOf('Heading'));
+    expect(app.window.document.querySelector('.panel-editor').classList.contains('panel-hidden')).toBe(false);
+    expect(app.window.document.querySelector('.panel-preview').classList.contains('panel-hidden')).toBe(false);
+
+    app.hooks.setPanelState('preview');
+    app.window.document.querySelector('.interactive-preview-list-card .preview-edit-button').click();
+    expect(app.window.document.activeElement).toBe(textarea);
+    expect(textarea.selectionStart).toBe(source.indexOf('first task'));
+    expect(app.window.document.querySelector('.panel-editor').classList.contains('panel-hidden')).toBe(false);
+    expect(app.window.document.querySelector('.panel-preview').classList.contains('panel-hidden')).toBe(true);
+  });
+
+  test('preserves native text selection intent and keeps the drag ghost under the pointer', async () => {
+    const app = track(await createApp({realMarked: true}));
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '# Heading'});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const card = app.window.document.querySelector('.interactive-preview-block-card');
+    const content = card.querySelector('.preview-drag-content');
+    content.dispatchEvent(pointerEvent(app.window, 'pointerdown', {button:0, clientX:120, clientY:100}));
+    expect(app.hooks.getInteractivePreviewState().pending).toBe(true);
+    content.dispatchEvent(new app.window.Event('selectstart', {bubbles:true, cancelable:true}));
+    expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:false, dragging:false, sourceLocked:false});
+
+    const rect = {left:100, top:80, right:400, bottom:128, width:300, height:48, x:100, y:80, toJSON() { return this; }};
+    card.getBoundingClientRect = () => rect;
+    const preview = app.window.document.querySelector('#preview');
+    preview.getBoundingClientRect = () => ({left:80, top:60, right:420, bottom:300, width:340, height:240, x:80, y:60, toJSON() { return this; }});
+    app.window.document.elementFromPoint = () => card;
+    const handle = card.querySelector('.preview-drag-handle');
+    handle.dispatchEvent(pointerEvent(app.window, 'pointerdown', {pointerId:2, button:0, clientX:120, clientY:100}));
+    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointermove', {pointerId:2, buttons:1, clientX:170, clientY:130}));
+    await vi.waitFor(() => expect(app.hooks.getInteractivePreviewState().ghostTransform).toBe('translate3d(50px,30px,0)'));
+    expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:true, dragging:true, sourceLocked:true, outside:false});
+
+    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointermove', {pointerId:2, buttons:1, clientX:460, clientY:130}));
+    await vi.waitFor(() => expect(app.hooks.getInteractivePreviewState().outside).toBe(true));
+
+    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointerup', {pointerId:2, button:0, clientX:460, clientY:130}));
+    expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:false, dragging:false, sourceLocked:false, outside:false});
+  });
+
+  test('auto-scrolls only near reachable preview edges', async () => {
+    const app = track(await createApp());
+    const preview = {
+      scrollTop: 200,
+      scrollHeight: 1000,
+      clientHeight: 300,
+      getBoundingClientRect: () => ({top:100, bottom:400, height:300}),
+    };
+
+    expect(app.hooks.previewAutoScrollDelta(preview, 250)).toBe(0);
+    expect(app.hooks.previewAutoScrollDelta(preview, 396)).toBeGreaterThan(0);
+    expect(app.hooks.previewAutoScrollDelta(preview, 104)).toBeLessThan(0);
+    preview.scrollTop = 0;
+    expect(app.hooks.previewAutoScrollDelta(preview, 104)).toBe(0);
+    preview.scrollTop = 700;
+    expect(app.hooks.previewAutoScrollDelta(preview, 396)).toBe(0);
+  });
+
+  test('reorders only sibling list items and renumbers ordered Markdown', async () => {
+    const app = track(await createApp());
+    const source = '6. first\n7. second\n8. third';
+    const entries = app.window.VylkInteractive.listItemRanges(source, 0, 'list:0');
+    const moved = app.window.VylkInteractive.reorderListItems(source, entries, entries[2].start, entries[0].start, 'before');
+    expect(moved.source).toBe('6. third\n7. first\n8. second');
+
+    const nested = app.window.VylkInteractive.listItemRanges('- one\n  - nested\n- two', 0, 'list:0');
+    expect(app.window.VylkInteractive.reorderListItems('- one\n  - nested\n- two', nested, nested[1].start, nested[2].start, 'before')).toBeNull();
+  });
+
+  test('moves valid Markdown units across block and list boundaries', async () => {
+    const app = track(await createApp());
+    const source = '# Heading\n\nParagraph\n\n- one\n- two';
+    const heading = {start:0, end:'# Heading'.length, indent:0, kind:'block', scope:'blocks'};
+    const paragraphStart = source.indexOf('Paragraph');
+    const paragraph = {start:paragraphStart, end:paragraphStart + 'Paragraph'.length, indent:0, kind:'block', scope:'blocks'};
+    const listStart = source.indexOf('- one');
+    const listEntries = app.window.VylkInteractive.listItemRanges(source.slice(listStart), listStart, `list:${listStart}`);
+    const entries = [heading, paragraph, ...listEntries];
+
+    const headingIntoList = app.window.VylkInteractive.moveMarkdownUnit(source, entries, heading.start, heading.scope, listEntries[0].start, listEntries[0].scope, 'after');
+    expect(headingIntoList).not.toBeNull();
+    expect(headingIntoList.source.indexOf('- one')).toBeLessThan(headingIntoList.source.indexOf('# Heading'));
+    expect(headingIntoList.source.indexOf('# Heading')).toBeLessThan(headingIntoList.source.indexOf('- two'));
+
+    const listBeforeParagraph = app.window.VylkInteractive.moveMarkdownUnit(source, entries, listEntries[1].start, listEntries[1].scope, paragraph.start, paragraph.scope, 'before');
+    expect(listBeforeParagraph).not.toBeNull();
+    expect(listBeforeParagraph.source.indexOf('- two')).toBeLessThan(listBeforeParagraph.source.indexOf('Paragraph'));
+  });
+
   test('preserves the starting number of ordered lists', async () => {
     const app = track(await createApp({realMarked: true}));
     app.hooks.showNoteInEditor({
@@ -319,6 +512,7 @@ describe('markdown preview policy', () => {
 
   test('leaves three editor lines of bottom breathing room', async () => {
     expect(styleSource).toContain('#note-content{padding-bottom:4.95em;scroll-padding-bottom:4.95em}');
+    expect(styleSource).toContain('.editor-current-line');
   });
 
   test('softly aligns the preview anchor with the editor caret', async () => {
@@ -362,7 +556,7 @@ describe('markdown preview policy', () => {
     expect(blocks[1].classList.contains('highlight')).toBe(false);
   });
 
-  test('maps a caret inside a loose list to the list block', async () => {
+  test('maps a caret inside a loose list to the exact list item', async () => {
     const app = track(await createApp({realMarked: true}));
     const content = '- first\n\n- second\n\nparagraph';
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content});
@@ -373,9 +567,30 @@ describe('markdown preview policy', () => {
     app.hooks.highlightBlock();
 
     const blocks = [...app.window.document.querySelector('#preview').children];
+    const items = [...blocks[0].querySelectorAll(':scope > li')];
     expect(blocks[0].tagName).toBe('UL');
-    expect(blocks[0].classList.contains('highlight')).toBe(true);
+    expect(blocks[0].classList.contains('highlight')).toBe(false);
+    expect(items[0].classList.contains('highlight')).toBe(false);
+    expect(items[1].classList.contains('highlight')).toBe(true);
     expect(blocks[1].classList.contains('highlight')).toBe(false);
+  });
+
+  test('highlights the deepest interactive list item containing the caret', async () => {
+    const app = track(await createApp({realMarked: true}));
+    const content = '- parent\n  - nested child\n- sibling';
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const textarea = app.window.document.querySelector('#note-content');
+    textarea.selectionStart = textarea.selectionEnd = content.indexOf('nested child');
+    app.hooks.highlightBlock();
+
+    const items = [...app.window.document.querySelectorAll('#preview li[data-interactive-start]')];
+    const parentCard = items[0].querySelector(':scope > .interactive-preview-card');
+    const nestedCard = items[1].querySelector(':scope > .interactive-preview-card');
+    expect(parentCard.classList.contains('highlight')).toBe(false);
+    expect(nestedCard.classList.contains('highlight')).toBe(true);
+    expect(app.window.document.querySelector('#preview > ul').classList.contains('highlight')).toBe(false);
   });
 
   test('maps caret positions at block ends and in separator whitespace', async () => {

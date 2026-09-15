@@ -25,7 +25,7 @@ type sseTestRecorder struct {
 func TestStaticCachePreventsProxyTransforms(t *testing.T) {
 	handler := staticCacheMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 
-	for _, path := range []string{"/", "/style.css"} {
+	for _, path := range []string{"/", "/style.css", "/interactive-preview.js"} {
 		result := httptest.NewRecorder()
 		handler.ServeHTTP(result, httptest.NewRequest(http.MethodGet, path, nil))
 		if cacheControl := result.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "no-transform") {
@@ -1639,7 +1639,7 @@ func TestPreferenceSyncMergesDisjointChangesAndConflictsSameField(t *testing.T) 
 	}
 	raw := func(value string) json.RawMessage { return json.RawMessage(strconv.Quote(value)) }
 
-	first := push("device_a", 1, "pref_a", map[string]json.RawMessage{"theme": raw("default-dark"), "statusDisplay": raw("compact"), "hideSaveButton": json.RawMessage("true"), "fontFamilyGoogle": json.RawMessage("true")}, map[string]json.RawMessage{"theme": raw("default-light"), "statusDisplay": raw("normal"), "hideSaveButton": json.RawMessage("false"), "fontFamilyGoogle": json.RawMessage("false")}, 1)
+	first := push("device_a", 1, "pref_a", map[string]json.RawMessage{"theme": raw("default-dark"), "statusDisplay": raw("compact"), "hideSaveButton": json.RawMessage("true"), "fontFamilyGoogle": json.RawMessage("true"), "interactivePreview": json.RawMessage("true")}, map[string]json.RawMessage{"theme": raw("default-light"), "statusDisplay": raw("normal"), "hideSaveButton": json.RawMessage("false"), "fontFamilyGoogle": json.RawMessage("false"), "interactivePreview": json.RawMessage("false")}, 1)
 	if first.Acknowledged[0].Status != "applied" || first.Acknowledged[0].Revision != 2 {
 		t.Fatalf("first preference result = %#v", first.Acknowledged)
 	}
@@ -1651,7 +1651,7 @@ func TestPreferenceSyncMergesDisjointChangesAndConflictsSameField(t *testing.T) 
 	if err != nil {
 		t.Fatalf("load merged preferences: %v", err)
 	}
-	if p.Theme != "default-dark" || p.AccentColor != "#123456" || p.StatusDisplay != "compact" || p.ContentWidth != "wide" || p.FontSize != "0.9rem" || p.EditorFontSize != "1.25rem" || p.PreviewFontSize != "1.5rem" || !p.HideSaveButton || !p.FontFamilyGoogle || !p.EditorFontFamilyGoogle || p.Revision != 3 {
+	if p.Theme != "default-dark" || p.AccentColor != "#123456" || p.StatusDisplay != "compact" || p.ContentWidth != "wide" || p.FontSize != "0.9rem" || p.EditorFontSize != "1.25rem" || p.PreviewFontSize != "1.5rem" || !p.HideSaveButton || !p.FontFamilyGoogle || !p.EditorFontFamilyGoogle || !p.InteractivePreview || p.Revision != 3 {
 		t.Fatalf("merged preferences = %#v", p)
 	}
 	conflict := push("device_c", 1, "pref_c", map[string]json.RawMessage{"theme": raw("default-light")}, map[string]json.RawMessage{"theme": raw("default-light")}, 1)

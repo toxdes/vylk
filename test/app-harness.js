@@ -9,6 +9,7 @@ const appSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'app.
 const themesSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'themes.js'), 'utf8');
 const markedSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'marked.min.js'), 'utf8');
 const mergeSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'merge.js'), 'utf8');
+const interactivePreviewSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'interactive-preview.js'), 'utf8');
 
 const testHookSource = `
 globalThis.__vylkTestHooks = {
@@ -68,6 +69,17 @@ globalThis.__vylkTestHooks = {
   markDirty,
   showNoteInEditor,
   updatePreview,
+  setPanelState,
+  undoInteractivePreview,
+  setInteractiveSourceLocked,
+  getInteractivePreviewState: () => ({
+    pending: Boolean(activePreviewDrag),
+    dragging: Boolean(activePreviewDrag?.armed),
+    sourceLocked: interactiveSourceLocked,
+    ghostTransform: activePreviewDrag?.ghost?.style.transform || '',
+    outside: document.documentElement.classList.contains('preview-drag-outside'),
+  }),
+  previewAutoScrollDelta,
   highlightBlock,
   calculatePreviewScrollAdjustment,
   closeDatabase: async () => {
@@ -122,6 +134,7 @@ export async function createApp({deferredSave = false, deferredSyncCompletion = 
   window.fetch = fetchImpl;
   if (serviceWorker) Object.defineProperty(window.navigator, 'serviceWorker', {value: serviceWorker, configurable: true});
   window.eval(themesSource);
+  window.eval(interactivePreviewSource);
   if (realMerge) window.eval(mergeSource);
   if (realMarked) {
     window.eval(markedSource);

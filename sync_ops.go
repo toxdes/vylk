@@ -217,6 +217,7 @@ var preferenceFieldNames = map[string]struct{}{
 	"hideSaveButton":          {},
 	"collapseDetails":         {},
 	"hideCursorHighlight":     {},
+	"interactivePreview":      {},
 	"statusDisplay":           {},
 	"contentWidth":            {},
 	"theme":                   {},
