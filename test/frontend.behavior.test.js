@@ -802,6 +802,67 @@ describe('sync coordinator', () => {
 });
 
 describe('F-01 editor save coordination', () => {
+  test('returns to the dashboard without waiting for an in-flight network sync', async () => {
+    let resolvePushStarted;
+    let releasePush;
+    const pushStarted = new Promise(resolve => { resolvePushStarted = resolve; });
+    const pushGate = new Promise(resolve => { releasePush = resolve; });
+    const app = track(await createApp({
+      fetchImpl: async (path, options = {}) => {
+        const url = String(path);
+        if (url.startsWith('/api/sync?')) {
+          return response(200, {changes: [], nextSequence: 0, hasMore: false});
+        }
+        if (url === '/api/sync/push') {
+          resolvePushStarted();
+          await pushGate;
+          const payload = JSON.parse(options.body);
+          return response(200, {
+            acknowledged: payload.operations.map(operation => ({
+              op_id: operation.op_id,
+              status: 'applied',
+              revision: 1,
+            })),
+          });
+        }
+        throw new Error(`unexpected request: ${url}`);
+      },
+    }));
+    app.hooks.showNoteInEditor({id: 'note-a', revision: 0, title: 'Note', tags: '', content: 'saved version'});
+    app.window.history.replaceState({app: 'vylk', screen: 'dashboard'}, '', '/');
+    app.window.history.pushState({app: 'vylk', screen: 'note', noteID: 'note-a'}, '', '/note-a');
+    app.hooks.setEditorState({
+      id: 'note-a',
+      dirty: true,
+      title: 'Note',
+      content: 'new version',
+      savedSnapshot: {title: 'Note', tags: '', content: 'saved version'},
+    });
+
+    const save = app.hooks.saveCurrentNote();
+    await pushStarted;
+    app.window.document.querySelector('#back-btn').click();
+
+    let navigationError;
+    try {
+      await vi.waitFor(() => {
+        expect(app.window.document.querySelector('#dashboard').classList.contains('hidden')).toBe(false);
+        expect(app.window.location.pathname).toBe('/');
+      }, {timeout: 250});
+    } catch (error) {
+      navigationError = error;
+    } finally {
+      releasePush();
+      await save;
+    }
+
+    await vi.waitFor(() => {
+      expect(app.window.document.querySelector('#dashboard').classList.contains('hidden')).toBe(false);
+      expect(app.window.location.pathname).toBe('/');
+    });
+    expect(navigationError).toBeUndefined();
+  });
+
   test('drains an edit made while the previous local save is in flight', async () => {
     const app = track(await createApp({deferredSave: true}));
     app.hooks.setEditorState({
