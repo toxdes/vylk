@@ -48,8 +48,6 @@ SOFTWARE.
   <symbol id="icon-settings-2" viewBox="0 0 24 24"><path d="M19.875 6.27a2.225 2.225 0 0 1 1.125 1.948v7.284c0 .809 -.443 1.555 -1.158 1.948l-6.75 4.27a2.269 2.269 0 0 1 -2.184 0l-6.75 -4.27a2.225 2.225 0 0 1 -1.158 -1.948v-7.285c0 -.809 .443 -1.554 1.158 -1.947l6.75 -3.98a2.33 2.33 0 0 1 2.25 0l6.75 3.98h-.033"/><path d="M9 12a3 3 0 1 0 6 0a3 3 0 1 0 -6 0"/></symbol>
   <symbol id="icon-maximize" viewBox="0 0 24 24"><path d="M4 8v-2a2 2 0 0 1 2 -2h2"/><path d="M4 16v2a2 2 0 0 0 2 2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v2"/><path d="M16 20h2a2 2 0 0 0 2 -2v-2"/></symbol>
   <symbol id="icon-minimize" viewBox="0 0 24 24"><path d="M15 19v-2a2 2 0 0 1 2 -2h2"/><path d="M15 5v2a2 2 0 0 0 2 2h2"/><path d="M5 15h2a2 2 0 0 1 2 2v2"/><path d="M5 9h2a2 2 0 0 0 2 -2v-2"/></symbol>
-  <symbol id="icon-width-full" viewBox="0 0 24 24"><path d="M7 8l-4 4l4 4"/><path d="M17 8l4 4l-4 4"/><path d="M3 12l18 0"/></symbol>
-  <symbol id="icon-width-reading" viewBox="0 0 24 24"><path d="M3 12h7"/><path d="M7 8l4 4l-4 4"/><path d="M21 12h-7"/><path d="M17 8l-4 4l4 4"/></symbol>
   <symbol id="icon-minus" viewBox="0 0 24 24"><path d="M5 12l14 0"/></symbol>
   <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="icon-bold" viewBox="0 0 24 24"><path d="M7 5h6a3.5 3.5 0 0 1 0 7h-6l0 -7"/><path d="M13 12h1a3.5 3.5 0 0 1 0 7h-7v-7"/></symbol>
@@ -132,7 +130,8 @@ SOFTWARE.
           <button id="prefs-close" class="modal-close" type="button" aria-label="Close preferences"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg></button>
         </div>
         <section id="prefs-panel-appearance" class="prefs-section active" role="tabpanel" aria-labelledby="prefs-tab-appearance" data-pref-panel="appearance">
-          <p id="prefs-description" class="prefs-section-intro">Personalize the colors and typeface used across the app.</p>
+          <p id="prefs-description" class="prefs-section-intro">Personalize the colors, typeface, and content width used across the app.</p>
+          <label class="pref-control"><span><strong>Content width</strong><small>Choose the shared content rail used by the dashboard and editor.</small></span><select id="pref-content-width"><option value="compact">Compact</option><option value="standard">Standard</option><option value="wide">Wide</option><option value="full">Full</option></select></label>
           <label class="pref-control"><span><strong>Theme</strong><small>Choose a preset color scheme.</small></span><select id="pref-theme"></select></label>
           <label class="pref-control"><span><strong>Accent color</strong><small>Used for buttons, links, and focus states.</small></span><input type="color" id="pref-accent" value="#ae2448" aria-label="Accent color"></label>
           <div class="pref-control font-control"><label class="font-label" for="pref-font"><strong>Interface font</strong><small>Used throughout the app.</small></label><div class="font-input-wrap"><input type="text" id="pref-font" placeholder="e.g. Inter or system-sans" autocomplete="off" spellcheck="false" aria-describedby="pref-font-error"><label class="font-fetch-toggle"><input type="checkbox" id="pref-font-google"><span>Use Google Fonts to fetch</span></label><small id="pref-font-error" class="font-error" role="alert" hidden></small></div></div>
@@ -274,9 +273,6 @@ SOFTWARE.
               <button type="button" class="panel-layout" data-panel="editor" title="Focus editor" aria-label="Focus editor">
                 <svg class="icon" aria-hidden="true"><use href="#icon-maximize"></use></svg>
               </button>
-              <button type="button" class="panel-width" title="Use full width" aria-label="Use full width">
-                <svg class="icon" aria-hidden="true"><use href="#icon-width-full"></use></svg>
-              </button>
               <span id="panel-save-slot" class="save-slot"><button id="save-btn" class="prefs-btn icon-btn save-note-btn" type="button" title="Save note" aria-label="Save note"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg></button></span>
               <button type="button" class="panel-switch" data-panel-switch="preview" title="Show preview" aria-label="Show preview" aria-controls="preview-panel" aria-expanded="false">
                 <svg class="icon" aria-hidden="true"><use href="#icon-eye-bolt"></use></svg>
@@ -317,9 +313,6 @@ SOFTWARE.
             <div class="panel-header-actions">
               <button type="button" class="panel-layout" data-panel="preview" title="Focus preview" aria-label="Focus preview">
                 <svg class="icon" aria-hidden="true"><use href="#icon-maximize"></use></svg>
-              </button>
-              <button type="button" class="panel-width" title="Use full width" aria-label="Use full width">
-                <svg class="icon" aria-hidden="true"><use href="#icon-width-full"></use></svg>
               </button>
               <button type="button" class="panel-switch" data-panel-switch="editor" title="Show editor" aria-label="Show editor" aria-controls="editor-panel" aria-expanded="false">
                 <svg class="icon" aria-hidden="true"><use href="#icon-code"></use></svg>

@@ -73,6 +73,7 @@ type prefs struct {
 	CollapseDetails         bool                       `json:"collapseDetails"`
 	HideCursorHighlight     bool                       `json:"hideCursorHighlight"`
 	StatusDisplay           string                     `json:"statusDisplay,omitempty"`
+	ContentWidth            string                     `json:"contentWidth,omitempty"`
 	Theme                   string                     `json:"theme,omitempty"`
 	AccentColor             string                     `json:"accentColor,omitempty"`
 	FontFamily              string                     `json:"fontFamily,omitempty"`
@@ -494,7 +495,7 @@ func getPrefsTx(tx *sql.Tx) (*prefs, error) {
 	if err := tx.QueryRow("SELECT data, revision FROM prefs WHERE id = 1").Scan(&data, &revision); err != nil {
 		return nil, err
 	}
-	p := &prefs{AutoSave: true, Revision: revision}
+	p := &prefs{AutoSave: true, ContentWidth: "standard", Revision: revision}
 	if err := json.Unmarshal([]byte(data), p); err != nil {
 		return nil, fmt.Errorf("decode preferences: %w", err)
 	}

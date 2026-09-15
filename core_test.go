@@ -1570,7 +1570,7 @@ func TestPreferenceSyncMergesDisjointChangesAndConflictsSameField(t *testing.T) 
 	if first.Acknowledged[0].Status != "applied" || first.Acknowledged[0].Revision != 2 {
 		t.Fatalf("first preference result = %#v", first.Acknowledged)
 	}
-	second := push("device_b", 1, "pref_b", map[string]json.RawMessage{"accentColor": raw("#123456"), "editorFontFamilyGoogle": json.RawMessage("true")}, map[string]json.RawMessage{"accentColor": raw(""), "editorFontFamilyGoogle": json.RawMessage("false")}, 1)
+	second := push("device_b", 1, "pref_b", map[string]json.RawMessage{"accentColor": raw("#123456"), "editorFontFamilyGoogle": json.RawMessage("true"), "contentWidth": raw("wide")}, map[string]json.RawMessage{"accentColor": raw(""), "editorFontFamilyGoogle": json.RawMessage("false"), "contentWidth": raw("standard")}, 1)
 	if second.Acknowledged[0].Status != "applied" || second.Acknowledged[0].Revision != 3 {
 		t.Fatalf("disjoint preference result = %#v", second.Acknowledged)
 	}
@@ -1578,7 +1578,7 @@ func TestPreferenceSyncMergesDisjointChangesAndConflictsSameField(t *testing.T) 
 	if err != nil {
 		t.Fatalf("load merged preferences: %v", err)
 	}
-	if p.Theme != "default-dark" || p.AccentColor != "#123456" || p.StatusDisplay != "compact" || !p.HideSaveButton || !p.FontFamilyGoogle || !p.EditorFontFamilyGoogle || p.Revision != 3 {
+	if p.Theme != "default-dark" || p.AccentColor != "#123456" || p.StatusDisplay != "compact" || p.ContentWidth != "wide" || !p.HideSaveButton || !p.FontFamilyGoogle || !p.EditorFontFamilyGoogle || p.Revision != 3 {
 		t.Fatalf("merged preferences = %#v", p)
 	}
 	conflict := push("device_c", 1, "pref_c", map[string]json.RawMessage{"theme": raw("default-light")}, map[string]json.RawMessage{"theme": raw("default-light")}, 1)

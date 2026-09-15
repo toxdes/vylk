@@ -19,7 +19,8 @@ let isDirty = false;
 let panelState = 'both';
 let savedSnapshot = { title: '', tags: '', content: '' };
 let editorSessionGeneration = 0;
-const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel', collapseDetails:false, hideCursorHighlight:false, statusDisplay:'normal', theme:'default-light', accentColor:'', fontFamily:'system-sans', fontFamilyGoogle:false, editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, previewFontFamily:'system-sans', previewFontFamilyGoogle:false};
+const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel', collapseDetails:false, hideCursorHighlight:false, statusDisplay:'normal', contentWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans', fontFamilyGoogle:false, editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, previewFontFamily:'system-sans', previewFontFamilyGoogle:false};
+const CONTENT_WIDTH_VALUES = ['compact', 'standard', 'wide', 'full'];
 const FONT_CACHE_NAME = 'vylk-fonts';
 const SYSTEM_FONT_STACK = 'ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
 const SYSTEM_SERIF_STACK = 'ui-serif,Georgia,Cambria,"Times New Roman",Times,serif';
@@ -52,7 +53,6 @@ const syncLeaseDurationMs = 60000;
 let syncCoordinationChannel = null;
 let syncLeaseRenewTimer = null;
 let panelRatio = Math.min(.8, Math.max(.2, Number(localStorage.getItem('vylk-panel-ratio')) || .5));
-let panelWide = false;
 let appVersionAtLoad = localStorage.getItem('vylk-version') || null;
 let appRevisionAtLoad = localStorage.getItem('vylk-revision') || null;
 let registeredServiceWorkerRevision = null;
@@ -2601,6 +2601,10 @@ function applyEditorPrefs() {
   }
 }
 
+function applyContentWidth() {
+  document.documentElement.dataset.contentWidth = prefs.contentWidth;
+}
+
 function placeSaveButton() {
   const saveButton = $('#save-btn');
   const headerSlot = $('#header-save-slot');
@@ -3197,9 +3201,8 @@ $('.meta-toggle')?.addEventListener('click', () => {
 });
 
 // --- Panel toggle ---
-function setPanelState(state, {preservePanelWide = false} = {}) {
+function setPanelState(state) {
   panelState = state;
-  if (state === 'both' && !preservePanelWide) panelWide = false;
   const wrap = $('#editor-panels');
   const ed = $('.panel-editor');
   const pv = $('.panel-preview');
@@ -3213,7 +3216,6 @@ function setPanelState(state, {preservePanelWide = false} = {}) {
     ed.classList.add('panel-hidden');
     wrap.classList.add('panels-single');
   }
-  wrap.classList.toggle('panel-wide', panelWide);
   $('#editor').classList.toggle('header-hidden', prefs.hideHeaderOnFullscreen && state !== 'both');
   placeSaveButton();
   document.querySelectorAll('.panel-layout').forEach(button => {
@@ -3222,13 +3224,6 @@ function setPanelState(state, {preservePanelWide = false} = {}) {
     button.setAttribute('aria-label', button.title);
     button.setAttribute('aria-pressed', String(focused));
     button.querySelector('use').setAttribute('href', focused ? '#icon-minimize' : '#icon-maximize');
-  });
-  document.querySelectorAll('.panel-width').forEach(button => {
-    const label = panelWide ? 'Use content width' : 'Use full width';
-    button.title = label;
-    button.setAttribute('aria-label', label);
-    button.setAttribute('aria-pressed', String(panelWide));
-    button.querySelector('use').setAttribute('href', panelWide ? '#icon-width-reading' : '#icon-width-full');
   });
   document.querySelectorAll('.panel-switch').forEach(button => {
     const targetVisible = state === 'both' || state === button.dataset.panelSwitch;
@@ -3242,12 +3237,6 @@ $('#editor-panels').addEventListener('click', e => {
   const switchButton = e.target.closest('.panel-switch');
   if (switchButton) {
     setPanelState(switchButton.dataset.panelSwitch);
-    return;
-  }
-  const widthButton = e.target.closest('.panel-width');
-  if (widthButton) {
-    panelWide = !panelWide;
-    setPanelState(panelState, {preservePanelWide: true});
     return;
   }
   const btn = e.target.closest('.panel-layout');
@@ -3707,6 +3696,7 @@ function normalizePrefs(value = {}, fallback = {}) {
   const merged = {...DEFAULT_PREFS, ...fallback, ...value};
   merged.revision = Number.isSafeInteger(Number(merged.revision)) && Number(merged.revision) > 0 ? Number(merged.revision) : 1;
   if (!['normal', 'compact', 'off'].includes(merged.statusDisplay)) merged.statusDisplay = DEFAULT_PREFS.statusDisplay;
+  if (!CONTENT_WIDTH_VALUES.includes(merged.contentWidth)) merged.contentWidth = DEFAULT_PREFS.contentWidth;
   if (!['panel', 'header'].includes(merged.saveButtonLocation)) merged.saveButtonLocation = DEFAULT_PREFS.saveButtonLocation;
   if (!value.theme && !fallback.theme) merged.theme = legacyThemeID();
   if (!themeByID.has(merged.theme)) merged.theme = legacyThemeID();
@@ -3844,6 +3834,7 @@ function applyPrefs() {
   applyTheme(prefs.theme);
   void applyFonts();
   renderFontOptions();
+  applyContentWidth();
   applyEditorPrefs();
 }
 
@@ -3871,6 +3862,7 @@ function openPreferences({route = 'push'} = {}) {
   $('#pref-collapse').checked = prefs.collapseDetails;
   $('#pref-hidecursor').checked = prefs.hideCursorHighlight;
   $('#pref-status').value = prefs.statusDisplay;
+  $('#pref-content-width').value = prefs.contentWidth;
   $('#pref-theme').value = prefs.theme;
   $('#pref-accent').value = prefs.accentColor || themeByID.get(prefs.theme)?.vars.accent || '#ae2448';
   renderFontOptions();
@@ -3901,6 +3893,7 @@ async function savePref(key, value) {
   });
   if (key === 'theme' || key === 'accentColor') applyTheme(prefs.theme);
   if (['fontFamily', 'fontFamilyGoogle', 'editorFontFamily', 'editorFontFamilyGoogle', 'previewFontFamily', 'previewFontFamilyGoogle'].includes(key)) void applyFonts(true);
+  applyContentWidth();
   applyEditorPrefs();
   scheduleSync();
 }
@@ -3948,6 +3941,7 @@ FONT_SLOTS.forEach(slot => {
   });
 });
 $('#pref-status').addEventListener('change', function () { void savePref('statusDisplay', this.value); });
+$('#pref-content-width').addEventListener('change', function () { void savePref('contentWidth', this.value); });
 
 $$('.prefs-nav').forEach(button => button.addEventListener('click', () => {
   const section = button.dataset.prefSection;

@@ -189,6 +189,8 @@ describe('editor display preferences', () => {
     expect(app.window.document.querySelector('#pref-status')).not.toBeNull();
     expect(app.window.document.querySelector('#pref-hidesave')).not.toBeNull();
     expect(app.window.document.querySelector('#pref-save-location')).not.toBeNull();
+    expect(app.window.document.querySelector('#pref-content-width')).not.toBeNull();
+    expect(app.window.document.querySelectorAll('.panel-width')).toHaveLength(0);
     expect(app.window.document.querySelector('#panel-save-slot #save-btn')).not.toBeNull();
 
     await app.hooks.savePref('saveButtonLocation', 'header');
@@ -205,6 +207,23 @@ describe('editor display preferences', () => {
 
     await app.hooks.savePref('statusDisplay', 'off');
     expect(root.dataset.statusDisplay).toBe('off');
+  });
+
+  test('applies the global content width preference to the shared layout', async () => {
+    const app = track(await createApp());
+    const root = app.window.document.documentElement;
+
+    expect(root.dataset.contentWidth).toBe('standard');
+    await app.hooks.savePref('contentWidth', 'wide');
+    expect(root.dataset.contentWidth).toBe('wide');
+    expect(styleSource).toContain(':root[data-content-width="wide"]');
+    expect(styleSource).toContain('.dashboard-body{max-width:var(--content-max-width)}');
+    expect(styleSource).toContain('.editor-body{max-width:var(--content-max-width);margin-inline:auto}');
+
+    app.hooks.cancelScheduledSync();
+    const pending = await app.hooks.pendingOperations();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].prefs._sync_patch).toEqual({contentWidth: 'wide'});
   });
 });
 
@@ -1479,6 +1498,33 @@ describe('preference sync coordination', () => {
     const fetchFonts = app.window.document.querySelector('#pref-font-google');
     await app.hooks.loadPrefs();
     expect(fetchFonts.checked).toBe(true);
+  });
+
+  test('restores and normalizes the global content width preference', async () => {
+    const app = track(await createApp({
+      fetchImpl: async path => {
+        if (String(path) === '/api/prefs') return response(200, JSON.stringify({
+          revision: 2,
+          autoSave: true,
+          contentWidth: 'full',
+        }));
+        throw new Error(`unexpected request: ${path}`);
+      },
+    }));
+
+    await app.hooks.loadPrefs();
+    expect(app.window.document.documentElement.dataset.contentWidth).toBe('full');
+
+    app.window.fetch = async path => {
+      if (String(path) === '/api/prefs') return response(200, JSON.stringify({
+        revision: 3,
+        autoSave: true,
+        contentWidth: 'not-a-width',
+      }));
+      throw new Error(`unexpected request: ${path}`);
+    };
+    await app.hooks.loadPrefs();
+    expect(app.window.document.documentElement.dataset.contentWidth).toBe('standard');
   });
 
   test('coalesces preference changes into field-level patches', async () => {

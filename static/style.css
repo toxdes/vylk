@@ -61,9 +61,9 @@ header{display:flex;align-items:center;justify-content:space-between;gap:.75rem;
 @media(max-width:640px){.conflict-modal-body{padding:1.25rem}.conflict-fields,.conflict-metadata-compare,.conflict-compare{grid-template-columns:1fr}.conflict-version pre{max-height:10rem}.conflict-actions{flex-wrap:wrap}.conflict-actions-spacer{display:none;flex-basis:100%;height:0}.conflict-actions #conflict-later{margin-left:auto}}
 
 /* Focus and narrow screens */
-.panel-resizer::before{display:none}.panel-width{display:none;width:1.75rem;height:1.75rem;padding:0;border-radius:5px;background:transparent;color:var(--muted);place-items:center}.panel-width:hover{background:var(--border);color:var(--fg)}.panel-width .icon{width:1rem;height:1rem;stroke-width:2}.panels-single .panel:not(.panel-hidden) .panel-width{display:grid}.editor-body:has(.panels-single) .meta-pane{display:none}#editor-panels.panels-single.panel-wide .panel:not(.panel-hidden){flex:1;max-width:none}
+.panel-resizer::before{display:none}.editor-body:has(.panels-single) .meta-pane{display:none}
 .panels-single{justify-content:center}.panels-single .panel{flex:0 1 54rem}.panels-single .panel-resizer{display:none}.editor-body:has(.panels-single) .meta-pane{align-self:center;width:100%;max-width:54rem}.panel-hidden{display:none!important}
-@media(max-width:640px){html{font-size:16px}#login-form{padding:1.75rem 1.25rem}header,#dashboard>header,#editor:has(.panels-single)>header{padding-right:.75rem;padding-left:.75rem}.editor-body{padding:.5rem .75rem .75rem}.dashboard-body{padding-top:.5rem}.toolbar{padding:0 .75rem .5rem}#tag-bar{padding:.25rem .75rem .5rem}#note-list{padding:.5rem .75rem 1rem}.editor-panels{flex-direction:column;gap:.625rem}.editor-panels:not(.panels-single) .panel-editor{flex:1 1 0}.panel-resizer,.panel-width{display:none!important}.panels-single .panel{flex:1;max-width:100%}.panel-preview{min-height:35%}.fmt-bar{flex-wrap:nowrap;overflow-x:auto}.fmt-bar button{flex:0 0 1.9rem}.preview h1{font-size:1.75rem}.preview h2{font-size:1.45rem}.preview h3{font-size:1.2rem}.sync-indicator{padding:.32rem .42rem;font-size:.6875rem}.header-left{gap:.25rem}.header-left .btn-text{padding-inline:.35rem}.app-brand{gap:.35rem}.app-brand img{width:1.5rem;height:1.5rem}.app-brand span{font-size:1rem}.header-right{gap:.25rem}.header-right .btn-primary{padding-inline:.7rem}}
+@media(max-width:640px){html{font-size:16px}#login-form{padding:1.75rem 1.25rem}header,#dashboard>header,#editor:has(.panels-single)>header{padding-right:.75rem;padding-left:.75rem}.editor-body{padding:.5rem .75rem .75rem}.dashboard-body{padding-top:.5rem}.toolbar{padding:0 .75rem .5rem}#tag-bar{padding:.25rem .75rem .5rem}#note-list{padding:.5rem .75rem 1rem}.editor-panels{flex-direction:column;gap:.625rem}.editor-panels:not(.panels-single) .panel-editor{flex:1 1 0}.panel-resizer{display:none!important}.panels-single .panel{flex:1;max-width:100%}.panel-preview{min-height:35%}.fmt-bar{flex-wrap:nowrap;overflow-x:auto}.fmt-bar button{flex:0 0 1.9rem}.preview h1{font-size:1.75rem}.preview h2{font-size:1.45rem}.preview h3{font-size:1.2rem}.sync-indicator{padding:.32rem .42rem;font-size:.6875rem}.header-left{gap:.25rem}.header-left .btn-text{padding-inline:.35rem}.app-brand{gap:.35rem}.app-brand img{width:1.5rem;height:1.5rem}.app-brand span{font-size:1rem}.header-right{gap:.25rem}.header-right .btn-primary{padding-inline:.7rem}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important}}
 @media(prefers-reduced-motion:reduce){.boot-spinner{animation:none}}
 @media(max-width:640px){.meta-fields{grid-template-columns:1fr;gap:.45rem}.note-pin{opacity:1;pointer-events:auto}}
@@ -112,14 +112,13 @@ select,option{font:inherit}
 .prefs-content-header h2{margin:0;font-size:1.2rem;font-weight:700;line-height:1.25}
 
 /* Keep full-width borders, but align each shell to the same responsive content rail. */
-:root{--content-max-width:76.25rem}
+:root{--content-max-width:76.25rem}:root[data-content-width="compact"]{--content-max-width:54rem}:root[data-content-width="wide"]{--content-max-width:90rem}:root[data-content-width="full"]{--content-max-width:100%}
 header{display:block;padding:0}
 #dashboard>header,#editor>header,#editor:has(.panels-single)>header{padding:0}
 .header-inner{display:flex;align-items:center;justify-content:space-between;gap:.75rem;width:min(100%,var(--content-max-width));min-height:3.25rem;margin-inline:auto;padding:.65rem 1.25rem}
 .dashboard-body{max-width:var(--content-max-width)}
 .editor-body{max-width:var(--content-max-width);margin-inline:auto}
 #dashboard>.offline-notice{padding-right:max(1.25rem,calc((100% - var(--content-max-width))/2 + 1.25rem));padding-left:max(1.25rem,calc((100% - var(--content-max-width))/2 + 1.25rem))}
-#editor:has(.editor-panels.panel-wide) .header-inner,#editor:has(.editor-panels.panel-wide) .editor-body{width:100%;max-width:none}
 #editor .panels-single .panel{flex:1 1 auto;max-width:none}
 .back-chevron{width:1.15rem;height:1.15rem;stroke-width:2}
 .btn-text.icon-btn:hover{background:var(--surface);color:var(--fg)}
@@ -136,13 +135,12 @@ header{display:block;padding:0}
 .save-slot{display:contents}
 #panel-save-slot #save-btn{width:1.5rem;height:1.5rem;min-height:1.5rem;border-radius:5px}
 #panel-save-slot #save-btn .icon{width:1rem;height:1rem}
-#editor-panels:not(.panels-single) .panel-editor .panel-width{display:grid}
 
 /* Radius scale follows the lander CTA proportion: roughly 10-11% of control height. */
 :root{--radius-action:4px;--radius-field:5px;--radius-micro:3px}
 .btn-text,.btn-primary,.prefs-btn{border-radius:var(--radius-action)}
 #login-form input,#login-form button,#note-title,#note-tags,.pref-control select,.font-control input[type=text]{border-radius:var(--radius-field)}
-#panel-save-slot #save-btn,.panel-layout,.fmt-bar button,.panel-width,.panel-switch,.prefs-nav,.modal-close,.offline-retry,.toast-action{border-radius:var(--radius-micro)}
+#panel-save-slot #save-btn,.panel-layout,.fmt-bar button,.panel-switch,.prefs-nav,.modal-close,.offline-retry,.toast-action{border-radius:var(--radius-micro)}
 .pref-control input[type=color]{border-radius:var(--radius-action)}
 .table-grid-cell{border-radius:2px}
 .offline-snackbar,.toast{border-radius:var(--radius-field)}
