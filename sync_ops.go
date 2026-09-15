@@ -222,10 +222,13 @@ var preferenceFieldNames = map[string]struct{}{
 	"accentColor":             {},
 	"fontFamily":              {},
 	"fontFamilyGoogle":        {},
+	"fontSize":                {},
 	"editorFontFamily":        {},
 	"editorFontFamilyGoogle":  {},
+	"editorFontSize":          {},
 	"previewFontFamily":       {},
 	"previewFontFamilyGoogle": {},
+	"previewFontSize":         {},
 }
 
 func preferenceFields(p *prefs) (map[string]json.RawMessage, error) {

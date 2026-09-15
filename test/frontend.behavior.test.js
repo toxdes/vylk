@@ -34,6 +34,9 @@ describe('font preferences', () => {
     expect(app.window.document.querySelector('#pref-font').tagName).toBe('INPUT');
     expect(app.window.document.querySelector('#pref-editor-font').tagName).toBe('INPUT');
     expect(app.window.document.querySelector('#pref-preview-font').tagName).toBe('INPUT');
+    expect(app.window.document.querySelector('#pref-font-size').value).toBe('1rem');
+    expect(app.window.document.querySelector('#pref-editor-font-size').value).toBe('1rem');
+    expect(app.window.document.querySelector('#pref-preview-font-size').value).toBe('1rem');
     expect(app.window.document.querySelector('#pref-font-google').checked).toBe(false);
     expect(app.window.document.querySelector('#pref-editor-font-google').checked).toBe(false);
     expect(app.window.document.querySelector('#pref-preview-font-google').checked).toBe(false);
@@ -83,6 +86,48 @@ describe('font preferences', () => {
     expect(input.value).toBe('Bad"Font');
     expect(input.getAttribute('aria-invalid')).toBe('true');
     expect(error.hidden).toBe(false);
+  });
+
+  test('accepts common CSS font sizes and applies them per font slot', async () => {
+    const app = track(await createApp());
+    const sizes = [
+      ['#pref-font-size', '14px', '--font-size'],
+      ['#pref-editor-font-size', '3rem', '--editor-font-size'],
+      ['#pref-preview-font-size', '14pt', '--preview-font-size'],
+    ];
+
+    for (const [selector, value] of sizes) {
+      const input = app.window.document.querySelector(selector);
+      input.value = value;
+      input.dispatchEvent(new app.window.Event('change'));
+    }
+
+    await vi.waitFor(async () => {
+      const pending = await app.hooks.pendingOperations();
+      expect(pending).toHaveLength(1);
+      expect(pending[0].prefs._sync_patch).toEqual({fontSize: '14px', editorFontSize: '3rem', previewFontSize: '14pt'});
+    });
+
+    const root = app.window.document.documentElement;
+    expect(root.style.getPropertyValue('--font-size')).toBe('14px');
+    expect(root.style.getPropertyValue('--editor-font-size')).toBe('3rem');
+    expect(root.style.getPropertyValue('--preview-font-size')).toBe('14pt');
+  });
+
+  test('rejects unsafe or malformed font sizes without saving them', async () => {
+    const app = track(await createApp());
+    const input = app.window.document.querySelector('#pref-preview-font-size');
+    const error = app.window.document.querySelector('#pref-preview-font-size-error');
+
+    input.value = 'calc(1rem + 2px)';
+    input.dispatchEvent(new app.window.Event('change'));
+
+    await vi.waitFor(() => expect(error.hidden).toBe(false));
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(error.textContent).toContain('positive size');
+    expect((await app.hooks.pendingOperations()).filter(operation => operation.type === 'prefs.save')).toHaveLength(0);
+    expect(JSON.parse(app.window.localStorage.getItem('vylk-prefs') || '{}').previewFontSize).not.toBe('calc(1rem + 2px)');
+    expect(app.window.document.documentElement.style.getPropertyValue('--preview-font-size')).toBe('1rem');
   });
 
   test('does not probe Google Fonts for local-only custom preferences', async () => {
@@ -1525,6 +1570,27 @@ describe('preference sync coordination', () => {
     };
     await app.hooks.loadPrefs();
     expect(app.window.document.documentElement.dataset.contentWidth).toBe('standard');
+  });
+
+  test('restores font sizes from remote preferences and defaults missing sizes', async () => {
+    const app = track(await createApp({
+      fetchImpl: async path => {
+        if (String(path) === '/api/prefs') return response(200, JSON.stringify({
+          revision: 2,
+          autoSave: true,
+          fontSize: '110%',
+          editorFontSize: '14pt',
+          previewFontSize: 'bad-size',
+        }));
+        throw new Error(`unexpected request: ${path}`);
+      },
+    }));
+
+    await app.hooks.loadPrefs();
+    const root = app.window.document.documentElement;
+    expect(root.style.getPropertyValue('--font-size')).toBe('110%');
+    expect(root.style.getPropertyValue('--editor-font-size')).toBe('14pt');
+    expect(root.style.getPropertyValue('--preview-font-size')).toBe('1rem');
   });
 
   test('coalesces preference changes into field-level patches', async () => {

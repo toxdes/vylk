@@ -78,10 +78,13 @@ type prefs struct {
 	AccentColor             string                     `json:"accentColor,omitempty"`
 	FontFamily              string                     `json:"fontFamily,omitempty"`
 	FontFamilyGoogle        bool                       `json:"fontFamilyGoogle"`
+	FontSize                string                     `json:"fontSize,omitempty"`
 	EditorFontFamily        string                     `json:"editorFontFamily,omitempty"`
 	EditorFontFamilyGoogle  bool                       `json:"editorFontFamilyGoogle"`
+	EditorFontSize          string                     `json:"editorFontSize,omitempty"`
 	PreviewFontFamily       string                     `json:"previewFontFamily,omitempty"`
 	PreviewFontFamilyGoogle bool                       `json:"previewFontFamilyGoogle"`
+	PreviewFontSize         string                     `json:"previewFontSize,omitempty"`
 	SyncPatch               map[string]json.RawMessage `json:"_sync_patch,omitempty"`
 	SyncBase                map[string]json.RawMessage `json:"_sync_base,omitempty"`
 }
@@ -495,7 +498,7 @@ func getPrefsTx(tx *sql.Tx) (*prefs, error) {
 	if err := tx.QueryRow("SELECT data, revision FROM prefs WHERE id = 1").Scan(&data, &revision); err != nil {
 		return nil, err
 	}
-	p := &prefs{AutoSave: true, ContentWidth: "standard", Revision: revision}
+	p := &prefs{AutoSave: true, ContentWidth: "standard", FontSize: "1rem", EditorFontSize: "1rem", PreviewFontSize: "1rem", Revision: revision}
 	if err := json.Unmarshal([]byte(data), p); err != nil {
 		return nil, fmt.Errorf("decode preferences: %w", err)
 	}
