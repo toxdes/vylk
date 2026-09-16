@@ -4268,15 +4268,22 @@ $('#preview').addEventListener('lostpointercapture', event => {
 
 window.addEventListener('blur', () => cancelPreviewDrag());
 
+function targetUsesNativeUndo(target) {
+  const editable = target?.closest?.('textarea, input, [contenteditable="true"]');
+  if (!editable || editable === $('#note-content')) return false;
+  if (editable.matches('textarea, [contenteditable="true"]')) return true;
+  return ['text', 'search', 'email', 'url', 'tel', 'password', 'number'].includes(editable.type);
+}
+
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && activePreviewDrag) {
     event.preventDefault();
     cancelPreviewDrag();
     return;
   }
-  if (!interactivePreviewActive || !(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'z') return;
-  event.preventDefault();
-  undoInteractivePreview();
+  if (!interactivePreviewActive || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'z') return;
+  if (targetUsesNativeUndo(event.target)) return;
+  if (undoInteractivePreview()) event.preventDefault();
 });
 
 function updatePreview() {
