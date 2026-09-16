@@ -481,6 +481,10 @@ func (a *app) handleSavePrefs(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if err := validatePrefs(&p); err != nil {
+		writeAPIError(w, http.StatusBadRequest, "invalid_preferences", err.Error())
+		return
+	}
 	if err := savePrefs(a.db, &p, expectedRevision); errors.Is(err, errRevisionConflict) {
 		current, currentErr := getPrefs(a.db)
 		if currentErr != nil {
