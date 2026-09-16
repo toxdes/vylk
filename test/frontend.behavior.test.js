@@ -1955,13 +1955,14 @@ describe('preference sync coordination', () => {
 
     await app.hooks.savePref('theme', 'default-dark');
     await app.hooks.savePref('accentColor', '#123456');
+    await app.hooks.savePref('saveButtonLocation', 'header');
     app.hooks.cancelScheduledSync();
 
     const pending = await app.hooks.pendingOperations();
     expect(pending).toHaveLength(1);
     expect(pending[0].base_revision).toBe(1);
-    expect(pending[0].prefs._sync_patch).toEqual({theme: 'default-dark', accentColor: '#123456'});
-    expect(pending[0].prefs._sync_base).toEqual({theme: 'default-light', accentColor: ''});
+    expect(pending[0].prefs._sync_patch).toEqual({theme: 'default-dark', accentColor: '#123456', saveButtonLocation: 'header'});
+    expect(pending[0].prefs._sync_base).toEqual({theme: 'default-light', accentColor: '', saveButtonLocation: 'panel'});
   });
 
   test('surfaces same-field preference conflicts and keeps the remote value', async () => {

@@ -215,6 +215,7 @@ var preferenceFieldNames = map[string]struct{}{
 	"hideHeaderOnFullscreen":  {},
 	"hideToolbar":             {},
 	"hideSaveButton":          {},
+	"saveButtonLocation":      {},
 	"collapseDetails":         {},
 	"hideCursorHighlight":     {},
 	"interactivePreview":      {},
@@ -251,6 +252,15 @@ func validContentWidthValue(value string) bool {
 	}
 }
 
+func validSaveButtonLocationValue(value string) bool {
+	switch value {
+	case "panel", "header":
+		return true
+	default:
+		return false
+	}
+}
+
 func validFontSizeValue(value string) bool {
 	_, ok := fontSizeValues[strings.TrimSpace(value)]
 	return ok
@@ -266,6 +276,11 @@ func validatePreferenceFieldValue(key string, value json.RawMessage) error {
 		if err := json.Unmarshal(value, &contentWidth); err != nil || !validContentWidthValue(contentWidth) {
 			return fmt.Errorf("invalid preference value for %q", key)
 		}
+	case "saveButtonLocation":
+		var saveButtonLocation string
+		if err := json.Unmarshal(value, &saveButtonLocation); err != nil || !validSaveButtonLocationValue(saveButtonLocation) {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
 	case "fontSize", "editorFontSize", "previewFontSize":
 		var fontSize string
 		if err := json.Unmarshal(value, &fontSize); err != nil || !validFontSizeValue(fontSize) {
@@ -278,6 +293,9 @@ func validatePreferenceFieldValue(key string, value json.RawMessage) error {
 func validatePrefs(p *prefs) error {
 	if p.ContentWidth != "" && !validContentWidthValue(p.ContentWidth) {
 		return fmt.Errorf("invalid preference value for %q", "contentWidth")
+	}
+	if p.SaveButtonLocation != "" && !validSaveButtonLocationValue(p.SaveButtonLocation) {
+		return fmt.Errorf("invalid preference value for %q", "saveButtonLocation")
 	}
 	for key, value := range map[string]string{
 		"fontSize":        p.FontSize,

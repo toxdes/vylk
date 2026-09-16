@@ -70,6 +70,7 @@ type prefs struct {
 	HideHeaderOnFullscreen  bool                       `json:"hideHeaderOnFullscreen"`
 	HideToolbar             bool                       `json:"hideToolbar"`
 	HideSaveButton          bool                       `json:"hideSaveButton"`
+	SaveButtonLocation      string                     `json:"saveButtonLocation,omitempty"`
 	CollapseDetails         bool                       `json:"collapseDetails"`
 	HideCursorHighlight     bool                       `json:"hideCursorHighlight"`
 	InteractivePreview      bool                       `json:"interactivePreview"`
@@ -499,7 +500,7 @@ func getPrefsTx(tx *sql.Tx) (*prefs, error) {
 	if err := tx.QueryRow("SELECT data, revision FROM prefs WHERE id = 1").Scan(&data, &revision); err != nil {
 		return nil, err
 	}
-	p := &prefs{AutoSave: true, ContentWidth: "standard", FontSize: "1rem", EditorFontSize: "1rem", PreviewFontSize: "1rem", Revision: revision}
+	p := &prefs{AutoSave: true, SaveButtonLocation: "panel", ContentWidth: "standard", FontSize: "1rem", EditorFontSize: "1rem", PreviewFontSize: "1rem", Revision: revision}
 	if err := json.Unmarshal([]byte(data), p); err != nil {
 		return nil, fmt.Errorf("decode preferences: %w", err)
 	}
