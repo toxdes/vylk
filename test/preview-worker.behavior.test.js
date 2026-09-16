@@ -54,3 +54,13 @@ test('produces independently renderable blocks for incremental preview updates',
   expect(result).not.toHaveProperty('html');
   expect(result.blocks.map(block => block.html).join('')).toContain('<h1>Heading</h1>');
 });
+
+test('renders one checkbox per task in loose Markdown lists', () => {
+  const worker = loadPreviewWorker();
+  worker.handlers.get('message')({data:{id:9, source:'15. [ ] Keyboard thing\n\n16. [ ] Preference'}});
+
+  const result = worker.messages[0];
+  const rendered = result.html || result.blocks.map(block => block.html).join('');
+  expect(result.incrementalSafe).toBe(true);
+  expect(rendered.match(/type="checkbox"/g)).toHaveLength(2);
+});

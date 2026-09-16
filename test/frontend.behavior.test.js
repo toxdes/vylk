@@ -333,6 +333,23 @@ describe('markdown preview policy', () => {
     expect(app.window.document.querySelectorAll('#preview [data-preview-drag-indicator]')).toHaveLength(0);
   });
 
+  test('toggles a task checkbox without replacing the rendered preview', async () => {
+    const app = track(await createApp({realMarked: true}));
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Tasks', content: '- [ ] keep this row\n- other row'});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const preview = app.window.document.querySelector('#preview');
+    const checkbox = preview.querySelector('input[type="checkbox"]');
+    const list = checkbox.closest('li');
+
+    checkbox.click();
+
+    expect(preview.querySelector('input[type="checkbox"]') === checkbox).toBe(true);
+    expect(app.window.document.querySelector('#note-content').value).toContain('- [x] keep this row');
+    expect(checkbox.checked).toBe(true);
+    expect(preview.querySelector('li') === list).toBe(true);
+  });
+
   test('does not apply a drag using stale preview ranges after source edits', async () => {
     const app = track(await createApp({realMarked: true}));
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '- Alpha\n- Bravo'});

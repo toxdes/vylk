@@ -85,7 +85,10 @@ self.addEventListener('message', event => {
     const options = markdownOptions();
     const tokens = marked.lexer(source, options);
     const description = describeBlocks(source, options, tokens);
-    const html = marked.parser(tokens, options);
+    // Marked mutates some token trees while rendering, notably loose task
+    // lists where it injects checkbox markup. Parse the full document from
+    // source so block rendering and full rendering never reuse token objects.
+    const html = marked.parse(source, options);
     description.incrementalSafe = description.incrementalSafe && description.blocks.map(block => block.html).join('') === html;
     const result = {id, ...description};
     // Incrementally safe responses already contain the complete rendered

@@ -74,6 +74,7 @@ let interactiveListItems = [];
 let interactiveBlockItems = [];
 let activePreviewDrag = null;
 let suppressNextPreviewAlignment = false;
+let previewHighlightPending = false;
 let currentRevision = 0;
 let currentBaseRevision = null;
 let syncInFlight = false;
@@ -3381,6 +3382,7 @@ function resetInteractivePreviewSession() {
   disconnectPreviewDecorationObserver();
   renderedPreviewMetadata = null;
   suppressNextPreviewAlignment = false;
+  previewHighlightPending = false;
   interactivePreviewActive = false;
   interactiveSourceLocked = false;
   interactiveHistory = [];
@@ -3622,10 +3624,16 @@ function updatePreviewPreservingViewport() {
   if (preview) preview.scrollTop = scrollTop;
 }
 
-function applyInteractiveSource(nextSource, transaction) {
+function applyInteractiveSource(nextSource, transaction, {preservePreview = false} = {}) {
   const textarea = $('#note-content');
   const before = textarea.value;
   if (!transaction || !nextSource || nextSource === before) return false;
+  const preserveRenderedPreview = preservePreview &&
+    nextSource.length === before.length &&
+    isPreviewVisible() &&
+    renderedPreviewSource === before &&
+    previewRangeSource === before;
+  const preservedBlockRanges = preserveRenderedPreview ? previewBlockRanges : null;
   interactiveHistory.push({...transaction, selectionStart: textarea.selectionStart, selectionEnd: textarea.selectionEnd});
   if (interactiveHistory.length > 50) interactiveHistory.shift();
   interactiveSourceMutation = true;
@@ -3635,6 +3643,18 @@ function applyInteractiveSource(nextSource, transaction) {
   if (previewTimer) {
     clearTimeout(previewTimer);
     previewTimer = null;
+  }
+  if (preserveRenderedPreview) {
+    // A task toggle changes only [ ]/[x], so block structure and every source
+    // range remain valid. Keep the rendered DOM and update the input locally;
+    // the next normal source edit will rebuild metadata for the new source.
+    renderedPreviewSource = nextSource;
+    renderedPreviewMetadata = null;
+    previewRangeSource = nextSource;
+    previewBlockRanges = preservedBlockRanges;
+    suppressNextPreviewAlignment = true;
+    scheduleHighlight();
+    return true;
   }
   updatePreviewPreservingViewport();
   return true;
@@ -4081,10 +4101,19 @@ function highlightBlock() {
     return;
   }
   const ta = $('#note-content');
-  clearPreviewHighlight();
   const text = ta.value;
   const pos = ta.selectionStart;
-  if (!text.trim() || !previewBlocks.length || renderedPreviewSource !== text || previewRangeSource !== text) return;
+  if (!text.trim() || !previewBlocks.length) {
+    clearPreviewHighlight();
+    previewHighlightPending = false;
+    return;
+  }
+  if (renderedPreviewSource !== text || previewRangeSource !== text) {
+    if (!previewHighlightPending) clearPreviewHighlight();
+    return;
+  }
+  previewHighlightPending = false;
+  clearPreviewHighlight();
   const idx = previewBlockIndexAtPosition(pos);
   const block = previewBlocks[idx];
   if (!block) return;
@@ -4143,6 +4172,7 @@ $('#note-content').addEventListener('input', () => {
   if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
   markDirty();
   scheduleSave();
+  previewHighlightPending = true;
   previewRangeSource = null;
   previewBlockRanges = [];
   scheduleHighlight();
@@ -4329,8 +4359,14 @@ $('#preview').addEventListener('click', event => {
     const entry = interactiveEntryByElement.get(item);
     const change = window.VylkInteractive?.toggleTask($('#note-content').value, entry);
     if (!change) return;
-    event.preventDefault();
-    applyInteractiveSource(change.source, {start:change.start, removed:$('#note-content').value.slice(change.start, change.end), inserted:change.inserted});
+    const applied = applyInteractiveSource(change.source, {
+      start:change.start,
+      removed:$('#note-content').value.slice(change.start, change.end),
+      inserted:change.inserted,
+    }, {preservePreview:true});
+    if (applied) {
+      checkbox.setAttribute('aria-label', change.checked ? 'Mark task incomplete' : 'Mark task complete');
+    }
     return;
   }
   if (interactivePreviewActive && window.matchMedia('(hover: none), (pointer: coarse)').matches) {
@@ -4662,6 +4698,24 @@ function previewTopLevelElement(element) {
   return card?.parentElement === $('#preview') ? card : element;
 }
 
+function canUpdatePreviewElementInPlace(current, replacement) {
+  if (!current || !replacement || current.tagName !== replacement.tagName) return false;
+  if (['UL', 'OL'].includes(current.tagName)) return false;
+  return !current.querySelector('ul,ol') && !replacement.querySelector('ul,ol');
+}
+
+function updatePreviewElementInPlace(current, replacement) {
+  const preservedAttributes = [...current.attributes]
+    .filter(attribute => attribute.name.startsWith('data-interactive-'))
+    .map(attribute => [attribute.name, attribute.value]);
+  [...current.attributes]
+    .filter(attribute => !attribute.name.startsWith('data-interactive-'))
+    .forEach(attribute => current.removeAttribute(attribute.name));
+  [...replacement.attributes].forEach(attribute => current.setAttribute(attribute.name, attribute.value));
+  preservedAttributes.forEach(([name, value]) => current.setAttribute(name, value));
+  current.replaceChildren(...[...replacement.childNodes]);
+}
+
 function renderPreviewBlocksProgressively(md, renderMetadata) {
   const preview = $('#preview');
   const generation = previewRenderGeneration;
@@ -4704,6 +4758,7 @@ function renderPreviewBlocksProgressively(md, renderMetadata) {
     preview.removeAttribute('aria-busy');
     renderedPreviewSource = md;
     renderedPreviewMetadata = renderMetadata;
+    previewHighlightPending = false;
     cachePreviewBlocks(renderMetadata, elements, {defer:true});
   };
   process();
@@ -4730,8 +4785,16 @@ function patchPreviewBlocks(renderMetadata) {
     .slice(prefix, renderMetadata.blocks.length - suffix)
     .map(previewElementFromHTML);
   if (replacements.some(element => !element)) return null;
+  const currentMiddle = current.slice(prefix, current.length - suffix);
+  if (currentMiddle.length === replacements.length && currentMiddle.every((element, index) => {
+    const replacement = replacements[index];
+    return canUpdatePreviewElementInPlace(element, replacement);
+  })) {
+    currentMiddle.forEach((element, index) => updatePreviewElementInPlace(element, replacements[index]));
+    return current;
+  }
   const anchor = suffix ? previewTopLevelElement(current[current.length - suffix]) : null;
-  current.slice(prefix, current.length - suffix).forEach(element => previewTopLevelElement(element).remove());
+  currentMiddle.forEach(element => previewTopLevelElement(element).remove());
   const fragment = document.createDocumentFragment();
   replacements.forEach(element => fragment.append(element));
   preview.insertBefore(fragment, anchor);
@@ -4761,6 +4824,7 @@ function renderPreviewHTML(md, html, renderMetadata = null) {
   renderedPreviewSource = md;
   cachePreviewBlocks(renderMetadata, patchedBlocks, {defer:Boolean(renderMetadata)});
   renderedPreviewMetadata = renderMetadata?.source === md ? renderMetadata : null;
+  previewHighlightPending = false;
   scheduleHighlight();
 }
 
@@ -4848,6 +4912,7 @@ function updatePreview() {
   } else {
     $('#preview').innerHTML = '<p><em>loading parser...</em></p>';
     renderedPreviewSource = md;
+    previewHighlightPending = false;
   }
 }
 

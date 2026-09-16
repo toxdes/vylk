@@ -311,6 +311,76 @@ test('editing from preview-only mode opens source at the selected block', async 
   expect(position).toBe('# Heading\n\n'.length);
 });
 
+test('updates a typed preview block without replacing its layout node', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const editor = page.locator('#note-content');
+  await editor.fill('# Stable heading\n\nFirst paragraph.\n\nSecond paragraph.');
+  await expect(page.locator('#preview p')).toHaveCount(2);
+
+  await page.evaluate(() => {
+    window.__typedPreviewBlockBefore = [...document.querySelectorAll('#preview p')]
+      .find(element => element.textContent === 'First paragraph.');
+  });
+  await editor.evaluate(textarea => {
+    const position = textarea.value.indexOf('First paragraph.') + 'First paragraph.'.length;
+    textarea.focus();
+    textarea.setSelectionRange(position, position);
+  });
+  await editor.type(' Updated');
+  await expect(page.locator('#note-content')).toHaveValue(/First paragraph\. Updated/);
+  await expect.poll(() => page.locator('#preview p').first().textContent()).toContain('First paragraph. Updated');
+  expect(await page.evaluate(() => [...document.querySelectorAll('#preview p')]
+    .find(element => element.textContent === 'First paragraph. Updated') === window.__typedPreviewBlockBefore)).toBe(true);
+});
+
+test('keeps the current preview highlight while typed Markdown is rendering', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const editor = page.locator('#note-content');
+  await editor.fill('# Stable heading\n\nFirst paragraph.\n\nSecond paragraph.');
+  await expect(page.locator('#preview p')).toHaveCount(2);
+  await page.waitForTimeout(200);
+
+  await editor.evaluate(textarea => {
+    const position = textarea.value.indexOf('First paragraph.');
+    textarea.focus();
+    textarea.setSelectionRange(position, position);
+    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+  });
+  const isFirstParagraphHighlighted = () => page.evaluate(() => {
+    const paragraph = [...document.querySelectorAll('#preview p')]
+      .find(element => element.textContent === 'First paragraph.');
+    return Boolean((paragraph?.closest('.interactive-preview-card') || paragraph)?.classList.contains('highlight'));
+  });
+  await expect.poll(isFirstParagraphHighlighted).toBe(true);
+  await editor.type(' Updated');
+  await page.waitForTimeout(100);
+
+  expect(await isFirstParagraphHighlighted()).toBe(true);
+});
+
+test('centers a preview edit target within the source viewport', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const items = Array.from({length:40}, (_, index) => `- Item ${index + 1}`);
+  await page.locator('#note-content').fill(items.join('\n'));
+  await enableInteractivePreview(page);
+
+  await page.locator('.panel-preview .panel-layout').click();
+  const target = page.locator('#preview .interactive-preview-list-card').nth(19);
+  await target.hover();
+  await target.getByRole('button', {name:'Edit this block in source'}).click();
+
+  await expect(page.locator('#note-content')).toBeFocused();
+  await expect.poll(() => page.locator('#note-content').evaluate(textarea => textarea.scrollTop)).toBeGreaterThan(0);
+  const scrollState = await page.locator('#note-content').evaluate(textarea => ({
+    scrollTop: textarea.scrollTop,
+    maxScrollTop: Math.max(0, textarea.scrollHeight - textarea.clientHeight),
+  }));
+  expect(scrollState.scrollTop).toBeLessThan(scrollState.maxScrollTop);
+});
+
 test('interactive preview preserves checkbox position and auto-scrolls during drag', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
@@ -320,9 +390,15 @@ test('interactive preview preserves checkbox position and auto-scrolls during dr
 
   const checkbox = page.locator('#preview input[type="checkbox"]');
   await checkbox.scrollIntoViewIfNeeded();
+  await page.evaluate(() => {
+    window.__taskCheckboxBeforeToggle = document.querySelector('#preview input[type="checkbox"]');
+    window.__taskItemBeforeToggle = window.__taskCheckboxBeforeToggle?.closest('li');
+  });
   const scrollBeforeToggle = await page.locator('#preview').evaluate(element => element.scrollTop);
   await checkbox.click();
   await expect(page.locator('#note-content')).toHaveValue(new RegExp('- \\[x\\] Toggle without jumping'));
+  expect(await page.evaluate(() => document.querySelector('#preview input[type="checkbox"]') === window.__taskCheckboxBeforeToggle)).toBe(true);
+  expect(await page.evaluate(() => document.querySelector('#preview input[type="checkbox"]')?.closest('li') === window.__taskItemBeforeToggle)).toBe(true);
   await expect.poll(() => page.locator('#preview').evaluate(element => element.scrollTop)).toBe(scrollBeforeToggle);
   await expect(page.locator('#toast-region .toast')).toHaveCount(0);
 
@@ -340,6 +416,18 @@ test('interactive preview preserves checkbox position and auto-scrolls during dr
   await expect(page.locator('html')).toHaveClass(/preview-drag-outside/);
   await page.mouse.up();
   await expect(page.locator('html')).not.toHaveClass(/preview-drag-outside/);
+});
+
+test('loose ordered task lists render one checkbox per item', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-content').fill('15. [ ] Keyboard thing\n\n16. [ ] Preference');
+  await enableInteractivePreview(page);
+
+  const items = page.locator('#preview > ol > li');
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0).locator('input[type="checkbox"]')).toHaveCount(1);
+  await expect(items.nth(1).locator('input[type="checkbox"]')).toHaveCount(1);
 });
 
 test('keeps long interactive previews fully functional with bounded control DOM', async ({page}) => {
