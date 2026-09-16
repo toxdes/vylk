@@ -423,6 +423,27 @@ test('keeps an interactive task checkbox enabled after editing its list item', a
   await expect(target.locator('input[type="checkbox"]')).toBeEnabled();
 });
 
+test('keeps a comfortable horizontal inset when interactive preview is disabled', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-content').fill('A readable preview paragraph.');
+  await enableInteractivePreview(page);
+
+  await page.locator('#editor-prefs-btn').click();
+  await page.locator('#prefs-tab-editor').click();
+  const preference = page.locator('#pref-interactive-preview');
+  await expect(preference).toBeChecked();
+  await preference.uncheck();
+  await page.locator('#prefs-close').click();
+  await expect(page.locator('#prefs-modal')).toBeHidden();
+  await expect(page.locator('#preview')).not.toHaveClass(/interactive-preview-active/);
+
+  await expect.poll(() => page.locator('#preview').evaluate(element => ({
+    left:getComputedStyle(element).paddingLeft,
+    right:getComputedStyle(element).paddingRight,
+  }))).toEqual({left:'48px', right:'48px'});
+});
+
 test('keeps the current preview highlight while typed Markdown is rendering', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
