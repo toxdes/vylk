@@ -456,6 +456,7 @@ describe('markdown preview policy', () => {
     const app = track(await createApp({realMarked: true}));
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '# Heading'});
     await app.hooks.savePref('interactivePreview', true);
+    app.hooks.cancelScheduledSync();
 
     const card = app.window.document.querySelector('.interactive-preview-block-card');
     const content = card.querySelector('.preview-drag-content');
