@@ -3829,6 +3829,7 @@ $('#delete-btn').addEventListener('click', async () => {
 // --- Live Preview ---
 $('#note-content').addEventListener('input', () => {
   if (!interactiveSourceMutation) interactiveHistory = [];
+  if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
   markDirty();
   scheduleSave();
   previewRangeSource = null;
@@ -3946,6 +3947,7 @@ function markdownRenderOptions() {
 }
 
 function interactiveEntryForElement(element) {
+  if (!interactivePreviewSourceIsCurrent()) return null;
   const owner = element?.closest('[data-interactive-start]');
   if (!owner) return null;
   const start = Number(owner.dataset.interactiveStart);
@@ -3953,6 +3955,11 @@ function interactiveEntryForElement(element) {
   if (!Number.isFinite(start) || !scope) return null;
   return [...interactiveBlockItems, ...interactiveListItems]
     .find(entry => entry.start === start && entry.scope === scope) || null;
+}
+
+function interactivePreviewSourceIsCurrent() {
+  const source = $('#note-content').value;
+  return renderedPreviewSource === source && previewRangeSource === source;
 }
 
 function previewEditPosition(entry, source = $('#note-content').value) {
@@ -4004,7 +4011,7 @@ $('#preview').addEventListener('click', event => {
     return;
   }
   const checkbox = event.target.closest('input[type="checkbox"]');
-  if (interactivePreviewActive && checkbox && !checkbox.disabled) {
+  if (interactivePreviewActive && checkbox && !checkbox.disabled && interactivePreviewSourceIsCurrent()) {
     const item = checkbox.closest('li[data-interactive-start]');
     const entry = interactiveListItems.find(candidate => candidate.start === Number(item?.dataset.interactiveStart));
     const change = window.VylkInteractive?.toggleTask($('#note-content').value, entry);
@@ -4154,7 +4161,7 @@ function cancelPreviewDrag({animateReturn = true} = {}) {
 }
 
 $('#preview').addEventListener('pointerdown', event => {
-  if (!interactivePreviewActive || event.button !== 0 || event.isPrimary === false) return;
+  if (!interactivePreviewActive || !interactivePreviewSourceIsCurrent() || event.button !== 0 || event.isPrimary === false) return;
   const item = event.target.closest('#preview > [data-interactive-start], #preview li[data-interactive-start]');
   if (!item || event.target.closest('a,input,button,select,textarea')) return;
   const sourceStart = Number(item.dataset.interactiveStart);
@@ -4236,6 +4243,11 @@ function finishPreviewDrag(event) {
   const drag = activePreviewDrag;
   if (!drag || drag.pointerID !== event.pointerId) return;
   if (event.type === 'pointerup' && drag.armed && drag.target) {
+    if (!interactivePreviewSourceIsCurrent()) {
+      cancelPreviewDrag({animateReturn:false});
+      if ($('#preview').hasPointerCapture?.(event.pointerId)) $('#preview').releasePointerCapture(event.pointerId);
+      return;
+    }
     const source = $('#note-content').value;
     const entries = [...interactiveBlockItems, ...interactiveListItems];
     const change = window.VylkInteractive?.moveMarkdownUnit(source, entries, drag.sourceStart, drag.scope, drag.target.start, drag.target.scope, drag.target.placement);
