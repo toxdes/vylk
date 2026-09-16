@@ -26,7 +26,12 @@ const artificialRTTDelayEnv = "ARTIFICIAL_RTT_DELAY_MS"
 //go:embed static
 var staticFS embed.FS
 
-var appRevision = embeddedAppRevision()
+var appName = defaultAppName
+var appRevision = embeddedAppRevision(appName)
+
+// http.ServeContent accepts a time.Time for conditional responses. A zero
+// value keeps the dynamically rendered shell independent of filesystem times.
+var zeroTime time.Time
 
 // frontendRevisionFiles is the production frontend surface. Keep test and
 // development-only files out of the update fingerprint so changing them does
@@ -45,8 +50,9 @@ var frontendRevisionFiles = []string{
 	"static/sw.js",
 }
 
-func embeddedAppRevision() string {
+func embeddedAppRevision(name string) string {
 	hash := sha256.New()
+	_, _ = hash.Write([]byte("app-name\x00" + name + "\x00"))
 	for _, path := range frontendRevisionFiles {
 		data, err := staticFS.ReadFile(path)
 		if err != nil {
@@ -168,6 +174,13 @@ func main() {
 		}
 	}
 
+	configuredName, err := configuredAppName(os.Getenv(appNameEnv))
+	if err != nil {
+		log.Fatalf("app name: %v", err)
+	}
+	appName = configuredName
+	appRevision = embeddedAppRevision(appName)
+
 	password, err := readSecret("VYLK_PASSWORD")
 	if err != nil {
 		log.Fatalf("password: %v", err)
@@ -262,6 +275,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /api/login", app.handleLogin)
+	mux.HandleFunc("GET /manifest.json", handleManifest)
 	mux.HandleFunc("POST /api/logout", app.auth(app.handleLogout))
 	mux.HandleFunc("GET /api/check", app.auth(app.handleCheck))
 	mux.HandleFunc("GET /api/notes", app.auth(app.handleListNotes))
@@ -282,17 +296,16 @@ func main() {
 		log.Fatalf("static fs: %v", err)
 	}
 	fileServer := staticCacheMiddleware(http.FileServer(http.FS(sub)))
+	shell, err := renderAppShell(appName)
+	if err != nil {
+		log.Fatalf("render app shell: %v", err)
+	}
 	appShell := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Serve the SPA shell for validated note URLs so a bookmarked /<id>
 		// route survives refresh, while unknown paths still behave like static
 		// file requests and return 404.
-		if r.URL.Path != "/" && noteIDPattern.MatchString(strings.TrimPrefix(r.URL.Path, "/")) {
-			request := r.Clone(r.Context())
-			url := *r.URL
-			url.Path = "/"
-			url.RawPath = ""
-			request.URL = &url
-			fileServer.ServeHTTP(w, request)
+		if r.URL.Path == "/" || r.URL.Path == "/index.html" || noteIDPattern.MatchString(strings.TrimPrefix(r.URL.Path, "/")) {
+			serveAppShell(w, r, shell)
 			return
 		}
 		fileServer.ServeHTTP(w, r)

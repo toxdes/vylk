@@ -2834,13 +2834,12 @@ function editorSnapshotIsCurrent(snapshot) {
     readEditorSnapshot().content === snapshot.content;
 }
 
-async function persistEditorSnapshot(snapshot, trySync) {
+async function persistEditorSnapshot(snapshot) {
   if (editorSnapshotIsCurrent(snapshot) &&
       snapshot.title === savedSnapshot.title &&
       snapshot.tags === savedSnapshot.tags &&
       snapshot.content === savedSnapshot.content) {
     isDirty = false;
-    if (trySync) await syncNow();
     return true;
   }
 
@@ -2909,38 +2908,47 @@ async function persistEditorSnapshot(snapshot, trySync) {
     if (!restoringHistoryRoute && noteIDFromLocation() !== snapshot.noteID) setNoteRoute(snapshot.noteID);
     setIdleSyncStatus();
   }
-  if (trySync) await syncNow();
   return true;
 }
 
 function saveCurrentNote(trySync = true) {
   localSaveRequested = true;
-  localSaveTrySync = localSaveTrySync || trySync;
-  if (localSavePromise) return localSavePromise;
+  if (!localSavePromise) {
+    localSavePromise = (async () => {
+      let result = true;
+      while (localSaveRequested) {
+        localSaveRequested = false;
+        const noteID = currentNoteId || newLocalNoteID();
+        if (!currentNoteId) currentNoteId = noteID;
+        const data = readEditorSnapshot();
+        const snapshot = {
+          ...data,
+          noteID,
+          revision: currentRevision,
+          baseRevision: currentBaseRevision ?? currentRevision ?? 0,
+          sessionGeneration: editorSessionGeneration,
+        };
+        result = await persistEditorSnapshot(snapshot);
+      }
+      return result;
+    })().finally(() => {
+      localSavePromise = null;
+    });
+  }
+  const currentLocalSavePromise = localSavePromise;
 
-  localSavePromise = (async () => {
-    let result = true;
-    while (localSaveRequested) {
-      localSaveRequested = false;
-      const requestedTrySync = localSaveTrySync;
-      localSaveTrySync = false;
-      const noteID = currentNoteId || newLocalNoteID();
-      if (!currentNoteId) currentNoteId = noteID;
-      const data = readEditorSnapshot();
-      const snapshot = {
-        ...data,
-        noteID,
-        revision: currentRevision,
-        baseRevision: currentBaseRevision ?? currentRevision ?? 0,
-        sessionGeneration: editorSessionGeneration,
-      };
-      result = await persistEditorSnapshot(snapshot, requestedTrySync);
-    }
-    return result;
-  })().finally(() => {
-    localSavePromise = null;
-  });
-  return localSavePromise;
+  // Local persistence is the navigation boundary. Network sync is chained
+  // separately so a caller such as Back can leave immediately after the
+  // queued operation is durable, even when another sync is slow.
+  if (!trySync) return currentLocalSavePromise;
+  syncCompletionPromise = syncCompletionPromise
+    .catch(error => {
+      console.warn('previous sync request failed', error);
+      return false;
+    })
+    .then(() => currentLocalSavePromise)
+    .then(saved => saved ? syncNow() : false);
+  return syncCompletionPromise;
 }
 
 async function toggleNotePin(noteID) {
@@ -2959,8 +2967,8 @@ let saveTimer = null;
 let localSaveTimer = null;
 let previewTimer = null;
 let localSavePromise = null;
+let syncCompletionPromise = Promise.resolve(true);
 let localSaveRequested = false;
-let localSaveTrySync = false;
 
 function scheduleSave() {
   if (localSaveTimer) clearTimeout(localSaveTimer);

@@ -21,6 +21,9 @@ Lightweight, low-resource single-binary Markdown files editor with SQLite metada
 VYLK_PASSWORD=<password> ./vylk
 ```
 
+Set `VYLK_APP_NAME` to change the server-wide PWA and app-shell branding. The
+default is `VYLK`; restart the server after changing it.
+
 Optional environment variables:
 
 | Variable | Default | Description |
@@ -28,6 +31,7 @@ Optional environment variables:
 | PORT | 8080 | HTTP listen port |
 | VYLK_DIR | ./notes | Directory for markdown files |
 | VYLK_DB | ./vylk.db | SQLite database path |
+| VYLK_APP_NAME | VYLK | Server-wide PWA and app-shell display name |
 | VYLK_ENCRYPTION_PASSWORD | (none) | Enable versioned encryption with an Argon2id-derived key |
 | VYLK_ENCRYPTION_KEY | (none) | Enable encryption with a `hex:` or `base64:` encoded 32-byte key; arbitrary legacy values remain readable for migration |
 | VYLK_TRUST_PROXY | (unset) | Set to `1` only when a trusted reverse proxy supplies client-IP headers |

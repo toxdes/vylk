@@ -34,6 +34,79 @@ func TestStaticCachePreventsProxyTransforms(t *testing.T) {
 	}
 }
 
+func TestConfiguredAppName(t *testing.T) {
+	tests := []struct {
+		raw     string
+		want    string
+		wantErr bool
+	}{
+		{raw: "", want: defaultAppName},
+		{raw: "  Acme Notes  ", want: "Acme Notes"},
+		{raw: strings.Repeat("x", maxAppNameRunes+1), wantErr: true},
+		{raw: "Acme\nNotes", wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.raw, func(t *testing.T) {
+			got, err := configuredAppName(test.raw)
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("configuredAppName(%q) returned %q without an error", test.raw, got)
+				}
+				return
+			}
+			if err != nil || got != test.want {
+				t.Fatalf("configuredAppName(%q) = %q, %v; want %q", test.raw, got, err, test.want)
+			}
+		})
+	}
+}
+
+func TestRenderedAppShellEscapesConfiguredName(t *testing.T) {
+	shell, err := renderAppShell(`Acme & <Notes> "today"`)
+	if err != nil {
+		t.Fatalf("render app shell: %v", err)
+	}
+	if !strings.Contains(string(shell), "Acme &amp; &lt;Notes&gt; &#34;today&#34;") {
+		t.Fatalf("rendered shell does not contain escaped app name")
+	}
+	if strings.Contains(string(shell), appNamePlaceholder) {
+		t.Fatalf("rendered shell still contains app name placeholder")
+	}
+	result := httptest.NewRecorder()
+	serveAppShell(result, httptest.NewRequest(http.MethodGet, "/", nil), shell)
+	if result.Header().Get("Cache-Control") != "no-cache, no-transform" {
+		t.Fatalf("app shell cache control = %q", result.Header().Get("Cache-Control"))
+	}
+}
+
+func TestManifestUsesConfiguredAppName(t *testing.T) {
+	previous := appName
+	appName = "Acme Notes"
+	defer func() { appName = previous }()
+
+	result := httptest.NewRecorder()
+	handleManifest(result, httptest.NewRequest(http.MethodGet, "/manifest.json", nil))
+	if result.Code != http.StatusOK || result.Header().Get("Content-Type") != "application/manifest+json; charset=utf-8" {
+		t.Fatalf("manifest response = status %d, content type %q", result.Code, result.Header().Get("Content-Type"))
+	}
+	if result.Header().Get("Cache-Control") != "no-cache, no-transform" {
+		t.Fatalf("manifest cache control = %q", result.Header().Get("Cache-Control"))
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(result.Body.Bytes(), &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	if manifest["name"] != appName || manifest["short_name"] != appName {
+		t.Fatalf("manifest names = %#v", manifest)
+	}
+}
+
+func TestAppRevisionIncludesConfiguredAppName(t *testing.T) {
+	if embeddedAppRevision("VYLK") == embeddedAppRevision("Acme Notes") {
+		t.Fatal("app revision did not change with configured app name")
+	}
+}
+
 func TestSecurityHeadersUseStrictCSP(t *testing.T) {
 	handler := securityHeaders(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	result := httptest.NewRecorder()
