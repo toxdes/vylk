@@ -21,7 +21,15 @@ let savedSnapshot = { title: '', tags: '', content: '' };
 let editorSessionGeneration = 0;
 const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel', collapseDetails:false, hideCursorHighlight:false, statusDisplay:'normal', contentWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans', fontFamilyGoogle:false, fontSize:'1rem', editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, editorFontSize:'1rem', previewFontFamily:'system-sans', previewFontFamilyGoogle:false, previewFontSize:'1rem'};
 const CONTENT_WIDTH_VALUES = ['compact', 'standard', 'wide', 'full'];
-const FONT_SIZE_PATTERN = /^(?:(?:0|[1-9]\d*)(?:\.\d+)?|\.\d+)(?:px|rem|em|pt|%)$/i;
+const FONT_SIZE_OPTIONS = [
+  {value: '0.8rem', label: 'Small (80%)'},
+  {value: '0.9rem', label: 'Smaller (90%)'},
+  {value: '1rem', label: 'Default (100%)'},
+  {value: '1.1rem', label: 'Large (110%)'},
+  {value: '1.25rem', label: 'Larger (125%)'},
+  {value: '1.5rem', label: 'Extra large (150%)'},
+];
+const FONT_SIZE_VALUES = FONT_SIZE_OPTIONS.map(option => option.value);
 const FONT_CACHE_NAME = 'vylk-fonts';
 const SYSTEM_FONT_STACK = 'ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
 const SYSTEM_SERIF_STACK = 'ui-serif,Georgia,Cambria,"Times New Roman",Times,serif';
@@ -3688,8 +3696,7 @@ function normalizeFontValue(value, key) {
 
 function validFontSizeValue(value) {
   if (typeof value !== 'string') return false;
-  const normalized = value.trim();
-  return normalized.length <= 24 && FONT_SIZE_PATTERN.test(normalized) && Number.parseFloat(normalized) > 0;
+  return FONT_SIZE_VALUES.includes(value.trim());
 }
 
 function normalizeFontSizeValue(value, key) {
@@ -3754,9 +3761,9 @@ async function clearFontCache() {
 }
 
 const FONT_SLOTS = [
-  {preference:'fontFamily', fetchPreference:'fontFamilyGoogle', sizePreference:'fontSize', variable:'--font', sizeVariable:'--font-size', input:'#pref-font', sizeInput:'#pref-font-size', fetch:'#pref-font-google', error:'#pref-font-error', sizeError:'#pref-font-size-error', fallback:SYSTEM_FONT_STACK},
-  {preference:'editorFontFamily', fetchPreference:'editorFontFamilyGoogle', sizePreference:'editorFontSize', variable:'--editor-font', sizeVariable:'--editor-font-size', input:'#pref-editor-font', sizeInput:'#pref-editor-font-size', fetch:'#pref-editor-font-google', error:'#pref-editor-font-error', sizeError:'#pref-editor-font-size-error', fallback:SYSTEM_MONO_STACK},
-  {preference:'previewFontFamily', fetchPreference:'previewFontFamilyGoogle', sizePreference:'previewFontSize', variable:'--preview-font', sizeVariable:'--preview-font-size', input:'#pref-preview-font', sizeInput:'#pref-preview-font-size', fetch:'#pref-preview-font-google', error:'#pref-preview-font-error', sizeError:'#pref-preview-font-size-error', fallback:SYSTEM_FONT_STACK},
+  {preference:'fontFamily', fetchPreference:'fontFamilyGoogle', sizePreference:'fontSize', variable:'--font', sizeVariable:'--font-size', input:'#pref-font', sizeInput:'#pref-font-size', fetch:'#pref-font-google', error:'#pref-font-error', fallback:SYSTEM_FONT_STACK},
+  {preference:'editorFontFamily', fetchPreference:'editorFontFamilyGoogle', sizePreference:'editorFontSize', variable:'--editor-font', sizeVariable:'--editor-font-size', input:'#pref-editor-font', sizeInput:'#pref-editor-font-size', fetch:'#pref-editor-font-google', error:'#pref-editor-font-error', fallback:SYSTEM_MONO_STACK},
+  {preference:'previewFontFamily', fetchPreference:'previewFontFamilyGoogle', sizePreference:'previewFontSize', variable:'--preview-font', sizeVariable:'--preview-font-size', input:'#pref-preview-font', sizeInput:'#pref-preview-font-size', fetch:'#pref-preview-font-google', error:'#pref-preview-font-error', fallback:SYSTEM_FONT_STACK},
 ];
 
 function fontCSSValue(fontFamily, fallback) {
@@ -3770,18 +3777,6 @@ function setFontError(slot, message = '') {
   error.textContent = message;
   error.hidden = !message;
   const input = $(slot.input);
-  if (input) {
-    if (message) input.setAttribute('aria-invalid', 'true');
-    else input.removeAttribute('aria-invalid');
-  }
-}
-
-function setFontSizeError(slot, message = '') {
-  const error = $(slot.sizeError);
-  if (!error) return;
-  error.textContent = message;
-  error.hidden = !message;
-  const input = $(slot.sizeInput);
   if (input) {
     if (message) input.setAttribute('aria-invalid', 'true');
     else input.removeAttribute('aria-invalid');
@@ -3857,8 +3852,11 @@ function renderFontOptions() {
   FONT_SLOTS.forEach(slot => {
     const input = $(slot.input);
     if (input) input.value = prefs[slot.preference];
-    const sizeInput = $(slot.sizeInput);
-    if (sizeInput) sizeInput.value = prefs[slot.sizePreference];
+    const sizeSelect = $(slot.sizeInput);
+    if (sizeSelect) {
+      sizeSelect.innerHTML = FONT_SIZE_OPTIONS.map(option => `<option value="${option.value}">${option.label}</option>`).join('');
+      sizeSelect.value = prefs[slot.sizePreference];
+    }
     const fetchToggle = $(slot.fetch);
     if (fetchToggle) fetchToggle.checked = Boolean(prefs[slot.fetchPreference]);
   });
@@ -3975,17 +3973,8 @@ FONT_SLOTS.forEach(slot => {
   $(slot.fetch).addEventListener('change', function () {
     void savePref(slot.fetchPreference, this.checked);
   });
-  const sizeInput = $(slot.sizeInput);
-  sizeInput.addEventListener('input', function () {
-    if (!$(slot.sizeError)?.hidden) setFontSizeError(slot, validFontSizeValue(this.value) ? '' : 'Enter a positive size such as 14px, 1rem, 14pt, or 110%.');
-  });
-  sizeInput.addEventListener('change', function () {
-    if (!validFontSizeValue(this.value)) {
-      setFontSizeError(slot, 'Enter a positive size such as 14px, 1rem, 14pt, or 110%.');
-      return;
-    }
-    this.value = this.value.trim();
-    setFontSizeError(slot);
+  const sizeSelect = $(slot.sizeInput);
+  sizeSelect.addEventListener('change', function () {
     void savePref(slot.sizePreference, this.value);
   });
 });

@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -233,7 +232,14 @@ var preferenceFieldNames = map[string]struct{}{
 	"previewFontSize":         {},
 }
 
-var fontSizeValuePattern = regexp.MustCompile(`(?i)^((?:(?:0|[1-9][0-9]*)(?:\.[0-9]+)?|\.[0-9]+))(px|rem|em|pt|%)$`)
+var fontSizeValues = map[string]struct{}{
+	"0.8rem":  {},
+	"0.9rem":  {},
+	"1rem":    {},
+	"1.1rem":  {},
+	"1.25rem": {},
+	"1.5rem":  {},
+}
 
 func validContentWidthValue(value string) bool {
 	switch value {
@@ -245,16 +251,8 @@ func validContentWidthValue(value string) bool {
 }
 
 func validFontSizeValue(value string) bool {
-	normalized := strings.TrimSpace(value)
-	if len(normalized) > 24 {
-		return false
-	}
-	match := fontSizeValuePattern.FindStringSubmatch(normalized)
-	if len(match) != 3 {
-		return false
-	}
-	number, err := strconv.ParseFloat(match[1], 64)
-	return err == nil && number > 0
+	_, ok := fontSizeValues[strings.TrimSpace(value)]
+	return ok
 }
 
 func validatePreferenceFieldValue(key string, value json.RawMessage) error {
