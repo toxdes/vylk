@@ -321,7 +321,9 @@ describe('markdown preview policy', () => {
     expect(preview.scrollTop).toBe(37);
     expect(app.window.document.querySelector('#toast-region').children).toHaveLength(0);
 
-    expect(app.hooks.undoInteractivePreview()).toBe(true);
+    const interactiveUndo = new app.window.KeyboardEvent('keydown', {key:'z', ctrlKey:true, bubbles:true, cancelable:true});
+    app.window.document.querySelector('#preview input[type="checkbox"]').dispatchEvent(interactiveUndo);
+    expect(interactiveUndo.defaultPrevented).toBe(true);
     expect(textarea.value).toContain('- [ ] ship this');
     expect(preview.scrollTop).toBe(37);
     expect(app.window.document.querySelector('#toast-region').children).toHaveLength(0);
@@ -329,6 +331,52 @@ describe('markdown preview policy', () => {
     expect(textarea.readOnly).toBe(false);
     expect(app.window.document.querySelector('#preview').classList.contains('interactive-preview-active')).toBe(false);
     expect(app.window.document.querySelectorAll('#preview [data-preview-drag-indicator]')).toHaveLength(0);
+  });
+
+  test('does not apply a drag using stale preview ranges after source edits', async () => {
+    const app = track(await createApp({realMarked: true}));
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '- Alpha\n- Bravo'});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const preview = app.window.document.querySelector('#preview');
+    const items = [...preview.querySelectorAll('li[data-interactive-start]')];
+    const rectangle = top => ({left:100, top, right:400, bottom:top + 40, width:300, height:40, x:100, y:top, toJSON() { return this; }});
+    items[0].getBoundingClientRect = () => rectangle(80);
+    items[1].getBoundingClientRect = () => rectangle(140);
+    preview.getBoundingClientRect = () => ({left:80, top:60, right:420, bottom:240, width:340, height:180, x:80, y:60, toJSON() { return this; }});
+
+    const textarea = app.window.document.querySelector('#note-content');
+    const editedSource = 'Introduction\n\n- Alpha\n- Bravo';
+    textarea.value = editedSource;
+    textarea.dispatchEvent(new app.window.Event('input', {bubbles:true}));
+
+    const handle = items[0].querySelector('.preview-drag-handle');
+    handle.dispatchEvent(pointerEvent(app.window, 'pointerdown', {pointerId:7, button:0, clientX:120, clientY:100}));
+    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointermove', {pointerId:7, buttons:1, clientX:120, clientY:175}));
+    await new Promise(resolve => app.window.requestAnimationFrame(resolve));
+    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointerup', {pointerId:7, button:0, clientX:120, clientY:175}));
+
+    expect(textarea.value).toBe(editedSource);
+  });
+
+  test('leaves native undo and redo available without an interactive transaction', async () => {
+    const app = track(await createApp({realMarked: true}));
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: 'Original'});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const textarea = app.window.document.querySelector('#note-content');
+    textarea.value = 'Ordinary source edit';
+    textarea.dispatchEvent(new app.window.Event('input', {bubbles:true}));
+    const title = app.window.document.querySelector('#note-title');
+    const sourceUndo = new app.window.KeyboardEvent('keydown', {key:'z', ctrlKey:true, bubbles:true, cancelable:true});
+    const titleUndo = new app.window.KeyboardEvent('keydown', {key:'z', ctrlKey:true, bubbles:true, cancelable:true});
+    const sourceRedo = new app.window.KeyboardEvent('keydown', {key:'z', ctrlKey:true, shiftKey:true, bubbles:true, cancelable:true});
+
+    textarea.dispatchEvent(sourceUndo);
+    title.dispatchEvent(titleUndo);
+    textarea.dispatchEvent(sourceRedo);
+
+    expect([sourceUndo.defaultPrevented, titleUndo.defaultPrevented, sourceRedo.defaultPrevented]).toEqual([false, false, false]);
   });
 
   test('keeps panel layout state clean when reopening preview after full width', async () => {
@@ -461,6 +509,21 @@ describe('markdown preview policy', () => {
 
     const nested = app.window.VylkInteractive.listItemRanges('- one\n  - nested\n- two', 0, 'list:0');
     expect(app.window.VylkInteractive.reorderListItems('- one\n  - nested\n- two', nested, nested[1].start, nested[2].start, 'before')).toBeNull();
+  });
+
+  test('keeps nested content attached when ordered-list renumbering crosses a digit boundary', async () => {
+    const app = track(await createApp());
+    const source = '9. first\n   - child-first\n10. second\n    - child-second';
+    const entries = app.window.VylkInteractive.listItemRanges(source, 0, 'list:0');
+    const siblings = entries.filter(entry => entry.parent === null);
+
+    const moved = app.window.VylkInteractive.reorderListItems(source, entries, siblings[0].start, siblings[1].start, 'after');
+    const lines = moved.source.split('\n');
+    const movedItemIndex = lines.indexOf('10. first');
+    const markerWidth = lines[movedItemIndex].match(/^\s*\d+[.)]\s+/)[0].length;
+    const childIndent = lines[movedItemIndex + 1].match(/^\s*/)[0].length;
+
+    expect(childIndent).toBeGreaterThanOrEqual(markerWidth);
   });
 
   test('moves valid Markdown units across block and list boundaries', async () => {
