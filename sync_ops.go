@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -174,7 +176,7 @@ func validateSyncOperation(operation syncOperationRequest) error {
 			return errors.New("invalid note pin operation")
 		}
 	case "prefs.save":
-		if operation.Prefs == nil {
+		if operation.Prefs == nil || validatePrefs(operation.Prefs) != nil || validatePreferencePatch(operation.Prefs.SyncPatch) != nil {
 			return errors.New("invalid preferences operation")
 		}
 	case "noop":
@@ -231,6 +233,74 @@ var preferenceFieldNames = map[string]struct{}{
 	"previewFontSize":         {},
 }
 
+var fontSizeValuePattern = regexp.MustCompile(`(?i)^((?:(?:0|[1-9][0-9]*)(?:\.[0-9]+)?|\.[0-9]+))(px|rem|em|pt|%)$`)
+
+func validContentWidthValue(value string) bool {
+	switch value {
+	case "compact", "standard", "wide", "full":
+		return true
+	default:
+		return false
+	}
+}
+
+func validFontSizeValue(value string) bool {
+	normalized := strings.TrimSpace(value)
+	if len(normalized) > 24 {
+		return false
+	}
+	match := fontSizeValuePattern.FindStringSubmatch(normalized)
+	if len(match) != 3 {
+		return false
+	}
+	number, err := strconv.ParseFloat(match[1], 64)
+	return err == nil && number > 0
+}
+
+func validatePreferenceFieldValue(key string, value json.RawMessage) error {
+	if _, ok := preferenceFieldNames[key]; !ok {
+		return fmt.Errorf("unknown preference field %q", key)
+	}
+	switch key {
+	case "contentWidth":
+		var contentWidth string
+		if err := json.Unmarshal(value, &contentWidth); err != nil || !validContentWidthValue(contentWidth) {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
+	case "fontSize", "editorFontSize", "previewFontSize":
+		var fontSize string
+		if err := json.Unmarshal(value, &fontSize); err != nil || !validFontSizeValue(fontSize) {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
+	}
+	return nil
+}
+
+func validatePrefs(p *prefs) error {
+	if p.ContentWidth != "" && !validContentWidthValue(p.ContentWidth) {
+		return fmt.Errorf("invalid preference value for %q", "contentWidth")
+	}
+	for key, value := range map[string]string{
+		"fontSize":        p.FontSize,
+		"editorFontSize":  p.EditorFontSize,
+		"previewFontSize": p.PreviewFontSize,
+	} {
+		if value != "" && !validFontSizeValue(value) {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
+	}
+	return nil
+}
+
+func validatePreferencePatch(patch map[string]json.RawMessage) error {
+	for key, value := range patch {
+		if err := validatePreferenceFieldValue(key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func preferenceFields(p *prefs) (map[string]json.RawMessage, error) {
 	encoded, err := json.Marshal(p)
 	if err != nil {
@@ -280,11 +350,8 @@ func applyPreferencePatch(current *prefs, patch map[string]json.RawMessage) (*pr
 		return nil, err
 	}
 	for key, value := range patch {
-		if _, ok := preferenceFieldNames[key]; !ok {
-			return nil, fmt.Errorf("unknown preference field %q", key)
-		}
-		if !json.Valid(value) {
-			return nil, fmt.Errorf("invalid preference value for %q", key)
+		if err := validatePreferenceFieldValue(key, value); err != nil {
+			return nil, err
 		}
 		fields[key] = value
 	}

@@ -1587,6 +1587,116 @@ func TestPreferenceSyncMergesDisjointChangesAndConflictsSameField(t *testing.T) 
 	}
 }
 
+func TestPreferenceSyncRejectsInvalidValuesPermanently(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	a := &app{db: db, notesDir: t.TempDir(), noteCache: newNoteCache()}
+	body, err := json.Marshal(syncPushRequest{
+		DeviceID: "device_a",
+		Operations: []syncOperationRequest{{
+			ClientSequence: 1,
+			OpID:           "preference_1",
+			Type:           "prefs.save",
+			Prefs: &prefs{SyncPatch: map[string]json.RawMessage{
+				"fontSize":     json.RawMessage(`"calc(1rem + 2px)"`),
+				"contentWidth": json.RawMessage(`"bogus"`),
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body)))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	a.handleSyncPush(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid preference sync status = %d: %s", w.Code, w.Body.String())
+	}
+	var response map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode invalid preference response: %v", err)
+	}
+	if response["code"] != "invalid_sync_operation" || response["permanent"] != true || response["operation_index"] != float64(0) {
+		t.Fatalf("invalid preference response = %#v", response)
+	}
+	p, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("load preferences after rejected sync: %v", err)
+	}
+	if p.ContentWidth != "standard" || p.FontSize != "1rem" {
+		t.Fatalf("preferences changed after rejected sync = %#v", p)
+	}
+
+	body, err = json.Marshal(syncPushRequest{
+		DeviceID: "device_b",
+		Operations: []syncOperationRequest{{
+			ClientSequence: 1,
+			OpID:           "preference_2",
+			Type:           "prefs.save",
+			Prefs: &prefs{SyncPatch: map[string]json.RawMessage{
+				"previewFontSize": json.RawMessage(`14`),
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal wrong-type request: %v", err)
+	}
+	r = httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body)))
+	r.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	a.handleSyncPush(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("wrong-type preference sync status = %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDirectPreferencesRejectInvalidValues(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	a := &app{db: db}
+	for name, mutate := range map[string]func(*prefs){
+		"content width": func(p *prefs) { p.ContentWidth = "bogus" },
+		"font size":     func(p *prefs) { p.FontSize = "calc(1rem + 2px)" },
+	} {
+		p, err := getPrefs(db)
+		if err != nil {
+			t.Fatalf("load preferences for %s: %v", name, err)
+		}
+		mutate(p)
+		body, err := json.Marshal(p)
+		if err != nil {
+			t.Fatalf("marshal %s preferences: %v", name, err)
+		}
+		r := httptest.NewRequest(http.MethodPatch, "/api/prefs", strings.NewReader(string(body)))
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		a.handleSavePrefs(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("invalid %s preference status = %d: %s", name, w.Code, w.Body.String())
+		}
+	}
+	p, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("load preferences after direct rejection: %v", err)
+	}
+	if p.ContentWidth != "standard" || p.FontSize != "1rem" {
+		t.Fatalf("preferences changed after direct rejection = %#v", p)
+	}
+}
+
 func TestDirectPreferencePatchUsesRevisionAndPublishesChange(t *testing.T) {
 	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
 	if err != nil {
