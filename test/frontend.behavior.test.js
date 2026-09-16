@@ -473,6 +473,40 @@ describe('markdown preview policy', () => {
     expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:false, dragging:false, sourceLocked:false, outside:false});
   });
 
+  test('does not claim touch gestures from preview content', async () => {
+    const app = track(await createApp({realMarked: true}));
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '# Heading'});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const content = app.window.document.querySelector('.interactive-preview-block-card .preview-drag-content');
+    content.dispatchEvent(pointerEvent(app.window, 'pointerdown', {pointerType:'touch', button:0, clientX:120, clientY:100}));
+
+    expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:false, dragging:false, sourceLocked:false});
+  });
+
+  test('requires a short touch hold on the drag handle before moving', async () => {
+    const app = track(await createApp({realMarked: true}));
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '# Heading\n\nParagraph'});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const card = app.window.document.querySelector('.interactive-preview-block-card');
+    const handle = card.querySelector('.preview-drag-handle');
+    const rect = {left:100, top:80, right:400, bottom:128, width:300, height:48, x:100, y:80, toJSON() { return this; }};
+    card.getBoundingClientRect = () => rect;
+    const preview = app.window.document.querySelector('#preview');
+    preview.getBoundingClientRect = () => ({left:80, top:60, right:420, bottom:300, width:340, height:240, x:80, y:60, toJSON() { return this; }});
+    app.window.document.elementFromPoint = () => card;
+
+    handle.dispatchEvent(pointerEvent(app.window, 'pointerdown', {pointerId:3, pointerType:'touch', button:0, clientX:120, clientY:100}));
+    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointermove', {pointerId:3, pointerType:'touch', buttons:1, clientX:170, clientY:130}));
+    expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:true, dragging:false, sourceLocked:false});
+
+    await new Promise(resolve => setTimeout(resolve, 240));
+    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointermove', {pointerId:3, pointerType:'touch', buttons:1, clientX:170, clientY:130}));
+    await vi.waitFor(() => expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:true, dragging:true, sourceLocked:true}));
+    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointercancel', {pointerId:3, pointerType:'touch', clientX:170, clientY:130}));
+  });
+
   test('auto-scrolls only near reachable preview edges', async () => {
     const app = track(await createApp());
     const preview = {

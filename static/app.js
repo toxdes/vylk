@@ -4527,6 +4527,8 @@ function cancelPreviewDrag({animateReturn = true} = {}) {
 
 $('#preview').addEventListener('pointerdown', event => {
   if (!interactivePreviewActive || !interactivePreviewSourceIsCurrent() || event.button !== 0 || event.isPrimary === false) return;
+  const startedOnHandle = Boolean(event.target.closest('.preview-drag-handle'));
+  if (event.pointerType === 'touch' && !startedOnHandle) return;
   const item = event.target.closest('#preview > [data-interactive-start], #preview li[data-interactive-start]');
   if (!item || event.target.closest('a,input,button,select,textarea')) return;
   const entry = interactiveEntryByElement.get(item);
@@ -4538,7 +4540,7 @@ $('#preview').addEventListener('pointerdown', event => {
     scope:entry.scope,
     sourceElement:entry.element,
     visualElement:entry.visualElement || entry.element,
-    startedOnHandle:Boolean(event.target.closest('.preview-drag-handle')),
+    startedOnHandle,
     startedAt:performance.now(),
     startX:event.clientX,
     startY:event.clientY,
@@ -4555,16 +4557,17 @@ $('#preview').addEventListener('selectstart', () => {
   if (activePreviewDrag && !activePreviewDrag.armed && !activePreviewDrag.startedOnHandle) activePreviewDrag = null;
 });
 
+$('#preview').addEventListener('contextmenu', event => {
+  if (event.target.closest('.preview-drag-handle')) event.preventDefault();
+});
+
 document.addEventListener('pointermove', event => {
   const drag = activePreviewDrag;
   if (!drag || drag.pointerID !== event.pointerId) return;
   drag.x = event.clientX;
   drag.y = event.clientY;
   if (!drag.armed && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 6) return;
-  if (!drag.armed && !drag.startedOnHandle && event.pointerType === 'touch' && performance.now() - drag.startedAt < 220) {
-    activePreviewDrag = null;
-    return;
-  }
+  if (!drag.armed && event.pointerType === 'touch' && performance.now() - drag.startedAt < 220) return;
   if (!drag.armed) {
     event.preventDefault();
     drag.armed = true;
