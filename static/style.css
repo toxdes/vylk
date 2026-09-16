@@ -248,9 +248,13 @@ header h1{font-size:1.125em}
 .note-conflict{font-size:.6875em}
 .conflict-selection-status{font-size:.8125em}
 .about-row small{font-size:.75em}
-/* A quiet landing cue for preview-to-source navigation. */
+/* A browser-backed mirror keeps the active visual row aligned with native text
+   wrapping while the visible cue remains a single lightweight element. */
 .editor-source-wrap{position:relative;display:flex;flex:1;min-height:0;overflow:hidden;background:var(--card-bg)}
-.editor-current-line{position:absolute;z-index:0;top:var(--editor-caret-top,1rem);right:1.125rem;left:1.125rem;height:var(--editor-caret-height,1.65rem);border-radius:4px;background:color-mix(in srgb,var(--accent) 8%,transparent);opacity:0;pointer-events:none;transform:translate3d(0,0,0);transition:opacity .14s}
+.editor-caret-measure{position:absolute;z-index:-1;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;white-space:pre-wrap}
+.editor-current-line{position:absolute;z-index:0;top:var(--editor-caret-top,1rem);right:1.125rem;left:1.125rem;height:var(--editor-caret-height,1.65rem);border-radius:4px;background:color-mix(in srgb,var(--accent) 6%,transparent);opacity:0;pointer-events:none;transform:translate3d(0,0,0);transition:opacity .14s}
 .editor-source-wrap.is-caret-visible .editor-current-line{opacity:1}
+#note-content{padding-bottom:1rem;scroll-padding-bottom:1rem;caret-color:var(--accent)}
+#note-content::selection{background:color-mix(in srgb,var(--accent) 28%,transparent);color:var(--fg)}
 #note-content{position:relative;z-index:1;background:transparent}
 @media(prefers-reduced-motion:reduce){.editor-current-line{transition-duration:.01ms}}

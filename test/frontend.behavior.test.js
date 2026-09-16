@@ -547,9 +547,17 @@ describe('markdown preview policy', () => {
     expect(app.window.document.querySelector('#preview p').getAttribute('start')).toBeNull();
   });
 
-  test('leaves three editor lines of bottom breathing room', async () => {
-    expect(styleSource).toContain('#note-content{padding-bottom:4.95em;scroll-padding-bottom:4.95em}');
-    expect(styleSource).toContain('.editor-current-line');
+  test('keeps the editor compact and the native caret distinct', async () => {
+    const app = track(await createApp());
+    expect(app.window.document.querySelector('.editor-position-bar')).toBeNull();
+    expect(app.window.document.querySelector('.editor-current-line')).not.toBeNull();
+    expect(styleSource).toContain('caret-color:var(--accent)');
+    expect(styleSource).toContain('.editor-caret-measure');
+    expect(styleSource).toContain('.editor-source-wrap.is-caret-visible .editor-current-line');
+    expect(styleSource).toContain('background:color-mix(in srgb,var(--accent) 6%,transparent)');
+    expect(styleSource).toContain('#note-content{padding-bottom:1rem;scroll-padding-bottom:1rem;caret-color:var(--accent)}');
+    expect(styleSource).not.toContain('.editor-source-wrap:focus-within{box-shadow:inset 3px 0 0 var(--accent)}');
+    expect(styleSource).not.toMatch(/\.editor-current-line\{[^}]*transition:[^}]*\btop/);
   });
 
   test('softly aligns the preview anchor with the editor caret', async () => {
@@ -630,7 +638,7 @@ describe('markdown preview policy', () => {
     expect(app.window.document.querySelector('#preview > ul').classList.contains('highlight')).toBe(false);
   });
 
-  test('maps caret positions at block ends and in separator whitespace', async () => {
+  test('highlights blocks at their boundaries but not separator whitespace', async () => {
     const app = track(await createApp({realMarked: true}));
     const content = '# First\n\nfirst paragraph\n\n# Second\n\nsecond paragraph';
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content});
@@ -640,16 +648,16 @@ describe('markdown preview policy', () => {
     const blocks = [...app.window.document.querySelector('#preview').children];
     const positions = [
       {position: content.indexOf('# First') + '# First'.length, block: 0},
-      {position: content.indexOf('\n\nfirst') + 1, block: 0},
-      {position: content.indexOf('\n\n# Second') + 1, block: 1},
+      {position: content.indexOf('\n\nfirst') + 1, block: -1},
+      {position: content.indexOf('\n\n# Second') + 1, block: -1},
       {position: content.length, block: blocks.length - 1},
     ];
 
     for (const {position, block} of positions) {
       textarea.selectionStart = textarea.selectionEnd = position;
       app.hooks.highlightBlock();
-      expect(blocks.filter(element => element.classList.contains('highlight'))).toHaveLength(1);
-      expect(blocks[block].classList.contains('highlight')).toBe(true);
+      expect(blocks.filter(element => element.classList.contains('highlight'))).toHaveLength(block < 0 ? 0 : 1);
+      if (block >= 0) expect(blocks[block].classList.contains('highlight')).toBe(true);
     }
   });
 

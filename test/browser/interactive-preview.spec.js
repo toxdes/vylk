@@ -41,6 +41,7 @@ test('interactive preview preserves selection and tracks drag reflow', async ({p
   expect(firstEditor).not.toBeNull();
   expect(firstCue.y).toBeGreaterThanOrEqual(firstEditor.y);
   expect(firstCue.y).toBeLessThan(firstEditor.y + firstEditor.height);
+  expect(await page.locator('#note-content').evaluate(textarea => getComputedStyle(textarea).caretColor)).not.toBe('auto');
   expect(await page.locator('#note-content').evaluate(textarea => textarea.selectionStart)).toBe(2);
   await body.hover();
   await page.locator('#note-content').evaluate(textarea => {
@@ -81,6 +82,207 @@ test('interactive preview preserves selection and tracks drag reflow', async ({p
 
   await expect(page.locator('#note-content')).toHaveValue('- Bravo\n- Charlie\n- Alpha\n- Delta');
   await expect(page.locator('.preview-drag-ghost')).toHaveCount(0);
+});
+
+test('source caret cue follows wrapped visual rows', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const content = 'wrapped '.repeat(40).trim();
+  const editor = page.locator('#note-content');
+  await editor.fill(content);
+  await editor.focus();
+
+  const setCaret = async position => editor.evaluate((textarea, nextPosition) => {
+    textarea.setSelectionRange(nextPosition, nextPosition);
+    textarea.dispatchEvent(new Event('select', {bubbles:true}));
+  }, position);
+  await setCaret(0);
+  await expect(page.locator('.editor-source-wrap')).toHaveClass(/is-caret-visible/);
+  const cueDocumentTop = () => page.locator('#note-content').evaluate(textarea => {
+    const cue = document.querySelector('.editor-current-line');
+    return parseFloat(getComputedStyle(cue).top) + textarea.scrollTop;
+  });
+  await expect.poll(cueDocumentTop).toBeLessThan(40);
+  const firstRowTop = await cueDocumentTop();
+  await setCaret(96);
+  await expect.poll(cueDocumentTop).toBeGreaterThan(firstRowTop);
+});
+
+test('source caret cue stays on logical line starts, including blank lines', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const content = 'alpha\nbravo\n\ncharlie';
+  const editor = page.locator('#note-content');
+  await editor.fill(content);
+  await editor.focus();
+
+  const lineStarts = [0, content.indexOf('bravo'), content.indexOf('\n\n') + 1, content.indexOf('charlie')];
+  const measurements = [];
+  for (const position of lineStarts) {
+    await editor.evaluate((textarea, nextPosition) => {
+      textarea.setSelectionRange(nextPosition, nextPosition);
+      textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+    }, position);
+    await page.waitForTimeout(140);
+    measurements.push(await editor.evaluate(textarea => {
+      const cue = document.querySelector('.editor-current-line');
+      return {
+        top:parseFloat(getComputedStyle(cue).top) + textarea.scrollTop,
+        lineHeight:parseFloat(getComputedStyle(textarea).lineHeight),
+      };
+    }));
+  }
+  const firstTop = measurements[0].top;
+  const lineHeight = measurements[0].lineHeight;
+  expect(measurements.map(measurement => measurement.top - firstTop)).toEqual([
+    0,
+    expect.closeTo(lineHeight, 1),
+    expect.closeTo(lineHeight * 2, 1),
+    expect.closeTo(lineHeight * 3, 1),
+  ]);
+});
+
+test('source caret cue stays on the first character of a soft-wrapped row', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const content = 'wrapped '.repeat(80).trim();
+  const editor = page.locator('#note-content');
+  await editor.fill(content);
+  await editor.focus();
+
+  const position = await editor.evaluate(textarea => {
+    const computed = getComputedStyle(textarea);
+    const mirror = document.createElement('div');
+    const before = document.createTextNode('');
+    const marker = document.createElement('span');
+    const after = document.createTextNode(textarea.value);
+    mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;white-space:pre-wrap;';
+    mirror.style.width = `${textarea.clientWidth}px`;
+    mirror.style.boxSizing = 'border-box';
+    ['border', 'padding', 'font', 'letterSpacing', 'lineHeight', 'tabSize', 'whiteSpace', 'overflowWrap', 'wordBreak', 'textIndent', 'direction', 'unicodeBidi', 'wordSpacing']
+      .forEach(property => { mirror.style[property] = computed[property]; });
+    marker.textContent = '\u200b';
+    mirror.append(before, marker, after);
+    textarea.parentElement.append(mirror);
+    const mirrorRect = mirror.getBoundingClientRect();
+    let previousTop = marker.getBoundingClientRect().top - mirrorRect.top;
+    let wrappedPosition = -1;
+    for (let nextPosition = 1; nextPosition < textarea.value.length; nextPosition++) {
+      before.data = textarea.value.slice(0, nextPosition);
+      after.data = textarea.value.slice(nextPosition);
+      const top = marker.getBoundingClientRect().top - mirrorRect.top;
+      if (top > previousTop + 0.5 && textarea.value[nextPosition - 1] !== '\n') {
+        wrappedPosition = nextPosition;
+        break;
+      }
+      previousTop = top;
+    }
+    mirror.remove();
+    return wrappedPosition;
+  });
+  expect(position).toBeGreaterThan(0);
+  await editor.evaluate((textarea, nextPosition) => {
+    textarea.setSelectionRange(nextPosition, nextPosition);
+    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+  }, position);
+  await page.waitForTimeout(140);
+
+  const {actualOffset, expectedOffset} = await editor.evaluate((textarea, nextPosition) => {
+    const computed = getComputedStyle(textarea);
+    const mirror = document.createElement('div');
+    const marker = document.createElement('span');
+    mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;white-space:pre-wrap;';
+    mirror.style.width = `${textarea.clientWidth}px`;
+    mirror.style.boxSizing = 'border-box';
+    ['border', 'padding', 'font', 'letterSpacing', 'lineHeight', 'tabSize', 'whiteSpace', 'overflowWrap', 'wordBreak', 'textIndent', 'direction', 'unicodeBidi', 'wordSpacing']
+      .forEach(property => { mirror.style[property] = computed[property]; });
+    mirror.append(document.createTextNode(textarea.value.slice(0, nextPosition)), marker, document.createTextNode(textarea.value.slice(nextPosition)));
+    marker.textContent = '\u200b';
+    textarea.parentElement.append(mirror);
+    const markerRect = marker.getBoundingClientRect();
+    const mirrorRect = mirror.getBoundingClientRect();
+    const cue = document.querySelector('.editor-current-line');
+    const wrapRect = document.querySelector('.editor-source-wrap').getBoundingClientRect();
+    const actual = parseFloat(getComputedStyle(cue).top) + textarea.scrollTop;
+    mirror.remove();
+    return {actualOffset:actual - (textarea.getBoundingClientRect().top - wrapRect.top), expectedOffset:markerRect.top - mirrorRect.top};
+  }, position);
+  expect(actualOffset).toBeCloseTo(expectedOffset, 1);
+});
+
+test('source caret cue stays at the active end while text is selected', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const content = 'first line\nsecond line';
+  const editor = page.locator('#note-content');
+  await editor.fill(content);
+  await editor.focus();
+  await editor.evaluate(textarea => {
+    textarea.setSelectionRange(0, 0);
+    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+  });
+  await page.waitForTimeout(140);
+  const firstTop = await editor.evaluate(textarea => parseFloat(getComputedStyle(document.querySelector('.editor-current-line')).top) + textarea.scrollTop);
+  await editor.evaluate(textarea => {
+    textarea.focus({preventScroll:true});
+    textarea.setSelectionRange(0, 'first line'.length + 1);
+    textarea.dispatchEvent(new Event('select', {bubbles:true}));
+  });
+  await page.waitForTimeout(140);
+  const lineHeight = await editor.evaluate(textarea => parseFloat(getComputedStyle(textarea).lineHeight));
+  const top = await editor.evaluate(textarea => parseFloat(getComputedStyle(document.querySelector('.editor-current-line')).top) + textarea.scrollTop);
+  expect(top - firstTop).toBeCloseTo(lineHeight, 1);
+  expect(await page.locator('.editor-source-wrap')).toHaveClass(/is-caret-visible/);
+  expect(lineHeight).toBeGreaterThan(0);
+});
+
+test('source caret cue follows a real ArrowUp movement', async ({page}) => {
+  await signIn(page);
+  await page.setViewportSize({width:1000, height:800});
+  await page.locator('#new-note-btn').click();
+  const content = [
+    '2. [x] UI still feels slow to type on mobile',
+    '',
+    "1. [x] Markdown preview doesn't render for the first time when it's hidden by default, we need one render extra whenever we go from `hidden` -> `shown`",
+    '---',
+  ].join('\n') + '\n';
+  const editor = page.locator('#note-content');
+  await editor.fill(content);
+  await editor.focus();
+  await editor.press('End');
+  await editor.press('ArrowUp');
+  await page.waitForTimeout(140);
+
+  const state = await editor.evaluate(textarea => {
+    const cue = document.querySelector('.editor-current-line');
+    const wrap = document.querySelector('.editor-source-wrap');
+    const textareaRect = textarea.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    const computed = getComputedStyle(textarea);
+    const mirror = document.createElement('div');
+    const marker = document.createElement('span');
+    mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;white-space:pre-wrap;';
+    mirror.style.width = `${textarea.clientWidth}px`;
+    mirror.style.boxSizing = 'border-box';
+    ['border', 'padding', 'font', 'letterSpacing', 'lineHeight', 'tabSize', 'whiteSpace', 'overflowWrap', 'wordBreak', 'textIndent', 'direction', 'unicodeBidi', 'wordSpacing']
+      .forEach(property => { mirror.style[property] = computed[property]; });
+    mirror.append(document.createTextNode(textarea.value.slice(0, textarea.selectionStart)), marker, document.createTextNode(textarea.value.slice(textarea.selectionStart)));
+    marker.textContent = '\u200b';
+    wrap.append(mirror);
+    const markerRect = marker.getBoundingClientRect();
+    const mirrorRect = mirror.getBoundingClientRect();
+    const expectedOffset = markerRect.top - mirrorRect.top;
+    mirror.remove();
+    return {
+      position:textarea.selectionStart,
+      cueOffset:parseFloat(getComputedStyle(cue).top) + textarea.scrollTop - (textareaRect.top - wrapRect.top),
+      expectedOffset,
+      value:textarea.value,
+    };
+  });
+  expect(state.position).toBe(state.value.length - 4);
+  expect(state.value.slice(state.position, state.position + 3)).toBe('---');
+  expect(state.cueOffset).toBeCloseTo(state.expectedOffset, 1);
 });
 
 test('editing from preview-only mode opens source at the selected block', async ({page}) => {

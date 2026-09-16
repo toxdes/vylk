@@ -3,6 +3,9 @@
 
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
+const editorSourceTextarea = $('#note-content');
+const editorSourceWrap = $('.editor-source-wrap');
+const editorCurrentLine = $('.editor-current-line');
 
 const bootScreen = $('#boot-screen');
 if (bootScreen) bootScreen.hidden = false;
@@ -44,8 +47,12 @@ let renderedPreviewSource = null;
 let previewCheckFrame = null;
 let highlightFrame = null;
 let editorCaretFrame = null;
-let editorCaretTimer = null;
 let editorCaretMeasurementCache = null;
+let editorCaretMirror = null;
+let editorCaretMirrorText = null;
+let editorCaretMarker = null;
+let editorCaretRange = null;
+let editorCaretMirrorKey = '';
 let previewRenderWorker = null;
 let previewRenderGeneration = 0;
 let previewRenderRequest = null;
@@ -2648,6 +2655,7 @@ function applyEditorPrefs() {
     interactiveModeChanged = true;
   }
   syncInteractivePreviewUI();
+  scheduleEditorCaretCue();
   if (interactiveModeChanged && isPreviewVisible()) updatePreview();
 }
 
@@ -2693,6 +2701,7 @@ function startNewNote(title = '') {
   cachePreviewBlocks();
   applyEditorPrefs();
   show(screens.editor);
+  scheduleEditorCaretCue();
   $('#note-title').focus();
 }
 
@@ -2751,6 +2760,7 @@ function showNoteInEditor(data) {
   setIdleSyncStatus();
   applyEditorPrefs();
   show(screens.editor);
+  scheduleEditorCaretCue();
   requestPreviewRender();
 }
 
@@ -3708,13 +3718,17 @@ function calculatePreviewScrollAdjustment({previewTop, previewHeight, previewScr
 }
 
 function measureEditorCaret() {
-  const ta = $('#note-content');
+  const ta = editorSourceTextarea;
+  if (!ta) return null;
   const taRect = ta.getBoundingClientRect();
   if (!taRect.width || !taRect.height) return null;
   const computed = getComputedStyle(ta);
   const source = ta.value;
-  const position = ta.selectionStart;
-  const metricsKey = [taRect.width, computed.font, computed.letterSpacing, computed.lineHeight, computed.padding, computed.border].join('\u0000');
+  const position = ta.selectionDirection === 'backward' ? ta.selectionStart : ta.selectionEnd;
+  const safePosition = Math.min(position, source.length);
+  const metricsKey = [ta.clientWidth, computed.font, computed.letterSpacing, computed.lineHeight, computed.padding, computed.border,
+    computed.whiteSpace, computed.overflowWrap, computed.wordBreak, computed.tabSize, computed.textIndent,
+    computed.direction, computed.unicodeBidi, computed.wordSpacing].join('\u0000');
   if (editorCaretMeasurementCache?.source === source && editorCaretMeasurementCache.position === position && editorCaretMeasurementCache.metricsKey === metricsKey) {
     return {
       top: taRect.top + editorCaretMeasurementCache.offsetTop - ta.scrollTop,
@@ -3722,47 +3736,88 @@ function measureEditorCaret() {
       lineHeight: editorCaretMeasurementCache.lineHeight,
     };
   }
-  const mirror = document.createElement('div');
-  mirror.style.position = 'absolute';
-  mirror.style.visibility = 'hidden';
-  mirror.style.pointerEvents = 'none';
-  mirror.style.left = `${taRect.left + window.scrollX}px`;
-  mirror.style.top = `${taRect.top + window.scrollY}px`;
-  mirror.style.width = `${taRect.width}px`;
-  mirror.style.boxSizing = computed.boxSizing;
-  mirror.style.border = computed.border;
-  mirror.style.padding = computed.padding;
-  mirror.style.font = computed.font;
-  mirror.style.letterSpacing = computed.letterSpacing;
-  mirror.style.lineHeight = computed.lineHeight;
-  mirror.style.tabSize = computed.tabSize;
-  mirror.style.whiteSpace = 'pre-wrap';
-  mirror.style.overflowWrap = 'break-word';
-  mirror.style.wordBreak = 'break-word';
-  mirror.style.height = 'auto';
-  mirror.textContent = source.slice(0, position);
-  const marker = document.createElement('span');
-  marker.textContent = '\u200b';
-  mirror.append(marker);
-  document.body.append(mirror);
-  const mirrorRect = mirror.getBoundingClientRect();
-  const markerRect = marker.getBoundingClientRect();
+  if (!editorCaretMirror || !editorCaretRange || !editorCaretMirrorText || editorCaretMirrorKey !== `${source}\u0000${metricsKey}`) {
+    if (!editorCaretMirror) {
+      if (!editorSourceWrap) return null;
+      editorCaretMirror = document.createElement('div');
+      editorCaretMirror.className = 'editor-caret-measure';
+      editorCaretMirror.setAttribute('aria-hidden', 'true');
+      editorSourceWrap.append(editorCaretMirror);
+      editorCaretRange = document.createRange();
+    }
+    editorCaretMirror.style.width = `${ta.clientWidth}px`;
+    editorCaretMirror.style.boxSizing = 'border-box';
+    editorCaretMirror.style.border = computed.border;
+    editorCaretMirror.style.padding = computed.padding;
+    editorCaretMirror.style.font = computed.font;
+    editorCaretMirror.style.letterSpacing = computed.letterSpacing;
+    editorCaretMirror.style.lineHeight = computed.lineHeight;
+    editorCaretMirror.style.tabSize = computed.tabSize;
+    editorCaretMirror.style.whiteSpace = computed.whiteSpace;
+    editorCaretMirror.style.overflowWrap = computed.overflowWrap;
+    editorCaretMirror.style.wordBreak = computed.wordBreak;
+    editorCaretMirror.style.textIndent = computed.textIndent;
+    editorCaretMirror.style.direction = computed.direction;
+    editorCaretMirror.style.unicodeBidi = computed.unicodeBidi;
+    editorCaretMirror.style.wordSpacing = computed.wordSpacing;
+    editorCaretMirror.textContent = source || '\u200b';
+    editorCaretMirrorText = editorCaretMirror.firstChild;
+    editorCaretMarker = null;
+    editorCaretMirrorKey = `${source}\u0000${metricsKey}`;
+  }
+  const lineStart = safePosition === 0 || source[safePosition - 1] === '\n';
+  let caretRect;
+  if (lineStart) {
+    if (!editorCaretMarker) {
+      const before = document.createTextNode('');
+      editorCaretMarker = document.createElement('span');
+      editorCaretMarker.textContent = '\u200b';
+      const after = document.createTextNode('');
+      editorCaretMirror.replaceChildren(before, editorCaretMarker, after);
+      editorCaretMirrorText = null;
+    }
+    const children = editorCaretMirror.childNodes;
+    children[0].data = source.slice(0, safePosition);
+    children[2].data = source.slice(safePosition);
+    caretRect = editorCaretMarker.getBoundingClientRect();
+  } else {
+    if (editorCaretMarker) {
+      editorCaretMirror.textContent = source || '\u200b';
+      editorCaretMirrorText = editorCaretMirror.firstChild;
+      editorCaretMarker = null;
+    }
+    editorCaretRange.setStart(editorCaretMirrorText, safePosition);
+    editorCaretRange.collapse(true);
+    caretRect = editorCaretRange.getBoundingClientRect();
+    if (safePosition < source.length && source[safePosition] !== '\n') {
+      editorCaretRange.setEnd(editorCaretMirrorText, safePosition + 1);
+      const characterRect = editorCaretRange.getBoundingClientRect();
+      if (characterRect.height && Math.abs(characterRect.top - caretRect.top) > 0.5) caretRect = characterRect;
+      editorCaretRange.collapse(true);
+    }
+    if (!caretRect.height && safePosition > 0) {
+      editorCaretRange.setStart(editorCaretMirrorText, safePosition - 1);
+      editorCaretRange.setEnd(editorCaretMirrorText, safePosition);
+      caretRect = editorCaretRange.getBoundingClientRect();
+    }
+  }
+  const mirrorRect = editorCaretMirror.getBoundingClientRect();
   const lineHeight = parseFloat(computed.lineHeight) || parseFloat(computed.fontSize) * 1.5 || 24;
-  const offsetTop = markerRect.top - mirrorRect.top;
-  mirror.remove();
-  editorCaretMeasurementCache = {source, position, metricsKey, offsetTop, height:markerRect.height || lineHeight, lineHeight};
+  const offsetTop = caretRect.top - mirrorRect.top;
+  editorCaretMeasurementCache = {source, position, metricsKey, offsetTop, height:caretRect.height || lineHeight, lineHeight};
   return {
     top: taRect.top + offsetTop - ta.scrollTop,
-    height: markerRect.height || lineHeight,
+    height: caretRect.height || lineHeight,
     lineHeight,
   };
 }
 
 function updateEditorCaretCue() {
   editorCaretFrame = null;
-  const textarea = $('#note-content');
-  const wrap = $('.editor-source-wrap');
-  if (!textarea || !wrap) return;
+  const textarea = editorSourceTextarea;
+  const wrap = editorSourceWrap;
+  const line = editorCurrentLine;
+  if (!textarea || !wrap || !line) return;
   const focused = document.activeElement === textarea && !textarea.readOnly;
   wrap.classList.toggle('is-caret-visible', focused);
   if (!focused) return;
@@ -3773,20 +3828,23 @@ function updateEditorCaretCue() {
   wrap.style.setProperty('--editor-caret-height', `${Math.max(1, caret.height)}px`);
 }
 
-function scheduleEditorCaretCue({defer = false} = {}) {
-  if (editorCaretTimer !== null) {
-    clearTimeout(editorCaretTimer);
-    editorCaretTimer = null;
-  }
-  if (defer) {
-    editorCaretTimer = setTimeout(() => {
-      editorCaretTimer = null;
-      scheduleEditorCaretCue();
-    }, 80);
-    return;
-  }
+function scheduleEditorCaretCue() {
   if (editorCaretFrame !== null) return;
   editorCaretFrame = requestAnimationFrame(updateEditorCaretCue);
+}
+
+function centerEditorCaretInView() {
+  const textarea = editorSourceTextarea;
+  if (!textarea) return;
+  requestAnimationFrame(() => {
+    const caret = measureEditorCaret();
+    if (!caret) return;
+    const textareaRect = textarea.getBoundingClientRect();
+    const caretOffset = caret.top - textareaRect.top + textarea.scrollTop + caret.height / 2;
+    const targetOffset = textarea.clientHeight * .38;
+    const maxScrollTop = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+    textarea.scrollTop = Math.max(0, Math.min(maxScrollTop, caretOffset - targetOffset));
+  });
 }
 
 function previewBlockIndexAtPosition(position) {
@@ -3799,12 +3857,9 @@ function previewBlockIndexAtPosition(position) {
   }
   const previous = low - 1;
   const next = low < previewBlockRanges.length ? low : -1;
-  if (previous >= 0 && position < previewBlockRanges[previous].end) return previous;
-  if (previous < 0) return next;
-  if (next < 0) return previous;
-  const distanceToPrevious = position - previewBlockRanges[previous].end;
-  const distanceToNext = previewBlockRanges[next].start - position;
-  return distanceToPrevious <= distanceToNext ? previous : next;
+  if (previous >= 0 && position <= previewBlockRanges[previous].end) return previous;
+  if (next >= 0 && position === previewBlockRanges[next].start) return next;
+  return -1;
 }
 
 function previewListItemAtPosition(position, sourceLength) {
@@ -4091,16 +4146,23 @@ $('#note-content').addEventListener('input', () => {
   previewRangeSource = null;
   previewBlockRanges = [];
   scheduleHighlight();
-  scheduleEditorCaretCue({defer:true});
+  scheduleEditorCaretCue();
   cancelPendingPreviewRender();
   previewTimer = setTimeout(requestPreviewRender, 500);
 });
 $('#note-content').addEventListener('click', () => { scheduleHighlight(); scheduleEditorCaretCue(); });
-$('#note-content').addEventListener('keyup', () => { scheduleHighlight(); scheduleEditorCaretCue({defer:true}); });
+$('#note-content').addEventListener('keyup', () => { scheduleHighlight(); scheduleEditorCaretCue(); });
 $('#note-content').addEventListener('focus', scheduleEditorCaretCue);
 $('#note-content').addEventListener('blur', scheduleEditorCaretCue);
+$('#note-content').addEventListener('select', scheduleEditorCaretCue);
 $('#note-content').addEventListener('scroll', scheduleEditorCaretCue, {passive:true});
+document.addEventListener('selectionchange', () => {
+  if (document.activeElement === editorSourceTextarea) scheduleEditorCaretCue();
+});
 window.addEventListener('resize', scheduleEditorCaretCue, {passive:true});
+if (typeof ResizeObserver === 'function' && editorSourceTextarea) {
+  new ResizeObserver(scheduleEditorCaretCue).observe(editorSourceTextarea);
+}
 
 function linkifyWikiLinks(container) {
   const matcher = /\[\[([^\[\]\n]+)\]\]/g;
@@ -4236,7 +4298,7 @@ function editPreviewEntry(entry) {
   if (panelState === 'preview') setPanelState('editor', {preservePanelWide:true});
   textarea.focus({preventScroll:true});
   textarea.setSelectionRange(position, position);
-  updateEditorCaretCue();
+  centerEditorCaretInView();
   scheduleHighlight();
   return true;
 }
@@ -4960,6 +5022,7 @@ async function applyFontsNow(clearCache = false) {
     document.documentElement.style.setProperty(slot.variable, fontCSSValue(fontFamily, slot.fallback));
     if (shouldFetchGoogleFont(slot) && !isSystemFont(fontFamily) && failed.has(fontFamily) && !loaded.has(fontFamily)) setFontError(slot, 'Font not available from Google Fonts.');
   });
+  scheduleEditorCaretCue();
 }
 
 function applyFonts(clearCache = false) {
@@ -4972,6 +5035,7 @@ function applyFontSizes() {
   FONT_SLOTS.forEach(slot => {
     document.documentElement.style.setProperty(slot.sizeVariable, prefs[slot.sizePreference]);
   });
+  scheduleEditorCaretCue();
 }
 
 function renderThemeOptions() {
