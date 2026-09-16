@@ -334,6 +334,95 @@ test('updates a typed preview block without replacing its layout node', async ({
     .find(element => element.textContent === 'First paragraph. Updated') === window.__typedPreviewBlockBefore)).toBe(true);
 });
 
+test('updates one typed list item without replacing the list', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const editor = page.locator('#note-content');
+  const items = Array.from({length:20}, (_, index) => `- Item ${index + 1}`);
+  await editor.fill(items.join('\n'));
+  await expect(page.locator('#preview > ul')).toHaveCount(1);
+  await expect(page.locator('#preview > ul > li')).toHaveCount(20);
+
+  await page.evaluate(() => {
+    const list = document.querySelector('#preview > ul');
+    window.__typedListBefore = {
+      list,
+      items: [...list.children],
+    };
+  });
+  await editor.evaluate(textarea => {
+    const position = textarea.value.indexOf('- Item 10') + '- Item 10'.length;
+    textarea.focus();
+    textarea.setSelectionRange(position, position);
+  });
+  await editor.type(' updated');
+
+  await expect(page.locator('#preview > ul > li').nth(9)).toContainText('Item 10 updated');
+  expect(await page.evaluate(() => {
+    const list = document.querySelector('#preview > ul');
+    return {
+      sameList: list === window.__typedListBefore.list,
+      sameItems: [...list.children].every((item, index) => item === window.__typedListBefore.items[index]),
+    };
+  })).toEqual({sameList:true, sameItems:true});
+});
+
+test('updates one typed interactive list item without replacing the list', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const editor = page.locator('#note-content');
+  const items = Array.from({length:20}, (_, index) => `- Item ${index + 1}`);
+  await editor.fill(items.join('\n'));
+  await enableInteractivePreview(page);
+  await expect(page.locator('#preview > ul > li')).toHaveCount(20);
+
+  await page.evaluate(() => {
+    const list = document.querySelector('#preview > ul');
+    window.__typedInteractiveListBefore = {
+      list,
+      items: [...list.children],
+    };
+  });
+  await editor.evaluate(textarea => {
+    const position = textarea.value.indexOf('- Item 10') + '- Item 10'.length;
+    textarea.focus();
+    textarea.setSelectionRange(position, position);
+  });
+  await editor.type(' updated');
+
+  await expect(page.locator('#preview > ul > li').nth(9)).toContainText('Item 10 updated');
+  expect(await page.evaluate(() => {
+    const list = document.querySelector('#preview > ul');
+    return {
+      sameList: list === window.__typedInteractiveListBefore.list,
+      sameItems: [...list.children].every((item, index) => item === window.__typedInteractiveListBefore.items[index]),
+    };
+  })).toEqual({sameList:true, sameItems:true});
+});
+
+test('keeps an interactive task checkbox enabled after editing its list item', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const editor = page.locator('#note-content');
+  const items = Array.from({length:20}, (_, index) => `- [ ] Task ${index + 1}`);
+  await editor.fill(items.join('\n'));
+  await enableInteractivePreview(page);
+  await expect(page.locator('#preview > ul > li')).toHaveCount(20);
+  await expect(page.locator('#preview > ul > li input[type="checkbox"]')).toHaveCount(20);
+  await expect(page.locator('#preview > ul > li').nth(9).locator('input[type="checkbox"]')).toBeEnabled();
+
+  await editor.evaluate(textarea => {
+    const position = textarea.value.indexOf('- [ ] Task 10') + '- [ ] Task 10'.length;
+    textarea.focus();
+    textarea.setSelectionRange(position, position);
+  });
+  await editor.type(' updated');
+
+  const target = page.locator('#preview > ul > li').nth(9);
+  await expect(target).toContainText('Task 10 updated');
+  await expect(target.locator('input[type="checkbox"]')).toBeEnabled();
+});
+
 test('keeps the current preview highlight while typed Markdown is rendering', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();

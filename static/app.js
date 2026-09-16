@@ -3893,6 +3893,20 @@ function previewListItemAtPosition(position, sourceLength) {
   return best;
 }
 
+function previewTaskCheckbox(item) {
+  const body = item.querySelector(':scope > .interactive-preview-list-card > .preview-list-content > .preview-list-item-body');
+  return item.querySelector(':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]')
+    || body?.querySelector('input[type="checkbox"]')
+    || null;
+}
+
+function syncPreviewTaskCheckbox(item) {
+  const checkbox = previewTaskCheckbox(item);
+  if (!checkbox) return;
+  checkbox.disabled = !interactivePreviewActive;
+  checkbox.setAttribute('aria-label', checkbox.checked ? 'Mark task incomplete' : 'Mark task complete');
+}
+
 function alignPreviewWithCaret(block, range) {
   const preview = $('#preview');
   const caret = measureEditorCaret();
@@ -4026,11 +4040,7 @@ function processPreviewCacheBlock(state) {
     if (entry.card?.isConnected) interactiveEntryByElement.set(entry.card, entry);
     const lineEnd = state.source.indexOf('\n', entry.start);
     const line = state.source.slice(entry.start, lineEnd < 0 ? entry.end : Math.min(entry.end, lineEnd));
-    const checkbox = element.querySelector(':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]');
-    if (checkbox && /\[[ xX]\]/.test(line)) {
-      checkbox.disabled = !interactivePreviewActive;
-      checkbox.setAttribute('aria-label', checkbox.checked ? 'Mark task incomplete' : 'Mark task complete');
-    }
+    if (/\[[ xX]\]/.test(line)) syncPreviewTaskCheckbox(element);
     state.listItems.push(entry);
   });
 }
@@ -4698,13 +4708,7 @@ function previewTopLevelElement(element) {
   return card?.parentElement === $('#preview') ? card : element;
 }
 
-function canUpdatePreviewElementInPlace(current, replacement) {
-  if (!current || !replacement || current.tagName !== replacement.tagName) return false;
-  if (['UL', 'OL'].includes(current.tagName)) return false;
-  return !current.querySelector('ul,ol') && !replacement.querySelector('ul,ol');
-}
-
-function updatePreviewElementInPlace(current, replacement) {
+function syncPreviewAttributes(current, replacement) {
   const preservedAttributes = [...current.attributes]
     .filter(attribute => attribute.name.startsWith('data-interactive-'))
     .map(attribute => [attribute.name, attribute.value]);
@@ -4713,7 +4717,43 @@ function updatePreviewElementInPlace(current, replacement) {
     .forEach(attribute => current.removeAttribute(attribute.name));
   [...replacement.attributes].forEach(attribute => current.setAttribute(attribute.name, attribute.value));
   preservedAttributes.forEach(([name, value]) => current.setAttribute(name, value));
+}
+
+function canUpdatePreviewElementInPlace(current, replacement) {
+  if (!current || !replacement || current.tagName !== replacement.tagName) return false;
+  if (['UL', 'OL'].includes(current.tagName)) {
+    const currentItems = [...current.children];
+    const replacementItems = [...replacement.children];
+    return currentItems.length === replacementItems.length &&
+      currentItems.every((item, index) => item.tagName === 'LI' && replacementItems[index]?.tagName === 'LI' &&
+        !item.querySelector('ul,ol') && !replacementItems[index].querySelector('ul,ol'));
+  }
+  return !current.querySelector('ul,ol') && !replacement.querySelector('ul,ol');
+}
+
+function updatePreviewElementInPlace(current, replacement) {
+  syncPreviewAttributes(current, replacement);
   current.replaceChildren(...[...replacement.childNodes]);
+}
+
+function updatePreviewListInPlace(current, replacement) {
+  syncPreviewAttributes(current, replacement);
+  const currentItems = [...current.children];
+  const replacementItems = [...replacement.children];
+  currentItems.forEach((item, index) => {
+    const replacementItem = replacementItems[index];
+    const body = item.querySelector(':scope > .interactive-preview-list-card > .preview-list-content > .preview-list-item-body');
+    if (!body) {
+      if (item.innerHTML === replacementItem.innerHTML) return;
+      updatePreviewElementInPlace(item, replacementItem);
+      return;
+    }
+    if (body.innerHTML === replacementItem.innerHTML) return;
+    body.replaceChildren(...[...replacementItem.childNodes]);
+    item.querySelector(':scope > .interactive-preview-list-card')?.classList.toggle('is-task', Boolean(body.querySelector('input[type="checkbox"]')));
+    syncPreviewTaskCheckbox(item);
+  });
+  return current;
 }
 
 function renderPreviewBlocksProgressively(md, renderMetadata) {
@@ -4790,7 +4830,11 @@ function patchPreviewBlocks(renderMetadata) {
     const replacement = replacements[index];
     return canUpdatePreviewElementInPlace(element, replacement);
   })) {
-    currentMiddle.forEach((element, index) => updatePreviewElementInPlace(element, replacements[index]));
+    currentMiddle.forEach((element, index) => {
+      const replacement = replacements[index];
+      if (['UL', 'OL'].includes(element.tagName)) updatePreviewListInPlace(element, replacement);
+      else updatePreviewElementInPlace(element, replacement);
+    });
     return current;
   }
   const anchor = suffix ? previewTopLevelElement(current[current.length - suffix]) : null;
