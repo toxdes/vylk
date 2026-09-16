@@ -155,12 +155,17 @@ test('keeps long interactive previews fully functional with bounded control DOM'
   await page.waitForTimeout(200);
   expect(await preview.evaluate(async element => {
     const firstHeading = element.querySelector('h2');
+    const firstCard = element.querySelector('.interactive-preview-card');
     const editor = document.querySelector('#note-content');
     editor.value += '\n\nIncremental update marker';
     editor.dispatchEvent(new Event('input', {bubbles:true}));
     while (!element.textContent.includes('Incremental update marker')) await new Promise(requestAnimationFrame);
-    return firstHeading === element.querySelector('h2');
-  })).toBe(true);
+    const currentHeading = element.querySelector('h2');
+    return {
+      headingPreserved:firstHeading === currentHeading,
+      cardPreserved:firstCard?.isConnected && firstCard === element.querySelector('.interactive-preview-card'),
+    };
+  })).toEqual({headingPreserved:true, cardPreserved:true});
 
   await preview.evaluate(element => { element.scrollTop = element.scrollHeight; });
   const lastParagraph = preview.getByText('Paragraph 240.', {exact:true});

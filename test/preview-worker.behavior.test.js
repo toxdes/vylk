@@ -37,6 +37,7 @@ test('renders Markdown and source metadata away from the app thread', () => {
       {tagName:'UL', type:'list', listItems:[{start:11}, {start:22}]},
     ],
   });
+  expect(worker.messages[0]).not.toHaveProperty('source');
   expect(worker.messages[0].html).toContain('<h1>Heading</h1>');
   expect(worker.messages[0].html).not.toContain('<script>');
   expect(worker.messages[0].html).toContain('&lt;script&gt;');
@@ -49,5 +50,7 @@ test('produces independently renderable blocks for incremental preview updates',
 
   const result = worker.messages[0];
   expect(result.incrementalSafe).toBe(true);
-  expect(result.blocks.map(block => block.html).join('')).toBe(result.html);
+  expect(result).not.toHaveProperty('source');
+  expect(result).not.toHaveProperty('html');
+  expect(result.blocks.map(block => block.html).join('')).toContain('<h1>Heading</h1>');
 });

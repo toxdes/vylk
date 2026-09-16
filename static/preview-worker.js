@@ -87,8 +87,13 @@ self.addEventListener('message', event => {
     const description = describeBlocks(source, options, tokens);
     const html = marked.parser(tokens, options);
     description.incrementalSafe = description.incrementalSafe && description.blocks.map(block => block.html).join('') === html;
-    self.postMessage({id, source, html, ...description});
+    const result = {id, ...description};
+    // Incrementally safe responses already contain the complete rendered
+    // output in their block HTML. Avoid cloning the source and a duplicate
+    // full-document HTML string back onto the main thread.
+    if (!description.incrementalSafe) result.html = html;
+    self.postMessage(result);
   } catch (error) {
-    self.postMessage({id, source, error:error?.message || 'preview rendering failed'});
+    self.postMessage({id, error:error?.message || 'preview rendering failed'});
   }
 });

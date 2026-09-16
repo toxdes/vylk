@@ -48,11 +48,17 @@ let editorCaretTimer = null;
 let editorCaretMeasurementCache = null;
 let previewRenderWorker = null;
 let previewRenderGeneration = 0;
+let previewRenderRequest = null;
 let previewApplyHandle = null;
+let previewDOMHandle = null;
+let previewCacheHandle = null;
+let previewCacheGeneration = 0;
 let previewWorkerUnavailable = false;
 let renderedPreviewMetadata = null;
 let previewDecorationObserver = null;
 let previewDecorationEntryByElement = new WeakMap();
+let previewObservedElements = new Set();
+let interactiveEntryByElement = new WeakMap();
 let interactivePreviewActive = false;
 let interactiveSourceLocked = false;
 let interactiveSourceMutation = false;
@@ -2739,10 +2745,13 @@ function showNoteInEditor(data) {
   $('#note-title').value = data.title || '';
   $('#note-tags').value = data.tags || '';
   $('#note-content').value = data.content || '';
+  $('#preview').replaceChildren();
+  renderedPreviewSource = null;
+  renderedPreviewMetadata = null;
   setIdleSyncStatus();
   applyEditorPrefs();
   show(screens.editor);
-  updatePreview();
+  requestPreviewRender();
 }
 
 async function openNote(id, {route = 'push'} = {}) {
@@ -3474,6 +3483,8 @@ function decoratePreviewListItem(entry) {
   nestedLists.forEach(list => item.append(list));
   entry.card = card;
   entry.visualElement = item;
+  interactiveEntryByElement.set(card, entry);
+  interactiveEntryByElement.set(item, entry);
 }
 
 function decoratePreviewBlock(entry) {
@@ -3482,7 +3493,7 @@ function decoratePreviewBlock(entry) {
   const card = document.createElement('div');
   card.className = 'interactive-preview-card interactive-preview-block-card';
   if (block.tagName === 'HR') card.classList.add('interactive-preview-rule-card');
-  card.dataset.interactiveStart = String(entry.start);
+  card.dataset.interactiveStart = '';
   card.dataset.interactiveScope = entry.scope;
   const content = document.createElement('div');
   content.className = 'preview-drag-content preview-block-content';
@@ -3495,6 +3506,8 @@ function decoratePreviewBlock(entry) {
   entry.card = card;
   entry.visualElement = card;
   entry.contentElement = block;
+  interactiveEntryByElement.set(card, entry);
+  interactiveEntryByElement.set(block, entry);
 }
 
 function undecoratePreviewListItem(entry, {force = false} = {}) {
@@ -3515,12 +3528,13 @@ function undecoratePreviewBlock(entry, {force = false} = {}) {
   if (!card?.isConnected || !block || !force && (card.contains(document.activeElement) || card.classList.contains('highlight', 'is-selected'))) return;
   card.before(block);
   card.remove();
-  block.dataset.interactiveStart = String(entry.start);
+  block.dataset.interactiveStart = '';
   block.dataset.interactiveScope = entry.scope;
   entry.element = block;
   entry.card = null;
   entry.visualElement = block;
   entry.contentElement = null;
+  interactiveEntryByElement.set(block, entry);
 }
 
 function decoratePreviewEntry(entry) {
@@ -3539,33 +3553,49 @@ function disconnectPreviewDecorationObserver() {
   previewDecorationObserver?.disconnect();
   previewDecorationObserver = null;
   previewDecorationEntryByElement = new WeakMap();
+  previewObservedElements = new Set();
+}
+
+function previewEntryObservationElement(entry) {
+  return entry?.kind === 'block' ? entry.contentElement || entry.element : entry?.element;
 }
 
 function decorateInteractivePreview() {
-  disconnectPreviewDecorationObserver();
-  if (!interactivePreviewActive) return;
+  if (!interactivePreviewActive) {
+    disconnectPreviewDecorationObserver();
+    return;
+  }
   const entries = [...interactiveBlockItems, ...interactiveListItems];
   if (typeof IntersectionObserver !== 'function') {
     entries.forEach(decoratePreviewEntry);
     return;
   }
-  previewDecorationObserver = new IntersectionObserver(records => {
-    const entering = records
-      .filter(record => record.isIntersecting)
-      .map(record => previewDecorationEntryByElement.get(record.target))
-      .filter(Boolean)
-      .sort((left, right) => left.start - right.start || left.indent - right.indent);
-    entering.forEach(decoratePreviewEntry);
-    records
-      .filter(record => !record.isIntersecting)
-      .map(record => previewDecorationEntryByElement.get(record.target))
-      .filter(Boolean)
-      .sort((left, right) => right.indent - left.indent || right.start - left.start)
-      .forEach(undecoratePreviewEntry);
-  }, {root:$('#preview'), rootMargin:'600px 0px'});
+  if (!previewDecorationObserver) {
+    previewDecorationObserver = new IntersectionObserver(records => {
+      const entering = [];
+      const leaving = [];
+      for (const record of records) {
+        const entry = previewDecorationEntryByElement.get(record.target);
+        if (!entry) continue;
+        (record.isIntersecting ? entering : leaving).push(entry);
+      }
+      entering.sort((left, right) => left.start - right.start || left.indent - right.indent).forEach(decoratePreviewEntry);
+      leaving.sort((left, right) => right.indent - left.indent || right.start - left.start).forEach(undecoratePreviewEntry);
+    }, {root:$('#preview'), rootMargin:'600px 0px'});
+  }
+  const nextObservedElements = new Set(entries.map(previewEntryObservationElement).filter(Boolean));
+  for (const element of previewObservedElements) {
+    if (nextObservedElements.has(element)) continue;
+    previewDecorationObserver.unobserve(element);
+    previewObservedElements.delete(element);
+  }
   entries.forEach(entry => {
-    previewDecorationEntryByElement.set(entry.element, entry);
-    previewDecorationObserver.observe(entry.element);
+    const element = previewEntryObservationElement(entry);
+    if (!element) return;
+    previewDecorationEntryByElement.set(element, entry);
+    if (previewObservedElements.has(element)) return;
+    previewObservedElements.add(element);
+    previewDecorationObserver.observe(element);
   });
 }
 
@@ -3839,61 +3869,152 @@ function previewBlockDescriptors(source, renderMetadata) {
   return descriptors;
 }
 
-function cachePreviewBlocks(renderMetadata = null) {
+function previewContentBlocks(pv, patchedBlocks) {
+  if (patchedBlocks) return patchedBlocks;
+  return Array.from(pv.children)
+    .filter(c => c.tagName && !['STYLE','SCRIPT'].includes(c.tagName) && !c.dataset.previewDragIndicator)
+    .map(element => element.matches('.interactive-preview-block-card')
+      ? element.querySelector(':scope > .preview-block-content')?.firstElementChild
+      : element)
+    .filter(Boolean);
+}
+
+function createPreviewCacheState(renderMetadata, patchedBlocks) {
   const pv = $('#preview');
-  previewBlocks = Array.from(pv.children).filter(c => c.tagName && !['STYLE','SCRIPT'].includes(c.tagName) && !c.dataset.previewDragIndicator);
+  const previousBlockEntries = new Map(interactiveBlockItems.map(entry => [entry.contentElement || entry.element, entry]));
+  const previousListEntries = new Map(interactiveListItems.map(entry => [entry.element, entry]));
+  const previousListEntriesByBlock = new Map();
+  interactiveListItems.forEach(entry => {
+    if (!entry.blockElement) return;
+    const entries = previousListEntriesByBlock.get(entry.blockElement) || [];
+    entries.push(entry);
+    previousListEntriesByBlock.set(entry.blockElement, entries);
+  });
+  const blocks = previewContentBlocks(pv, patchedBlocks);
+  const source = $('#note-content').value;
+  if (!source || typeof marked === 'undefined' || typeof marked.lexer !== 'function') return null;
+  const descriptors = previewBlockDescriptors(source, renderMetadata);
+  if (!descriptors || descriptors.length !== blocks.length) return null;
+  return {
+    source,
+    blocks,
+    descriptors,
+    previousBlockEntries,
+    previousListEntries,
+    previousListEntriesByBlock,
+    ranges:[],
+    blockItems:[],
+    listItems:[],
+    index:0,
+  };
+}
+
+function processPreviewCacheBlock(state) {
+  const blockIndex = state.index++;
+  const descriptor = state.descriptors[blockIndex];
+  const block = state.blocks[blockIndex];
+  if (!block || block.tagName !== descriptor.tagName) throw new Error('preview block metadata did not match rendered output');
+  const range = {start:descriptor.start, end:descriptor.end};
+  state.ranges.push(range);
+  if (descriptor.type !== 'list') {
+    const entry = state.previousBlockEntries.get(block) || {};
+    Object.assign(entry, range, {indent:0, ordered:false, parent:null, kind:'block', scope:'blocks'});
+    if (entry.card?.isConnected) {
+      entry.element = entry.card;
+      entry.visualElement = entry.card;
+      entry.contentElement = block;
+    } else {
+      entry.element = block;
+      entry.visualElement = block;
+      entry.contentElement = null;
+    }
+    if (!entry.element.hasAttribute('data-interactive-start')) entry.element.dataset.interactiveStart = '';
+    if (!entry.element.hasAttribute('data-interactive-scope')) entry.element.dataset.interactiveScope = entry.scope;
+    interactiveEntryByElement.set(entry.element, entry);
+    interactiveEntryByElement.set(block, entry);
+    state.blockItems.push(entry);
+    return;
+  }
+  const listEntries = descriptor.listItems || [];
+  const previousEntries = state.previousListEntriesByBlock.get(block);
+  const listElements = previousEntries?.length === listEntries.length
+    ? previousEntries.map(entry => entry.element)
+    : [...block.querySelectorAll('li')];
+  if (listEntries.length !== listElements.length) return;
+  listEntries.forEach((descriptorEntry, index) => {
+    const element = listElements[index];
+    const entry = state.previousListEntries.get(element) || {};
+    Object.assign(entry, descriptorEntry, {element, blockElement:block});
+    if (!element.hasAttribute('data-interactive-start')) element.dataset.interactiveStart = '';
+    if (!element.hasAttribute('data-interactive-scope')) element.dataset.interactiveScope = entry.scope;
+    interactiveEntryByElement.set(element, entry);
+    if (entry.card?.isConnected) interactiveEntryByElement.set(entry.card, entry);
+    const lineEnd = state.source.indexOf('\n', entry.start);
+    const line = state.source.slice(entry.start, lineEnd < 0 ? entry.end : Math.min(entry.end, lineEnd));
+    const checkbox = element.querySelector(':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]');
+    if (checkbox && /\[[ xX]\]/.test(line)) {
+      checkbox.disabled = !interactivePreviewActive;
+      checkbox.setAttribute('aria-label', checkbox.checked ? 'Mark task incomplete' : 'Mark task complete');
+    }
+    state.listItems.push(entry);
+  });
+}
+
+function commitPreviewCache(state, generation) {
+  if (generation !== previewCacheGeneration || state.source !== $('#note-content').value || state.blocks !== previewBlocks) return;
+  previewBlockRanges = state.ranges;
+  previewRangeSource = state.source;
+  interactiveBlockItems = state.blockItems;
+  interactiveListItems = state.listItems;
+  decorateInteractivePreview();
+  syncInteractivePreviewUI();
+  scheduleHighlight();
+}
+
+function cachePreviewBlocks(renderMetadata = null, patchedBlocks = null, {defer = false} = {}) {
+  if (previewCacheHandle !== null) clearTimeout(previewCacheHandle);
+  previewCacheHandle = null;
+  const generation = ++previewCacheGeneration;
+  let state;
+  try {
+    state = createPreviewCacheState(renderMetadata, patchedBlocks);
+  } catch (_) {
+    state = null;
+  }
+  previewBlocks = state?.blocks || previewContentBlocks($('#preview'), patchedBlocks);
   previewBlockRanges = [];
   previewRangeSource = null;
-  const source = $('#note-content').value;
-  interactiveListItems = [];
-  interactiveBlockItems = [];
-  if (!source || typeof marked === 'undefined' || typeof marked.lexer !== 'function') return;
-  try {
-    const descriptors = previewBlockDescriptors(source, renderMetadata);
-    if (!descriptors || descriptors.length !== previewBlocks.length) return;
-    const ranges = [];
-    descriptors.forEach((descriptor, blockIndex) => {
-      const block = previewBlocks[blockIndex];
-      if (!block || block.tagName !== descriptor.tagName) {
-        previewBlockRanges = [];
-        throw new Error('preview block metadata did not match rendered output');
-      }
-      ranges.push({start:descriptor.start, end:descriptor.end});
-      if (descriptor.type === 'list') {
-        const listEntries = descriptor.listItems || [];
-        const listElements = [...block.querySelectorAll('li')];
-        if (listEntries.length === listElements.length) {
-          listEntries.forEach((entry, index) => {
-            entry = {...entry};
-            const element = listElements[index];
-            entry.element = element;
-            element.dataset.interactiveStart = String(entry.start);
-            element.dataset.interactiveScope = entry.scope;
-            const lineEnd = source.indexOf('\n', entry.start);
-            const line = source.slice(entry.start, lineEnd < 0 ? entry.end : Math.min(entry.end, lineEnd));
-            const checkbox = element.querySelector(':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]');
-            if (checkbox && /\[[ xX]\]/.test(line)) {
-              checkbox.disabled = !interactivePreviewActive;
-              checkbox.setAttribute('aria-label', checkbox.checked ? 'Mark task incomplete' : 'Mark task complete');
-            }
-            interactiveListItems.push(entry);
-          });
-        }
-      }
-    });
-    previewBlockRanges = ranges;
-    previewRangeSource = source;
-    interactiveBlockItems = previewBlocks.flatMap((element, index) => {
-      if (['UL', 'OL'].includes(element.tagName) || !ranges[index]) return [];
-      const entry = {...ranges[index], indent:0, ordered:false, parent:null, kind:'block', scope:'blocks', element};
-      element.dataset.interactiveStart = String(entry.start);
-      element.dataset.interactiveScope = entry.scope;
-      return [entry];
-    });
+  if (!state) {
+    interactiveListItems = [];
+    interactiveBlockItems = [];
     decorateInteractivePreview();
     syncInteractivePreviewUI();
-  } catch (_) {
-    previewBlockRanges = [];
+    return;
+  }
+  const process = () => {
+    previewCacheHandle = null;
+    if (generation !== previewCacheGeneration || state.source !== $('#note-content').value) return;
+    const started = performance.now();
+    try {
+      while (state.index < state.descriptors.length && (!defer || performance.now() - started < 5)) processPreviewCacheBlock(state);
+    } catch (_) {
+      previewBlockRanges = [];
+      return;
+    }
+    if (state.index < state.descriptors.length) {
+      previewCacheHandle = setTimeout(process, 0);
+      return;
+    }
+    commitPreviewCache(state, generation);
+  };
+  process();
+}
+
+function cancelPreviewCache() {
+  previewCacheGeneration++;
+  if (previewCacheHandle !== null) {
+    clearTimeout(previewCacheHandle);
+    previewCacheHandle = null;
   }
 }
 function highlightBlock() {
@@ -4084,12 +4205,7 @@ function markdownRenderOptions() {
 function interactiveEntryForElement(element) {
   if (!interactivePreviewSourceIsCurrent()) return null;
   const owner = element?.closest('[data-interactive-start]');
-  if (!owner) return null;
-  const start = Number(owner.dataset.interactiveStart);
-  const scope = owner.dataset.interactiveScope;
-  if (!Number.isFinite(start) || !scope) return null;
-  return [...interactiveBlockItems, ...interactiveListItems]
-    .find(entry => entry.start === start && entry.scope === scope) || null;
+  return owner ? interactiveEntryByElement.get(owner) || null : null;
 }
 
 function interactivePreviewSourceIsCurrent() {
@@ -4148,7 +4264,7 @@ $('#preview').addEventListener('click', event => {
   const checkbox = event.target.closest('input[type="checkbox"]');
   if (interactivePreviewActive && checkbox && !checkbox.disabled && interactivePreviewSourceIsCurrent()) {
     const item = checkbox.closest('li[data-interactive-start]');
-    const entry = interactiveListItems.find(candidate => candidate.start === Number(item?.dataset.interactiveStart));
+    const entry = interactiveEntryByElement.get(item);
     const change = window.VylkInteractive?.toggleTask($('#note-content').value, entry);
     if (!change) return;
     event.preventDefault();
@@ -4305,14 +4421,13 @@ $('#preview').addEventListener('pointerdown', event => {
   if (!interactivePreviewActive || !interactivePreviewSourceIsCurrent() || event.button !== 0 || event.isPrimary === false) return;
   const item = event.target.closest('#preview > [data-interactive-start], #preview li[data-interactive-start]');
   if (!item || event.target.closest('a,input,button,select,textarea')) return;
-  const sourceStart = Number(item.dataset.interactiveStart);
-  const entry = [...interactiveBlockItems, ...interactiveListItems].find(candidate => candidate.start === sourceStart && candidate.scope === item.dataset.interactiveScope);
+  const entry = interactiveEntryByElement.get(item);
   if (!entry) return;
   if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
   activePreviewDrag = {
     pointerID:event.pointerId,
-    sourceStart,
-    scope:item.dataset.interactiveScope,
+    sourceStart:entry.start,
+    scope:entry.scope,
     sourceElement:entry.element,
     visualElement:entry.visualElement || entry.element,
     startedOnHandle:Boolean(event.target.closest('.preview-drag-handle')),
@@ -4434,8 +4549,19 @@ function cancelPreviewApply() {
   previewApplyHandle = null;
 }
 
+function cancelPreviewDOMRender() {
+  if (previewDOMHandle !== null) {
+    clearTimeout(previewDOMHandle);
+    previewDOMHandle = null;
+  }
+  $('#preview')?.removeAttribute('aria-busy');
+}
+
 function cancelPendingPreviewRender() {
   previewRenderGeneration++;
+  previewRenderRequest = null;
+  cancelPreviewCache();
+  cancelPreviewDOMRender();
   if (previewTimer) clearTimeout(previewTimer);
   previewTimer = null;
   cancelPreviewApply();
@@ -4469,21 +4595,66 @@ function previewElementFromHTML(block) {
   return elements.length === 1 && elements[0].tagName === block.tagName ? elements[0] : null;
 }
 
+function previewTopLevelElement(element) {
+  const card = element?.closest?.('.interactive-preview-block-card');
+  return card?.parentElement === $('#preview') ? card : element;
+}
+
+function renderPreviewBlocksProgressively(md, renderMetadata) {
+  const preview = $('#preview');
+  const generation = previewRenderGeneration;
+  const elements = [];
+  let index = 0;
+  disconnectPreviewDecorationObserver();
+  preview.replaceChildren();
+  preview.setAttribute('aria-busy', 'true');
+  previewBlocks = [];
+  previewBlockRanges = [];
+  previewRangeSource = null;
+  interactiveBlockItems = [];
+  interactiveListItems = [];
+
+  const process = () => {
+    previewDOMHandle = null;
+    if (generation !== previewRenderGeneration || $('#note-content').value !== md || !isPreviewVisible()) {
+      preview.removeAttribute('aria-busy');
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    const started = performance.now();
+    let batchSize = 0;
+    while (index < renderMetadata.blocks.length && batchSize < 12 && performance.now() - started < 5) {
+      const element = previewElementFromHTML(renderMetadata.blocks[index++]);
+      if (!element) {
+        preview.removeAttribute('aria-busy');
+        renderPreviewHTML(md, renderMetadata.blocks.map(block => block.html || '').join(''), {...renderMetadata, incrementalSafe:false});
+        return;
+      }
+      elements.push(element);
+      fragment.append(element);
+      batchSize++;
+    }
+    preview.append(fragment);
+    if (index < renderMetadata.blocks.length) {
+      previewDOMHandle = setTimeout(process, 0);
+      return;
+    }
+    preview.removeAttribute('aria-busy');
+    renderedPreviewSource = md;
+    renderedPreviewMetadata = renderMetadata;
+    cachePreviewBlocks(renderMetadata, elements, {defer:true});
+  };
+  process();
+}
+
 function patchPreviewBlocks(renderMetadata) {
   const previous = renderedPreviewMetadata;
-  if (!previous?.incrementalSafe || !renderMetadata?.incrementalSafe || previous.source !== renderedPreviewSource) return false;
-  if (!previous.blocks?.every(block => typeof block.html === 'string') || !renderMetadata.blocks?.every(block => typeof block.html === 'string')) return false;
-
-  disconnectPreviewDecorationObserver();
-  interactiveListItems
-    .slice()
-    .sort((left, right) => right.indent - left.indent || right.start - left.start)
-    .forEach(entry => undecoratePreviewEntry(entry, {force:true}));
-  interactiveBlockItems.slice().reverse().forEach(entry => undecoratePreviewEntry(entry, {force:true}));
+  if (!previous?.incrementalSafe || !renderMetadata?.incrementalSafe || previous.source !== renderedPreviewSource) return null;
+  if (!previous.blocks?.every(block => typeof block.html === 'string') || !renderMetadata.blocks?.every(block => typeof block.html === 'string')) return null;
 
   const preview = $('#preview');
-  const current = [...preview.children].filter(element => !['STYLE', 'SCRIPT'].includes(element.tagName));
-  if (current.length !== previous.blocks.length) return false;
+  const current = previewBlocks.filter(element => element?.isConnected);
+  if (current.length !== previous.blocks.length) return null;
   let prefix = 0;
   while (prefix < current.length && prefix < renderMetadata.blocks.length &&
     previous.blocks[prefix].tagName === renderMetadata.blocks[prefix].tagName &&
@@ -4496,27 +4667,37 @@ function patchPreviewBlocks(renderMetadata) {
   const replacements = renderMetadata.blocks
     .slice(prefix, renderMetadata.blocks.length - suffix)
     .map(previewElementFromHTML);
-  if (replacements.some(element => !element)) return false;
-  const anchor = suffix ? current[current.length - suffix] : null;
-  current.slice(prefix, current.length - suffix).forEach(element => element.remove());
+  if (replacements.some(element => !element)) return null;
+  const anchor = suffix ? previewTopLevelElement(current[current.length - suffix]) : null;
+  current.slice(prefix, current.length - suffix).forEach(element => previewTopLevelElement(element).remove());
   const fragment = document.createDocumentFragment();
   replacements.forEach(element => fragment.append(element));
   preview.insertBefore(fragment, anchor);
-  return true;
+  return [
+    ...current.slice(0, prefix),
+    ...replacements,
+    ...(suffix ? current.slice(current.length - suffix) : []),
+  ];
 }
 
 function renderPreviewHTML(md, html, renderMetadata = null) {
   if (!isPreviewVisible() || $('#note-content').value !== md) return;
-  if (!patchPreviewBlocks(renderMetadata)) {
+  const patchedBlocks = patchPreviewBlocks(renderMetadata);
+  if (patchedBlocks === null && renderMetadata?.incrementalSafe && renderMetadata.blocks.length > 80) {
+    renderPreviewBlocksProgressively(md, renderMetadata);
+    return;
+  }
+  cancelPreviewDOMRender();
+  if (patchedBlocks === null) {
     disconnectPreviewDecorationObserver();
     const fragment = document.createElement('template');
-    fragment.innerHTML = html;
+    fragment.innerHTML = typeof html === 'string' ? html : renderMetadata?.blocks?.map(block => block.html || '').join('') || '';
     sanitizePreview(fragment.content);
     linkifyWikiLinks(fragment.content);
     $('#preview').replaceChildren(fragment.content);
   }
   renderedPreviewSource = md;
-  cachePreviewBlocks(renderMetadata);
+  cachePreviewBlocks(renderMetadata, patchedBlocks, {defer:Boolean(renderMetadata)});
   renderedPreviewMetadata = renderMetadata?.source === md ? renderMetadata : null;
   scheduleHighlight();
 }
@@ -4527,22 +4708,26 @@ function ensurePreviewRenderWorker() {
     previewRenderWorker = new Worker('/preview-worker.js');
     previewRenderWorker.addEventListener('message', event => {
       const result = event.data || {};
-      if (result.id !== previewRenderGeneration || result.source !== $('#note-content').value || !isPreviewVisible()) return;
-      if (result.error || typeof result.html !== 'string') {
+      const request = previewRenderRequest;
+      if (!request || result.id !== request.id || result.id !== previewRenderGeneration || request.source !== $('#note-content').value || !isPreviewVisible()) return;
+      previewRenderRequest = null;
+      const incrementalSafe = Boolean(result.incrementalSafe && Array.isArray(result.blocks));
+      const html = incrementalSafe ? null : result.html;
+      if (result.error || !incrementalSafe && typeof html !== 'string') {
         previewWorkerUnavailable = true;
         previewRenderWorker?.terminate();
         previewRenderWorker = null;
         schedulePreviewApply(() => updatePreview());
         return;
       }
-      const metadata = {source:result.source, blocks:result.blocks, incrementalSafe:Boolean(result.incrementalSafe)};
-      if (result.source === renderedPreviewSource && previewRangeSource === result.source) {
+      const metadata = {source:request.source, blocks:result.blocks, incrementalSafe};
+      if (request.source === renderedPreviewSource && previewRangeSource === request.source) {
         renderedPreviewMetadata = metadata;
         return;
       }
       schedulePreviewApply(() => {
         if (result.id !== previewRenderGeneration) return;
-        renderPreviewHTML(result.source, result.html, metadata);
+        renderPreviewHTML(request.source, html, metadata);
       });
     });
     previewRenderWorker.addEventListener('error', () => {
@@ -4565,6 +4750,7 @@ function primePreviewMetadata(md) {
   const worker = ensurePreviewRenderWorker();
   if (!worker || !md) return;
   const id = ++previewRenderGeneration;
+  previewRenderRequest = {id, source:md};
   worker.postMessage({id, source:md});
 }
 
@@ -4582,6 +4768,7 @@ function requestPreviewRender() {
     return;
   }
   const id = ++previewRenderGeneration;
+  previewRenderRequest = {id, source:md};
   worker.postMessage({id, source:md});
 }
 
