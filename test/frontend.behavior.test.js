@@ -273,7 +273,7 @@ describe('editor display preferences', () => {
 
     expect(root.dataset.contentWidth).toBe('standard');
     expect(styleSource).toContain(':root{--content-max-width:76.25rem;--prefs-modal-max-width:61rem;');
-    expect(styleSource).toContain(':root[data-content-width="compact"]{--content-max-width:54rem;--prefs-modal-max-width:43.2rem}');
+    expect(styleSource).toContain(':root[data-content-width="compact"]{--content-max-width:54rem;--prefs-modal-max-width:46rem}');
     expect(styleSource).toContain(':root[data-content-width="wide"]{--content-max-width:90rem;--prefs-modal-max-width:72rem}');
     expect(styleSource).toContain(':root[data-content-width="full"]{--content-max-width:100%;--prefs-modal-max-width:min(80vw,72rem)}');
     await app.hooks.savePref('contentWidth', 'wide');
