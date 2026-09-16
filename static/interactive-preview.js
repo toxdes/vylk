@@ -39,6 +39,31 @@ function listSiblings(entries, entry) {
     .sort((a, b) => a.start - b.start);
 }
 
+function leadingIndentWidth(line) {
+  let width = 0;
+  for (const character of line.match(/^[ \t]*/)?.[0] || '') {
+    width += character === '\t' ? 4 - (width % 4) : 1;
+  }
+  return width;
+}
+
+function renumberOrderedChunk(chunk, number) {
+  const lines = chunk.split('\n');
+  const marker = lines[0].match(/^([ \t]*)(\d+)([.)])([ \t]+)/);
+  if (!marker) return chunk;
+  const difference = String(number).length - marker[2].length;
+  lines[0] = lines[0].replace(/^([ \t]*)\d+([.)])/, `$1${number}$2`);
+  if (!difference) return lines.join('\n');
+  for (let index = 1; index < lines.length; index++) {
+    if (!lines[index].trim()) continue;
+    const indentation = lines[index].match(/^[ \t]*/)?.[0] || '';
+    if (!indentation && difference < 0) continue;
+    const width = Math.max(0, leadingIndentWidth(lines[index]) + difference);
+    lines[index] = `${' '.repeat(width)}${lines[index].slice(indentation.length)}`;
+  }
+  return lines.join('\n');
+}
+
 function reorderListItems(source, entries, movingStart, targetStart, placement = 'before') {
   const moving = entries.find(entry => entry.start === movingStart);
   const target = entries.find(entry => entry.start === targetStart);
@@ -64,7 +89,7 @@ function reorderListItems(source, entries, movingStart, targetStart, placement =
   if (moving.ordered) {
     const firstNumber = Number((siblings[0].marker.match(/^\d+/) || ['1'])[0]);
     for (let index = 0; index < chunks.length; index++) {
-      chunks[index] = chunks[index].replace(/^([ \t]*)\d+([.)])/, `$1${firstNumber + index}$2`);
+      chunks[index] = renumberOrderedChunk(chunks[index], firstNumber + index);
     }
   }
   const inserted = chunks.join('');
