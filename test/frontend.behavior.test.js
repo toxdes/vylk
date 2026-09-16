@@ -1054,6 +1054,24 @@ describe('sync coordinator', () => {
 });
 
 describe('F-01 editor save coordination', () => {
+  test('returns to the dashboard with one Back after closing note preferences', async () => {
+    const app = track(await createApp());
+    app.hooks.showNoteInEditor({id: 'note-a', revision: 1, title: 'Note', tags: '', content: 'saved version'});
+    app.window.history.replaceState({app: 'vylk', screen: 'dashboard'}, '', '/');
+    app.window.history.pushState({app: 'vylk', screen: 'note', noteID: 'note-a'}, '', '/note-a');
+
+    app.window.document.querySelector('#editor-prefs-btn').click();
+    expect(app.window.location.pathname).toBe('/preferences');
+    app.window.document.querySelector('#prefs-close').click();
+    await vi.waitFor(() => expect(app.window.location.pathname).toBe('/note-a'));
+
+    app.window.document.querySelector('#back-btn').click();
+    await vi.waitFor(() => {
+      expect(app.window.location.pathname).toBe('/');
+      expect(app.window.document.querySelector('#dashboard').classList.contains('hidden')).toBe(false);
+    });
+  });
+
   test('returns to the dashboard without waiting for an in-flight network sync', async () => {
     let resolvePushStarted;
     let releasePush;

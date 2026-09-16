@@ -107,6 +107,23 @@ test('browser Back closes Preferences and restores the note', async ({page}) => 
   await expect(page.locator('#prefs-modal')).toBeVisible();
 });
 
+test('closing note Preferences leaves one Back step to the dashboard', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-title').fill('Preferences close history test');
+  await page.locator('#save-btn').click();
+  await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
+
+  await page.locator('#editor-prefs-btn').click();
+  await expect(page).toHaveURL(/\/preferences$/);
+  await page.locator('#prefs-close').click();
+  await expect(page).not.toHaveURL(/\/preferences$/);
+
+  await page.locator('#back-btn').click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator('#dashboard')).toBeVisible();
+});
+
 test('direct Preferences URL opens over the dashboard', async ({page}) => {
   await signIn(page);
   await page.goto('/preferences');

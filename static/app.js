@@ -1428,13 +1428,10 @@ function closeConflictResolver() {
 
 function closePreferences() {
   if (isAppPreferencesRoute()) {
-    const returnRoute = history.state?.returnRoute;
-    if (returnRoute?.screen === 'note' && noteRouteIDPattern.test(returnRoute.noteID || '')) {
-      history.replaceState(noteRouteState(returnRoute.noteID), '', `/${encodeURIComponent(returnRoute.noteID)}`);
-    } else {
-      history.replaceState(dashboardRouteState(), '', '/');
-    }
-    closeModal($('#prefs-modal'));
+    // Preferences is a real overlay history entry. Pop it instead of replacing
+    // it with its parent route, which would leave duplicate note entries and
+    // make the next Back appear unresponsive.
+    history.back();
     return;
   }
   closeModal($('#prefs-modal'));
