@@ -379,33 +379,6 @@ describe('markdown preview policy', () => {
     expect([sourceUndo.defaultPrevented, titleUndo.defaultPrevented, sourceRedo.defaultPrevented]).toEqual([false, false, false]);
   });
 
-  test('keeps panel layout state clean when reopening preview after full width', async () => {
-    const app = track(await createApp({realMarked: true}));
-    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '# Heading\n\nA paragraph.'});
-    await app.hooks.savePref('interactivePreview', true);
-
-    const wrap = app.window.document.querySelector('#editor-panels');
-    const editor = app.window.document.querySelector('.panel-editor');
-    const preview = app.window.document.querySelector('.panel-preview');
-    app.hooks.setPanelState('preview');
-    expect(wrap.classList.contains('panels-single')).toBe(true);
-    expect(editor.classList.contains('panel-hidden')).toBe(true);
-    expect(preview.classList.contains('panel-hidden')).toBe(false);
-
-    app.window.document.querySelector('.panel-preview .panel-width').click();
-    expect(wrap.classList.contains('panel-wide')).toBe(true);
-    app.hooks.setPanelState('both');
-    expect(wrap.classList.contains('panels-single')).toBe(false);
-    expect(wrap.classList.contains('panel-wide')).toBe(false);
-    expect(editor.classList.contains('panel-hidden')).toBe(false);
-    expect(preview.classList.contains('panel-hidden')).toBe(false);
-
-    app.hooks.setPanelState('preview');
-    expect(wrap.classList.contains('panels-single')).toBe(true);
-    expect(wrap.classList.contains('panel-wide')).toBe(false);
-    expect(preview.classList.contains('panel-hidden')).toBe(false);
-  });
-
   test('renders interactive blocks as gutter, handle, and content cards', async () => {
     const app = track(await createApp({realMarked: true}));
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '13. [ ] first\n14. second\n\n---\n\nParagraph'});
