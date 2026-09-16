@@ -140,6 +140,35 @@ test('interactive preview preserves checkbox position and auto-scrolls during dr
   await expect(page.locator('html')).not.toHaveClass(/preview-drag-outside/);
 });
 
+test('keeps long interactive previews fully functional with bounded control DOM', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const sections = Array.from({length:240}, (_, index) => `## Section ${index + 1}\n\n- first item\n- second item\n\nParagraph ${index + 1}.`);
+  await page.locator('#note-content').fill(sections.join('\n\n'));
+  await enableInteractivePreview(page);
+
+  const preview = page.locator('#preview');
+  const cards = page.locator('#preview .interactive-preview-card');
+  await expect(cards.first()).toBeVisible();
+  expect(await cards.count()).toBeLessThan(100);
+
+  await page.waitForTimeout(200);
+  expect(await preview.evaluate(async element => {
+    const firstHeading = element.querySelector('h2');
+    const editor = document.querySelector('#note-content');
+    editor.value += '\n\nIncremental update marker';
+    editor.dispatchEvent(new Event('input', {bubbles:true}));
+    while (!element.textContent.includes('Incremental update marker')) await new Promise(requestAnimationFrame);
+    return firstHeading === element.querySelector('h2');
+  })).toBe(true);
+
+  await preview.evaluate(element => { element.scrollTop = element.scrollHeight; });
+  const lastParagraph = preview.getByText('Paragraph 240.', {exact:true});
+  await expect(lastParagraph).toBeVisible();
+  await expect(lastParagraph.locator('xpath=ancestor::*[contains(@class,"interactive-preview-card")]')).toHaveCount(1);
+  expect(await cards.count()).toBeLessThan(140);
+});
+
 test('block dragging keeps its rendered preview and accepts cross-type drops', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();

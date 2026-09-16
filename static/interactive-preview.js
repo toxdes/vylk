@@ -183,5 +183,5 @@ function toggleTask(source, entry) {
   };
 }
 
-window.VylkInteractive = {listItemRanges, listSiblings, reorderListItems, moveMarkdownUnit, toggleTask};
+globalThis.VylkInteractive = {listItemRanges, listSiblings, reorderListItems, moveMarkdownUnit, toggleTask};
 }());

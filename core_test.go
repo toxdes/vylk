@@ -25,7 +25,7 @@ type sseTestRecorder struct {
 func TestStaticCachePreventsProxyTransforms(t *testing.T) {
 	handler := staticCacheMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 
-	for _, path := range []string{"/", "/style.css", "/interactive-preview.js"} {
+	for _, path := range []string{"/", "/style.css", "/interactive-preview.js", "/preview-worker.js"} {
 		result := httptest.NewRecorder()
 		handler.ServeHTTP(result, httptest.NewRequest(http.MethodGet, path, nil))
 		if cacheControl := result.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "no-transform") {
