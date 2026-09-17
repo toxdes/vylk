@@ -5517,10 +5517,6 @@ function editorIsVisible() {
   return !screens.editor.classList.contains('hidden');
 }
 
-function detailsExpanded() {
-  return !$('.meta-pane').classList.contains('collapsed');
-}
-
 function setDetailsExpanded(expanded) {
   $('.meta-pane').classList.toggle('collapsed', !expanded);
   $('.meta-toggle').setAttribute('aria-expanded', String(expanded));
