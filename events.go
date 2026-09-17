@@ -71,7 +71,7 @@ func (b *eventBroker) publish(event changeEvent) {
 			select {
 			case ch <- next:
 			default:
-				break
+				continue
 			}
 		}
 	}

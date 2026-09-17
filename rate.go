@@ -145,15 +145,3 @@ func (rl *rateLimiter) loginRetryAfter(ip string) (int, error) {
 	// time at which the request would still be rejected.
 	return int((remaining + time.Second - 1) / time.Second), nil
 }
-
-func (rl *rateLimiter) banCheckMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := rl.realIP(r)
-		banned, err := rl.isBanned(ip)
-		if err != nil || banned {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
