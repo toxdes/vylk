@@ -3,6 +3,9 @@
 
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
+const editorSourceTextarea = $('#note-content');
+const editorSourceWrap = $('.editor-source-wrap');
+const editorCurrentLine = $('.editor-current-line');
 
 const bootScreen = $('#boot-screen');
 if (bootScreen) bootScreen.hidden = false;
@@ -19,7 +22,10 @@ let isDirty = false;
 let panelState = 'both';
 let savedSnapshot = { title: '', tags: '', content: '' };
 let editorSessionGeneration = 0;
-const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel', collapseDetails:false, hideCursorHighlight:false, statusDisplay:'normal', contentWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans', fontFamilyGoogle:false, fontSize:'1rem', editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, editorFontSize:'1rem', previewFontFamily:'system-sans', previewFontFamilyGoogle:false, previewFontSize:'1rem'};
+const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel',
+  collapseDetails:false, hideCursorHighlight:false, interactivePreview:false, statusDisplay:'normal', contentWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans',
+  fontFamilyGoogle:false, fontSize:'1rem', editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, editorFontSize:'1rem', previewFontFamily:'system-sans',
+  previewFontFamilyGoogle:false, previewFontSize:'1rem'};
 const CONTENT_WIDTH_VALUES = ['compact', 'standard', 'wide', 'full'];
 const FONT_SIZE_OPTIONS = [
   {value: '0.8rem', label: 'Small (80%)'},
@@ -40,6 +46,35 @@ let fontApplyQueue = Promise.resolve();
 let renderedPreviewSource = null;
 let previewCheckFrame = null;
 let highlightFrame = null;
+let editorCaretFrame = null;
+let editorCaretMeasurementCache = null;
+let editorCaretMirror = null;
+let editorCaretMirrorText = null;
+let editorCaretMarker = null;
+let editorCaretRange = null;
+let editorCaretMirrorKey = '';
+let previewRenderWorker = null;
+let previewRenderGeneration = 0;
+let previewRenderRequest = null;
+let previewApplyHandle = null;
+let previewDOMHandle = null;
+let previewCacheHandle = null;
+let previewCacheGeneration = 0;
+let previewWorkerUnavailable = false;
+let renderedPreviewMetadata = null;
+let previewDecorationObserver = null;
+let previewDecorationEntryByElement = new WeakMap();
+let previewObservedElements = new Set();
+let interactiveEntryByElement = new WeakMap();
+let interactivePreviewActive = false;
+let interactiveSourceLocked = false;
+let interactiveSourceMutation = false;
+let interactiveHistory = [];
+let interactiveListItems = [];
+let interactiveBlockItems = [];
+let activePreviewDrag = null;
+let suppressNextPreviewAlignment = false;
+let previewHighlightPending = false;
 let currentRevision = 0;
 let currentBaseRevision = null;
 let syncInFlight = false;
@@ -1416,13 +1451,10 @@ function closeConflictResolver() {
 
 function closePreferences() {
   if (isAppPreferencesRoute()) {
-    const returnRoute = history.state?.returnRoute;
-    if (returnRoute?.screen === 'note' && noteRouteIDPattern.test(returnRoute.noteID || '')) {
-      history.replaceState(noteRouteState(returnRoute.noteID), '', `/${encodeURIComponent(returnRoute.noteID)}`);
-    } else {
-      history.replaceState(dashboardRouteState(), '', '/');
-    }
-    closeModal($('#prefs-modal'));
+    // Preferences is a real overlay history entry. Pop it instead of replacing
+    // it with its parent route, which would leave duplicate note entries and
+    // make the next Back appear unresponsive.
+    history.back();
     return;
   }
   closeModal($('#prefs-modal'));
@@ -2608,6 +2640,24 @@ function applyEditorPrefs() {
   } else {
     $('.fmt-bar').classList.remove('hidden');
   }
+  let interactiveModeChanged = false;
+  if (prefs.interactivePreview && !interactivePreviewActive) {
+    interactivePreviewActive = true;
+    interactiveHistory = [];
+    renderedPreviewSource = null;
+    renderedPreviewMetadata = null;
+    interactiveModeChanged = true;
+  } else if (!prefs.interactivePreview && interactivePreviewActive) {
+    cancelPreviewDrag({animateReturn:false});
+    interactivePreviewActive = false;
+    interactiveHistory = [];
+    renderedPreviewSource = null;
+    renderedPreviewMetadata = null;
+    interactiveModeChanged = true;
+  }
+  syncInteractivePreviewUI();
+  scheduleEditorCaretCue();
+  if (interactiveModeChanged && isPreviewVisible()) updatePreview();
 }
 
 function applyContentWidth() {
@@ -2636,6 +2686,7 @@ function startNewNote(title = '') {
   if (localSaveTimer) clearTimeout(localSaveTimer);
   if (previewTimer) clearTimeout(previewTimer);
   setPanelState(prefs.hidePreview ? 'editor' : 'both');
+  resetInteractivePreviewSession();
   editorSessionGeneration++;
   currentNoteId = newLocalNoteID();
   currentRevision = 0;
@@ -2651,6 +2702,7 @@ function startNewNote(title = '') {
   cachePreviewBlocks();
   applyEditorPrefs();
   show(screens.editor);
+  scheduleEditorCaretCue();
   $('#note-title').focus();
 }
 
@@ -2662,29 +2714,38 @@ $('#back-btn').addEventListener('click', async () => {
   try {
     if (saveTimer) clearTimeout(saveTimer);
     if (localSaveTimer) clearTimeout(localSaveTimer);
-    if (previewTimer) clearTimeout(previewTimer);
+    cancelPendingPreviewRender();
     // Navigation waits only for the durable local save. Network replay then runs
     // after the cached dashboard is visible, rather than making Back feel slow.
     await saveCurrentNote(false);
     clearCurrentNote();
-    if ((await pendingOperations()).length) scheduleSync();
+    const schedulePendingSync = () => {
+      void pendingOperations()
+        .then(operations => { if (operations.length) scheduleSync(); })
+        .catch(error => console.warn('could not inspect pending sync operations', error));
+    };
     if (isAppNoteRoute()) {
       // The note entry already has the dashboard entry beneath it. Consume the
       // note entry so browser Back and the in-app button have the same result.
       const restored = new Promise(resolve => pendingHistoryRestoreResolvers.push(resolve));
       history.back();
+      schedulePendingSync();
       await restored;
       return;
     }
     await loadDashboard({sync: false});
     setDashboardRoute({replace: true});
+    schedulePendingSync();
   } finally {
     backNavigationInFlight = false;
   }
 });
 
+$('#back-btn').addEventListener('pointerdown', cancelPendingPreviewRender, {passive:true});
+
 function showNoteInEditor(data) {
   setPanelState(prefs.hidePreview ? 'editor' : 'both');
+  resetInteractivePreviewSession();
   editorSessionGeneration++;
   currentNoteId = data.id;
   currentRevision = data.revision || 0;
@@ -2694,10 +2755,14 @@ function showNoteInEditor(data) {
   $('#note-title').value = data.title || '';
   $('#note-tags').value = data.tags || '';
   $('#note-content').value = data.content || '';
+  $('#preview').replaceChildren();
+  renderedPreviewSource = null;
+  renderedPreviewMetadata = null;
   setIdleSyncStatus();
   applyEditorPrefs();
   show(screens.editor);
-  updatePreview();
+  scheduleEditorCaretCue();
+  requestPreviewRender();
 }
 
 async function openNote(id, {route = 'push'} = {}) {
@@ -3091,6 +3156,7 @@ document.addEventListener('keydown', e => {
 window.addEventListener('resize', hideTablePicker);
 
 function insertFmt(type) {
+  if (interactiveSourceLocked) return;
   const ta = $('#note-content');
   const start = ta.selectionStart;
   const end = ta.selectionEnd;
@@ -3204,6 +3270,7 @@ document.querySelector('.fmt-bar')?.addEventListener('click', e => {
 
 // Shortcuts for bold/italic in textarea
 $('#note-content').addEventListener('keydown', e => {
+  if (interactiveSourceLocked) return;
   if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'i')) {
     e.preventDefault();
     insertFmt(e.key === 'b' ? 'bold' : 'italic');
@@ -3219,6 +3286,9 @@ $('.meta-toggle')?.addEventListener('click', () => {
 
 // --- Panel toggle ---
 function setPanelState(state) {
+  // Panel transitions must never preserve a half-finished drag. A hidden
+  // source element or placeholder would otherwise leak into the next layout.
+  if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
   panelState = state;
   const wrap = $('#editor-panels');
   const ed = $('.panel-editor');
@@ -3247,6 +3317,7 @@ function setPanelState(state) {
     button.setAttribute('aria-expanded', String(targetVisible));
   });
   applyPanelRatio();
+  scheduleEditorCaretCue();
   if (state !== 'editor') schedulePreviewCheck();
 }
 
@@ -3306,6 +3377,312 @@ applyPanelRatio();
 let previewBlocks = [];
 let previewBlockRanges = [];
 let previewRangeSource = null;
+function resetInteractivePreviewSession() {
+  cancelPreviewDrag({animateReturn:false});
+  disconnectPreviewDecorationObserver();
+  renderedPreviewMetadata = null;
+  suppressNextPreviewAlignment = false;
+  previewHighlightPending = false;
+  interactivePreviewActive = false;
+  interactiveSourceLocked = false;
+  interactiveHistory = [];
+  interactiveListItems = [];
+  interactiveBlockItems = [];
+  syncInteractivePreviewUI();
+}
+
+function syncInteractivePreviewUI() {
+  const textarea = $('#note-content');
+  const preview = $('#preview');
+  if (!textarea || !preview) return;
+  textarea.readOnly = interactiveSourceLocked;
+  textarea.setAttribute('aria-label', interactiveSourceLocked ? 'Markdown source, read-only during drag' : 'Markdown note content');
+  preview.classList.toggle('interactive-preview-active', interactivePreviewActive);
+  $('.fmt-bar')?.classList.toggle('interactive-preview-locked', interactiveSourceLocked);
+}
+
+function createPreviewDragHandle() {
+  const handle = document.createElement('span');
+  handle.className = 'preview-drag-handle';
+  handle.dataset.previewDragIndicator = 'true';
+  handle.setAttribute('aria-hidden', 'true');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('icon');
+  svg.setAttribute('viewBox', '0 0 12 18');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', '#icon-drag-indicator');
+  svg.append(use);
+  handle.append(svg);
+  return handle;
+}
+
+function createPreviewEditButton() {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'preview-edit-button';
+  button.title = 'Edit';
+  button.setAttribute('aria-label', 'Edit this block in source');
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('icon');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', '#icon-edit');
+  svg.append(use);
+  button.append(svg);
+  return button;
+}
+
+function orderedListItemNumber(item) {
+  const list = item.parentElement;
+  if (!list || list.tagName !== 'OL') return null;
+  const siblings = [...list.children].filter(child => child.tagName === 'LI');
+  const reversed = list.hasAttribute('reversed');
+  const startAttribute = list.getAttribute('start');
+  const explicitStart = startAttribute === null ? NaN : Number(startAttribute);
+  let number = Number.isInteger(explicitStart) ? explicitStart : reversed ? siblings.length : 1;
+  const step = reversed ? -1 : 1;
+  for (const sibling of siblings) {
+    const valueAttribute = sibling.getAttribute('value');
+    const explicitValue = valueAttribute === null ? NaN : Number(valueAttribute);
+    if (Number.isInteger(explicitValue)) number = explicitValue;
+    if (sibling === item) return number;
+    number += step;
+  }
+  return null;
+}
+
+function createPreviewListMarker(item, taskItem) {
+  if (taskItem && item.parentElement?.tagName !== 'OL') return null;
+  const marker = document.createElement('span');
+  marker.className = 'preview-list-marker';
+  marker.setAttribute('aria-hidden', 'true');
+  const number = orderedListItemNumber(item);
+  if (number === null) {
+    marker.dataset.kind = 'bullet';
+  } else {
+    marker.textContent = `${number}.`;
+  }
+  return marker;
+}
+
+function decoratePreviewListItem(entry) {
+  if (entry.card?.isConnected) return;
+  const item = entry.element;
+  const nestedLists = [];
+  const body = document.createElement('div');
+  body.className = 'preview-list-item-body';
+  for (const node of [...item.childNodes]) {
+    if (node.nodeType === Node.ELEMENT_NODE && ['UL', 'OL'].includes(node.tagName)) nestedLists.push(node);
+    else body.append(node);
+  }
+
+  const taskItem = Boolean(body.querySelector('input[type="checkbox"]'));
+  const card = document.createElement('div');
+  card.className = `interactive-preview-card interactive-preview-list-card${taskItem ? ' is-task' : ''}`;
+  const content = document.createElement('div');
+  content.className = 'preview-drag-content preview-list-content';
+  const marker = createPreviewListMarker(item, taskItem);
+  if (marker) {
+    card.classList.add('has-marker');
+    content.append(marker);
+  }
+  content.append(body);
+  card.append(createPreviewDragHandle(), content, createPreviewEditButton());
+  item.classList.add('interactive-preview-list-item');
+  item.prepend(card);
+  nestedLists.forEach(list => item.append(list));
+  entry.card = card;
+  entry.visualElement = item;
+  interactiveEntryByElement.set(card, entry);
+  interactiveEntryByElement.set(item, entry);
+}
+
+function decoratePreviewBlock(entry) {
+  if (entry.card?.isConnected) return;
+  const block = entry.element;
+  const card = document.createElement('div');
+  card.className = 'interactive-preview-card interactive-preview-block-card';
+  if (block.tagName === 'HR') card.classList.add('interactive-preview-rule-card');
+  card.dataset.interactiveStart = '';
+  card.dataset.interactiveScope = entry.scope;
+  const content = document.createElement('div');
+  content.className = 'preview-drag-content preview-block-content';
+  block.before(card);
+  block.removeAttribute('data-interactive-start');
+  block.removeAttribute('data-interactive-scope');
+  content.append(block);
+  card.append(createPreviewDragHandle(), content, createPreviewEditButton());
+  entry.element = card;
+  entry.card = card;
+  entry.visualElement = card;
+  entry.contentElement = block;
+  interactiveEntryByElement.set(card, entry);
+  interactiveEntryByElement.set(block, entry);
+}
+
+function undecoratePreviewListItem(entry, {force = false} = {}) {
+  const card = entry.card;
+  if (!card?.isConnected || !force && (card.contains(document.activeElement) || card.classList.contains('highlight', 'is-selected'))) return;
+  const body = card.querySelector(':scope > .preview-list-content > .preview-list-item-body');
+  if (!body) return;
+  while (body.firstChild) card.before(body.firstChild);
+  card.remove();
+  entry.element.classList.remove('interactive-preview-list-item');
+  entry.card = null;
+  entry.visualElement = entry.element;
+}
+
+function undecoratePreviewBlock(entry, {force = false} = {}) {
+  const card = entry.card;
+  const block = entry.contentElement;
+  if (!card?.isConnected || !block || !force && (card.contains(document.activeElement) || card.classList.contains('highlight', 'is-selected'))) return;
+  card.before(block);
+  card.remove();
+  block.dataset.interactiveStart = '';
+  block.dataset.interactiveScope = entry.scope;
+  entry.element = block;
+  entry.card = null;
+  entry.visualElement = block;
+  entry.contentElement = null;
+  interactiveEntryByElement.set(block, entry);
+}
+
+function decoratePreviewEntry(entry) {
+  if (!entry || entry.card?.isConnected) return;
+  if (entry.kind === 'list-item') decoratePreviewListItem(entry);
+  else decoratePreviewBlock(entry);
+}
+
+function undecoratePreviewEntry(entry, options) {
+  if (!entry || activePreviewDrag?.sourceStart === entry.start && activePreviewDrag?.scope === entry.scope) return;
+  if (entry.kind === 'list-item') undecoratePreviewListItem(entry, options);
+  else undecoratePreviewBlock(entry, options);
+}
+
+function disconnectPreviewDecorationObserver() {
+  previewDecorationObserver?.disconnect();
+  previewDecorationObserver = null;
+  previewDecorationEntryByElement = new WeakMap();
+  previewObservedElements = new Set();
+}
+
+function previewEntryObservationElement(entry) {
+  return entry?.kind === 'block' ? entry.contentElement || entry.element : entry?.element;
+}
+
+function decorateInteractivePreview() {
+  if (!interactivePreviewActive) {
+    disconnectPreviewDecorationObserver();
+    return;
+  }
+  const entries = [...interactiveBlockItems, ...interactiveListItems];
+  if (typeof IntersectionObserver !== 'function') {
+    entries.forEach(decoratePreviewEntry);
+    return;
+  }
+  if (!previewDecorationObserver) {
+    previewDecorationObserver = new IntersectionObserver(records => {
+      const entering = [];
+      const leaving = [];
+      for (const record of records) {
+        const entry = previewDecorationEntryByElement.get(record.target);
+        if (!entry) continue;
+        (record.isIntersecting ? entering : leaving).push(entry);
+      }
+      entering.sort((left, right) => left.start - right.start || left.indent - right.indent).forEach(decoratePreviewEntry);
+      leaving.sort((left, right) => right.indent - left.indent || right.start - left.start).forEach(undecoratePreviewEntry);
+    }, {root:$('#preview'), rootMargin:'600px 0px'});
+  }
+  const nextObservedElements = new Set(entries.map(previewEntryObservationElement).filter(Boolean));
+  for (const element of previewObservedElements) {
+    if (nextObservedElements.has(element)) continue;
+    previewDecorationObserver.unobserve(element);
+    previewObservedElements.delete(element);
+  }
+  entries.forEach(entry => {
+    const element = previewEntryObservationElement(entry);
+    if (!element) return;
+    previewDecorationEntryByElement.set(element, entry);
+    if (previewObservedElements.has(element)) return;
+    previewObservedElements.add(element);
+    previewDecorationObserver.observe(element);
+  });
+}
+
+function setInteractiveSourceLocked(locked) {
+  interactiveSourceLocked = Boolean(locked && interactivePreviewActive);
+  syncInteractivePreviewUI();
+}
+
+function updatePreviewPreservingViewport() {
+  const preview = $('#preview');
+  const scrollTop = preview?.scrollTop || 0;
+  suppressNextPreviewAlignment = true;
+  updatePreview();
+  if (preview) preview.scrollTop = scrollTop;
+}
+
+function applyInteractiveSource(nextSource, transaction, {preservePreview = false} = {}) {
+  const textarea = $('#note-content');
+  const before = textarea.value;
+  if (!transaction || !nextSource || nextSource === before) return false;
+  const preserveRenderedPreview = preservePreview &&
+    nextSource.length === before.length &&
+    isPreviewVisible() &&
+    renderedPreviewSource === before &&
+    previewRangeSource === before;
+  const preservedBlockRanges = preserveRenderedPreview ? previewBlockRanges : null;
+  interactiveHistory.push({...transaction, selectionStart: textarea.selectionStart, selectionEnd: textarea.selectionEnd});
+  if (interactiveHistory.length > 50) interactiveHistory.shift();
+  interactiveSourceMutation = true;
+  textarea.value = nextSource;
+  textarea.dispatchEvent(new Event('input', {bubbles:true}));
+  interactiveSourceMutation = false;
+  if (previewTimer) {
+    clearTimeout(previewTimer);
+    previewTimer = null;
+  }
+  if (preserveRenderedPreview) {
+    // A task toggle changes only [ ]/[x], so block structure and every source
+    // range remain valid. Keep the rendered DOM and update the input locally;
+    // the next normal source edit will rebuild metadata for the new source.
+    renderedPreviewSource = nextSource;
+    renderedPreviewMetadata = null;
+    previewRangeSource = nextSource;
+    previewBlockRanges = preservedBlockRanges;
+    suppressNextPreviewAlignment = true;
+    scheduleHighlight();
+    return true;
+  }
+  updatePreviewPreservingViewport();
+  return true;
+}
+
+function undoInteractivePreview() {
+  const transaction = interactiveHistory.pop();
+  const textarea = $('#note-content');
+  if (!transaction || !textarea) return false;
+  const current = textarea.value;
+  if (current.slice(transaction.start, transaction.start + transaction.inserted.length) !== transaction.inserted) {
+    interactiveHistory = [];
+    return false;
+  }
+  const restored = current.slice(0, transaction.start) + transaction.removed + current.slice(transaction.start + transaction.inserted.length);
+  interactiveSourceMutation = true;
+  textarea.value = restored;
+  textarea.selectionStart = transaction.selectionStart;
+  textarea.selectionEnd = transaction.selectionEnd;
+  textarea.dispatchEvent(new Event('input', {bubbles:true}));
+  interactiveSourceMutation = false;
+  if (previewTimer) {
+    clearTimeout(previewTimer);
+    previewTimer = null;
+  }
+  updatePreviewPreservingViewport();
+  return true;
+}
 function isPreviewVisible() {
   return !screens.editor.classList.contains('hidden') && panelState !== 'editor';
 }
@@ -3361,58 +3738,173 @@ function calculatePreviewScrollAdjustment({previewTop, previewHeight, previewScr
 }
 
 function measureEditorCaret() {
-  const ta = $('#note-content');
+  const ta = editorSourceTextarea;
+  if (!ta) return null;
   const taRect = ta.getBoundingClientRect();
   if (!taRect.width || !taRect.height) return null;
   const computed = getComputedStyle(ta);
-  const mirror = document.createElement('div');
-  mirror.style.position = 'absolute';
-  mirror.style.visibility = 'hidden';
-  mirror.style.pointerEvents = 'none';
-  mirror.style.left = `${taRect.left + window.scrollX}px`;
-  mirror.style.top = `${taRect.top + window.scrollY}px`;
-  mirror.style.width = `${taRect.width}px`;
-  mirror.style.boxSizing = computed.boxSizing;
-  mirror.style.border = computed.border;
-  mirror.style.padding = computed.padding;
-  mirror.style.font = computed.font;
-  mirror.style.letterSpacing = computed.letterSpacing;
-  mirror.style.lineHeight = computed.lineHeight;
-  mirror.style.tabSize = computed.tabSize;
-  mirror.style.whiteSpace = 'pre-wrap';
-  mirror.style.overflowWrap = 'break-word';
-  mirror.style.wordBreak = 'break-word';
-  mirror.style.height = 'auto';
-  mirror.textContent = ta.value.slice(0, ta.selectionStart);
-  const marker = document.createElement('span');
-  marker.textContent = '\u200b';
-  mirror.append(marker);
-  document.body.append(mirror);
-  const mirrorRect = mirror.getBoundingClientRect();
-  const markerRect = marker.getBoundingClientRect();
+  const source = ta.value;
+  const position = ta.selectionDirection === 'backward' ? ta.selectionStart : ta.selectionEnd;
+  const safePosition = Math.min(position, source.length);
+  const metricsKey = [ta.clientWidth, computed.font, computed.letterSpacing, computed.lineHeight, computed.padding, computed.border,
+    computed.whiteSpace, computed.overflowWrap, computed.wordBreak, computed.tabSize, computed.textIndent,
+    computed.direction, computed.unicodeBidi, computed.wordSpacing].join('\u0000');
+  if (editorCaretMeasurementCache?.source === source && editorCaretMeasurementCache.position === position && editorCaretMeasurementCache.metricsKey === metricsKey) {
+    return {
+      top: taRect.top + editorCaretMeasurementCache.offsetTop - ta.scrollTop,
+      height: editorCaretMeasurementCache.height,
+      lineHeight: editorCaretMeasurementCache.lineHeight,
+    };
+  }
+  if (!editorCaretMirror || !editorCaretRange || !editorCaretMirrorText || editorCaretMirrorKey !== `${source}\u0000${metricsKey}`) {
+    if (!editorCaretMirror) {
+      if (!editorSourceWrap) return null;
+      editorCaretMirror = document.createElement('div');
+      editorCaretMirror.className = 'editor-caret-measure';
+      editorCaretMirror.setAttribute('aria-hidden', 'true');
+      editorSourceWrap.append(editorCaretMirror);
+      editorCaretRange = document.createRange();
+    }
+    editorCaretMirror.style.width = `${ta.clientWidth}px`;
+    editorCaretMirror.style.boxSizing = 'border-box';
+    editorCaretMirror.style.border = computed.border;
+    editorCaretMirror.style.padding = computed.padding;
+    editorCaretMirror.style.font = computed.font;
+    editorCaretMirror.style.letterSpacing = computed.letterSpacing;
+    editorCaretMirror.style.lineHeight = computed.lineHeight;
+    editorCaretMirror.style.tabSize = computed.tabSize;
+    editorCaretMirror.style.whiteSpace = computed.whiteSpace;
+    editorCaretMirror.style.overflowWrap = computed.overflowWrap;
+    editorCaretMirror.style.wordBreak = computed.wordBreak;
+    editorCaretMirror.style.textIndent = computed.textIndent;
+    editorCaretMirror.style.direction = computed.direction;
+    editorCaretMirror.style.unicodeBidi = computed.unicodeBidi;
+    editorCaretMirror.style.wordSpacing = computed.wordSpacing;
+    editorCaretMirror.textContent = source || '\u200b';
+    editorCaretMirrorText = editorCaretMirror.firstChild;
+    editorCaretMarker = null;
+    editorCaretMirrorKey = `${source}\u0000${metricsKey}`;
+  }
+  const lineStart = safePosition === 0 || source[safePosition - 1] === '\n';
+  let caretRect;
+  if (lineStart) {
+    if (!editorCaretMarker) {
+      const before = document.createTextNode('');
+      editorCaretMarker = document.createElement('span');
+      editorCaretMarker.textContent = '\u200b';
+      const after = document.createTextNode('');
+      editorCaretMirror.replaceChildren(before, editorCaretMarker, after);
+      editorCaretMirrorText = null;
+    }
+    const children = editorCaretMirror.childNodes;
+    children[0].data = source.slice(0, safePosition);
+    children[2].data = source.slice(safePosition);
+    caretRect = editorCaretMarker.getBoundingClientRect();
+  } else {
+    if (editorCaretMarker) {
+      editorCaretMirror.textContent = source || '\u200b';
+      editorCaretMirrorText = editorCaretMirror.firstChild;
+      editorCaretMarker = null;
+    }
+    editorCaretRange.setStart(editorCaretMirrorText, safePosition);
+    editorCaretRange.collapse(true);
+    caretRect = editorCaretRange.getBoundingClientRect();
+    if (safePosition < source.length && source[safePosition] !== '\n') {
+      editorCaretRange.setEnd(editorCaretMirrorText, safePosition + 1);
+      const characterRect = editorCaretRange.getBoundingClientRect();
+      if (characterRect.height && Math.abs(characterRect.top - caretRect.top) > 0.5) caretRect = characterRect;
+      editorCaretRange.collapse(true);
+    }
+    if (!caretRect.height && safePosition > 0) {
+      editorCaretRange.setStart(editorCaretMirrorText, safePosition - 1);
+      editorCaretRange.setEnd(editorCaretMirrorText, safePosition);
+      caretRect = editorCaretRange.getBoundingClientRect();
+    }
+  }
+  const mirrorRect = editorCaretMirror.getBoundingClientRect();
   const lineHeight = parseFloat(computed.lineHeight) || parseFloat(computed.fontSize) * 1.5 || 24;
-  mirror.remove();
+  const offsetTop = caretRect.top - mirrorRect.top;
+  editorCaretMeasurementCache = {source, position, metricsKey, offsetTop, height:caretRect.height || lineHeight, lineHeight};
   return {
-    top: taRect.top + markerRect.top - mirrorRect.top - ta.scrollTop,
-    height: markerRect.height || lineHeight,
+    top: taRect.top + offsetTop - ta.scrollTop,
+    height: caretRect.height || lineHeight,
     lineHeight,
   };
 }
 
+function updateEditorCaretCue() {
+  editorCaretFrame = null;
+  const textarea = editorSourceTextarea;
+  const wrap = editorSourceWrap;
+  const line = editorCurrentLine;
+  if (!textarea || !wrap || !line) return;
+  const focused = document.activeElement === textarea && !textarea.readOnly;
+  wrap.classList.toggle('is-caret-visible', focused);
+  if (!focused) return;
+  const caret = measureEditorCaret();
+  if (!caret) return;
+  const textareaRect = textarea.getBoundingClientRect();
+  wrap.style.setProperty('--editor-caret-top', `${Math.max(0, caret.top - textareaRect.top)}px`);
+  wrap.style.setProperty('--editor-caret-height', `${Math.max(1, caret.height)}px`);
+}
+
+function scheduleEditorCaretCue() {
+  if (editorCaretFrame !== null) return;
+  editorCaretFrame = requestAnimationFrame(updateEditorCaretCue);
+}
+
+function centerEditorCaretInView() {
+  const textarea = editorSourceTextarea;
+  if (!textarea) return;
+  requestAnimationFrame(() => {
+    const caret = measureEditorCaret();
+    if (!caret) return;
+    const textareaRect = textarea.getBoundingClientRect();
+    const caretOffset = caret.top - textareaRect.top + textarea.scrollTop + caret.height / 2;
+    const targetOffset = textarea.clientHeight * .38;
+    const maxScrollTop = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+    textarea.scrollTop = Math.max(0, Math.min(maxScrollTop, caretOffset - targetOffset));
+  });
+}
+
 function previewBlockIndexAtPosition(position) {
-  let previous = -1;
-  let next = -1;
-  for (let index = 0; index < previewBlockRanges.length; index++) {
-    const range = previewBlockRanges[index];
-    if (range.start <= position && position < range.end) return index;
-    if (range.end <= position) previous = index;
-    if (next < 0 && position < range.start) next = index;
+  let low = 0;
+  let high = previewBlockRanges.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (previewBlockRanges[middle].start <= position) low = middle + 1;
+    else high = middle;
   }
-  if (previous < 0) return next;
-  if (next < 0) return previous;
-  const distanceToPrevious = position - previewBlockRanges[previous].end;
-  const distanceToNext = previewBlockRanges[next].start - position;
-  return distanceToPrevious <= distanceToNext ? previous : next;
+  const previous = low - 1;
+  const next = low < previewBlockRanges.length ? low : -1;
+  if (previous >= 0 && position <= previewBlockRanges[previous].end) return previous;
+  if (next >= 0 && position === previewBlockRanges[next].start) return next;
+  return -1;
+}
+
+function previewListItemAtPosition(position, sourceLength) {
+  let best = null;
+  for (const entry of interactiveListItems) {
+    if (entry.start > position) break;
+    if (!(position < entry.end || position === sourceLength && entry.end === position)) continue;
+    if (!best || entry.indent > best.indent || entry.indent === best.indent && entry.start > best.start ||
+      entry.indent === best.indent && entry.start === best.start && entry.end < best.end) best = entry;
+  }
+  return best;
+}
+
+function previewTaskCheckbox(item) {
+  const body = item.querySelector(':scope > .interactive-preview-list-card > .preview-list-content > .preview-list-item-body');
+  return item.querySelector(':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]')
+    || body?.querySelector('input[type="checkbox"]')
+    || null;
+}
+
+function syncPreviewTaskCheckbox(item) {
+  const checkbox = previewTaskCheckbox(item);
+  if (!checkbox) return;
+  checkbox.disabled = !interactivePreviewActive;
+  checkbox.setAttribute('aria-label', checkbox.checked ? 'Mark task incomplete' : 'Mark task complete');
 }
 
 function alignPreviewWithCaret(block, range) {
@@ -3440,59 +3932,216 @@ function alignPreviewWithCaret(block, range) {
   if (adjustment) preview.scrollTop += adjustment;
 }
 
-function cachePreviewBlocks() {
+function previewBlockDescriptors(source, renderMetadata) {
+  if (renderMetadata?.source === source && Array.isArray(renderMetadata.blocks)) return renderMetadata.blocks;
+  const descriptors = [];
+  let offset = 0;
+  for (const token of marked.lexer(source, markdownRenderOptions())) {
+    const raw = typeof token.raw === 'string' ? token.raw : '';
+    if (!raw) continue;
+    const start = source.indexOf(raw, offset);
+    if (start < offset || !previewGapDoesNotRender(source.slice(offset, start))) return null;
+    offset = start + raw.length;
+    const tagName = previewTokenTag(token);
+    if (!tagName) continue;
+    descriptors.push({
+      start,
+      end:Math.max(start, start + raw.replace(/[\s\r\n]+$/, '').length),
+      tagName,
+      type:token.type,
+      listItems:token.type === 'list' && window.VylkInteractive?.listItemRanges
+        ? window.VylkInteractive.listItemRanges(raw, start, `list:${start}`)
+        : [],
+    });
+  }
+  if (!previewGapDoesNotRender(source.slice(offset))) return null;
+  return descriptors;
+}
+
+function previewContentBlocks(pv, patchedBlocks) {
+  if (patchedBlocks) return patchedBlocks;
+  return Array.from(pv.children)
+    .filter(c => c.tagName && !['STYLE','SCRIPT'].includes(c.tagName) && !c.dataset.previewDragIndicator)
+    .map(element => element.matches('.interactive-preview-block-card')
+      ? element.querySelector(':scope > .preview-block-content')?.firstElementChild
+      : element)
+    .filter(Boolean);
+}
+
+function createPreviewCacheState(renderMetadata, patchedBlocks) {
   const pv = $('#preview');
-  previewBlocks = Array.from(pv.children).filter(c => c.tagName && !['STYLE','SCRIPT'].includes(c.tagName));
+  const previousBlockEntries = new Map(interactiveBlockItems.map(entry => [entry.contentElement || entry.element, entry]));
+  const previousListEntries = new Map(interactiveListItems.map(entry => [entry.element, entry]));
+  const previousListEntriesByBlock = new Map();
+  interactiveListItems.forEach(entry => {
+    if (!entry.blockElement) return;
+    const entries = previousListEntriesByBlock.get(entry.blockElement) || [];
+    entries.push(entry);
+    previousListEntriesByBlock.set(entry.blockElement, entries);
+  });
+  const blocks = previewContentBlocks(pv, patchedBlocks);
+  const source = $('#note-content').value;
+  if (!source || typeof marked === 'undefined' || typeof marked.lexer !== 'function') return null;
+  const descriptors = previewBlockDescriptors(source, renderMetadata);
+  if (!descriptors || descriptors.length !== blocks.length) return null;
+  return {
+    source,
+    blocks,
+    descriptors,
+    previousBlockEntries,
+    previousListEntries,
+    previousListEntriesByBlock,
+    ranges:[],
+    blockItems:[],
+    listItems:[],
+    index:0,
+  };
+}
+
+function processPreviewCacheBlock(state) {
+  const blockIndex = state.index++;
+  const descriptor = state.descriptors[blockIndex];
+  const block = state.blocks[blockIndex];
+  if (!block || block.tagName !== descriptor.tagName) throw new Error('preview block metadata did not match rendered output');
+  const range = {start:descriptor.start, end:descriptor.end};
+  state.ranges.push(range);
+  if (descriptor.type !== 'list') {
+    const entry = state.previousBlockEntries.get(block) || {};
+    Object.assign(entry, range, {indent:0, ordered:false, parent:null, kind:'block', scope:'blocks'});
+    if (entry.card?.isConnected) {
+      entry.element = entry.card;
+      entry.visualElement = entry.card;
+      entry.contentElement = block;
+    } else {
+      entry.element = block;
+      entry.visualElement = block;
+      entry.contentElement = null;
+    }
+    if (!entry.element.hasAttribute('data-interactive-start')) entry.element.dataset.interactiveStart = '';
+    if (!entry.element.hasAttribute('data-interactive-scope')) entry.element.dataset.interactiveScope = entry.scope;
+    interactiveEntryByElement.set(entry.element, entry);
+    interactiveEntryByElement.set(block, entry);
+    state.blockItems.push(entry);
+    return;
+  }
+  const listEntries = descriptor.listItems || [];
+  const previousEntries = state.previousListEntriesByBlock.get(block);
+  const listElements = previousEntries?.length === listEntries.length
+    ? previousEntries.map(entry => entry.element)
+    : [...block.querySelectorAll('li')];
+  if (listEntries.length !== listElements.length) return;
+  listEntries.forEach((descriptorEntry, index) => {
+    const element = listElements[index];
+    const entry = state.previousListEntries.get(element) || {};
+    Object.assign(entry, descriptorEntry, {element, blockElement:block});
+    if (!element.hasAttribute('data-interactive-start')) element.dataset.interactiveStart = '';
+    if (!element.hasAttribute('data-interactive-scope')) element.dataset.interactiveScope = entry.scope;
+    interactiveEntryByElement.set(element, entry);
+    if (entry.card?.isConnected) interactiveEntryByElement.set(entry.card, entry);
+    const lineEnd = state.source.indexOf('\n', entry.start);
+    const line = state.source.slice(entry.start, lineEnd < 0 ? entry.end : Math.min(entry.end, lineEnd));
+    if (/\[[ xX]\]/.test(line)) syncPreviewTaskCheckbox(element);
+    state.listItems.push(entry);
+  });
+}
+
+function commitPreviewCache(state, generation) {
+  if (generation !== previewCacheGeneration || state.source !== $('#note-content').value || state.blocks !== previewBlocks) return;
+  previewBlockRanges = state.ranges;
+  previewRangeSource = state.source;
+  interactiveBlockItems = state.blockItems;
+  interactiveListItems = state.listItems;
+  decorateInteractivePreview();
+  syncInteractivePreviewUI();
+  scheduleHighlight();
+}
+
+function cachePreviewBlocks(renderMetadata = null, patchedBlocks = null, {defer = false} = {}) {
+  if (previewCacheHandle !== null) clearTimeout(previewCacheHandle);
+  previewCacheHandle = null;
+  const generation = ++previewCacheGeneration;
+  let state;
+  try {
+    state = createPreviewCacheState(renderMetadata, patchedBlocks);
+  } catch (_) {
+    state = null;
+  }
+  previewBlocks = state?.blocks || previewContentBlocks($('#preview'), patchedBlocks);
   previewBlockRanges = [];
   previewRangeSource = null;
-  const source = $('#note-content').value;
-  if (!source || typeof marked === 'undefined' || typeof marked.lexer !== 'function') return;
-  try {
-    const ranges = [];
-    let offset = 0;
-    let blockIndex = 0;
-    for (const token of marked.lexer(source, markdownRenderOptions())) {
-      const raw = typeof token.raw === 'string' ? token.raw : '';
-      if (!raw) continue;
-      const start = source.indexOf(raw, offset);
-      if (start < offset || !previewGapDoesNotRender(source.slice(offset, start))) {
-        previewBlockRanges = [];
-        return;
-      }
-      offset = start + raw.length;
-      const tagName = previewTokenTag(token);
-      if (!tagName) continue;
-      const block = previewBlocks[blockIndex++];
-      if (!block || block.tagName !== tagName) {
-        previewBlockRanges = [];
-        return;
-      }
-      const contentEnd = start + raw.replace(/[\s\r\n]+$/, '').length;
-      ranges.push({start, end: Math.max(start, contentEnd)});
+  if (!state) {
+    interactiveListItems = [];
+    interactiveBlockItems = [];
+    decorateInteractivePreview();
+    syncInteractivePreviewUI();
+    return;
+  }
+  const process = () => {
+    previewCacheHandle = null;
+    if (generation !== previewCacheGeneration || state.source !== $('#note-content').value) return;
+    const started = performance.now();
+    try {
+      while (state.index < state.descriptors.length && (!defer || performance.now() - started < 5)) processPreviewCacheBlock(state);
+    } catch (_) {
+      previewBlockRanges = [];
+      return;
     }
-    if (!previewGapDoesNotRender(source.slice(offset)) || blockIndex !== previewBlocks.length) return;
-    previewBlockRanges = ranges;
-    previewRangeSource = source;
-  } catch (_) {
-    previewBlockRanges = [];
+    if (state.index < state.descriptors.length) {
+      previewCacheHandle = setTimeout(process, 0);
+      return;
+    }
+    commitPreviewCache(state, generation);
+  };
+  process();
+}
+
+function cancelPreviewCache() {
+  previewCacheGeneration++;
+  if (previewCacheHandle !== null) {
+    clearTimeout(previewCacheHandle);
+    previewCacheHandle = null;
   }
 }
 function highlightBlock() {
   if (!isPreviewVisible()) return;
+  const skipAlignment = suppressNextPreviewAlignment;
+  suppressNextPreviewAlignment = false;
   if (prefs.hideCursorHighlight) {
     clearPreviewHighlight();
     return;
   }
   const ta = $('#note-content');
-  clearPreviewHighlight();
   const text = ta.value;
   const pos = ta.selectionStart;
-  if (!text.trim() || !previewBlocks.length || renderedPreviewSource !== text || previewRangeSource !== text) return;
+  if (!text.trim() || !previewBlocks.length) {
+    clearPreviewHighlight();
+    previewHighlightPending = false;
+    return;
+  }
+  if (renderedPreviewSource !== text || previewRangeSource !== text) {
+    if (!previewHighlightPending) clearPreviewHighlight();
+    return;
+  }
+  previewHighlightPending = false;
+  clearPreviewHighlight();
   const idx = previewBlockIndexAtPosition(pos);
   const block = previewBlocks[idx];
   if (!block) return;
-  block.classList.add('highlight');
-  alignPreviewWithCaret(block, previewBlockRanges[idx]);
+  let range = previewBlockRanges[idx];
+  if (interactivePreviewActive && !['UL', 'OL'].includes(block.tagName)) {
+    decoratePreviewEntry(interactiveBlockItems.find(entry => entry.start === range?.start));
+  }
+  let highlightTarget = interactivePreviewActive ? block.closest('.interactive-preview-card') || block : block;
+  if (['UL', 'OL'].includes(block.tagName)) {
+    const listItem = previewListItemAtPosition(pos, text.length);
+    if (listItem?.element?.isConnected) {
+      if (interactivePreviewActive) decoratePreviewEntry(listItem);
+      range = listItem;
+      highlightTarget = interactivePreviewActive ? listItem.card || listItem.element : listItem.element;
+    }
+  }
+  highlightTarget.classList.add('highlight');
+  if (!skipAlignment) alignPreviewWithCaret(highlightTarget, range);
 }
 
 // --- Delete ---
@@ -3529,16 +4178,31 @@ $('#delete-btn').addEventListener('click', async () => {
 
 // --- Live Preview ---
 $('#note-content').addEventListener('input', () => {
+  if (!interactiveSourceMutation) interactiveHistory = [];
+  if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
   markDirty();
   scheduleSave();
+  previewHighlightPending = true;
   previewRangeSource = null;
   previewBlockRanges = [];
   scheduleHighlight();
-  if (previewTimer) clearTimeout(previewTimer);
-  previewTimer = setTimeout(updatePreview, 500);
+  scheduleEditorCaretCue();
+  cancelPendingPreviewRender();
+  previewTimer = setTimeout(requestPreviewRender, 500);
 });
-$('#note-content').addEventListener('click', scheduleHighlight);
-$('#note-content').addEventListener('keyup', scheduleHighlight);
+$('#note-content').addEventListener('click', () => { scheduleHighlight(); scheduleEditorCaretCue(); });
+$('#note-content').addEventListener('keyup', () => { scheduleHighlight(); scheduleEditorCaretCue(); });
+$('#note-content').addEventListener('focus', scheduleEditorCaretCue);
+$('#note-content').addEventListener('blur', scheduleEditorCaretCue);
+$('#note-content').addEventListener('select', scheduleEditorCaretCue);
+$('#note-content').addEventListener('scroll', scheduleEditorCaretCue, {passive:true});
+document.addEventListener('selectionchange', () => {
+  if (document.activeElement === editorSourceTextarea) scheduleEditorCaretCue();
+});
+window.addEventListener('resize', scheduleEditorCaretCue, {passive:true});
+if (typeof ResizeObserver === 'function' && editorSourceTextarea) {
+  new ResizeObserver(scheduleEditorCaretCue).observe(editorSourceTextarea);
+}
 
 function linkifyWikiLinks(container) {
   const matcher = /\[\[([^\[\]\n]+)\]\]/g;
@@ -3640,12 +4304,646 @@ function markdownRenderOptions() {
   return options;
 }
 
+function interactiveEntryForElement(element) {
+  if (!interactivePreviewSourceIsCurrent()) return null;
+  const owner = element?.closest('[data-interactive-start]');
+  return owner ? interactiveEntryByElement.get(owner) || null : null;
+}
+
+function interactivePreviewSourceIsCurrent() {
+  const source = $('#note-content').value;
+  return renderedPreviewSource === source && previewRangeSource === source;
+}
+
+function previewEditPosition(entry, source = $('#note-content').value) {
+  if (!entry || typeof source !== 'string') return 0;
+  const raw = source.slice(entry.start, entry.end);
+  let prefix = '';
+  if (entry.kind === 'list-item') {
+    prefix = raw.match(/^[ \t]*(?:[-+*]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?/)?.[0] || '';
+  } else {
+    prefix = raw.match(/^[ \t]{0,3}#{1,6}[ \t]+/)?.[0]
+      || raw.match(/^[ \t]{0,3}>[ \t]?/)?.[0]
+      || raw.match(/^[ \t]{0,3}(?:`{3,}|~{3,})[^\r\n]*(?:\r?\n|$)/)?.[0]
+      || '';
+  }
+  return Math.min(entry.end, entry.start + prefix.length);
+}
+
+function editPreviewEntry(entry) {
+  const textarea = $('#note-content');
+  if (!interactivePreviewActive || !entry || !textarea) return false;
+  if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
+  const position = previewEditPosition(entry, textarea.value);
+  if (panelState === 'preview') setPanelState('editor', {preservePanelWide:true});
+  textarea.focus({preventScroll:true});
+  textarea.setSelectionRange(position, position);
+  centerEditorCaretInView();
+  scheduleHighlight();
+  return true;
+}
+
+function selectInteractivePreviewCard(card) {
+  $('#preview').querySelectorAll('.interactive-preview-card.is-selected').forEach(current => {
+    if (current !== card) current.classList.remove('is-selected');
+  });
+  card?.classList.add('is-selected');
+}
+
 $('#preview').addEventListener('click', event => {
+  const editButton = event.target.closest('.preview-edit-button');
+  if (interactivePreviewActive && editButton) {
+    event.preventDefault();
+    editPreviewEntry(interactiveEntryForElement(editButton));
+    return;
+  }
   const link = event.target.closest('a[data-wiki-title]');
-  if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-  event.preventDefault();
-  void followWikiLink(link.dataset.wikiTitle);
+  if (link && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    event.preventDefault();
+    void followWikiLink(link.dataset.wikiTitle);
+    return;
+  }
+  const checkbox = event.target.closest('input[type="checkbox"]');
+  if (interactivePreviewActive && checkbox && !checkbox.disabled && interactivePreviewSourceIsCurrent()) {
+    const item = checkbox.closest('li[data-interactive-start]');
+    const entry = interactiveEntryByElement.get(item);
+    const change = window.VylkInteractive?.toggleTask($('#note-content').value, entry);
+    if (!change) return;
+    const applied = applyInteractiveSource(change.source, {
+      start:change.start,
+      removed:$('#note-content').value.slice(change.start, change.end),
+      inserted:change.inserted,
+    }, {preservePreview:true});
+    if (applied) {
+      checkbox.setAttribute('aria-label', change.checked ? 'Mark task incomplete' : 'Mark task complete');
+    }
+    return;
+  }
+  if (interactivePreviewActive && window.matchMedia('(hover: none), (pointer: coarse)').matches) {
+    selectInteractivePreviewCard(event.target.closest('.interactive-preview-card'));
+  }
 });
+
+document.addEventListener('pointerdown', event => {
+  if (!interactivePreviewActive || event.target.closest('#preview .interactive-preview-card')) return;
+  selectInteractivePreviewCard(null);
+});
+
+function previewDragTarget(clientX, clientY, sourceStart, sourceScope) {
+  const preview = $('#preview');
+  const previewRect = preview.getBoundingClientRect();
+  if (clientX < previewRect.left || clientX > previewRect.right || clientY < previewRect.top || clientY > previewRect.bottom) return null;
+  const entries = [...interactiveBlockItems, ...interactiveListItems];
+  const source = entries.find(entry => entry.start === sourceStart && entry.scope === sourceScope);
+  if (!source) return null;
+  let best = null;
+  // IntersectionObserver keeps every on-screen and near-screen target
+  // decorated. Restrict geometry reads to those cards so dragging remains one
+  // frame of work even when the note contains thousands of source blocks.
+  for (const entry of entries) {
+    if (!entry.card?.isConnected || entry === source || !entry.element?.isConnected || (source.start < entry.end && entry.start < source.end)) continue;
+    // Use the visible card as the hit target when it exists. A list item's LI
+    // may include nested lists, making its box much taller than the row the
+    // pointer is actually crossing and causing an apparent before/after flip.
+    const rect = (entry.card || entry.visualElement || entry.element).getBoundingClientRect();
+    if (!rect.height) continue;
+    const verticalDistance = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+    const horizontalDistance = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
+    const score = verticalDistance * 1000 + horizontalDistance;
+    if (!best || score < best.score) best = {entry, rect, score};
+  }
+  if (!best) return null;
+  return {
+    element:best.entry.element,
+    start:best.entry.start,
+    scope:best.entry.scope,
+    placement:clientY < best.rect.top + best.rect.height / 2 ? 'before' : 'after',
+  };
+}
+
+function capturePreviewLayout(parent, excludedElement) {
+  if (!parent) return new Map();
+  return new Map([...parent.children]
+    .filter(element => element !== excludedElement && !element.classList.contains('preview-drag-placeholder'))
+    .map(element => [element, element.getBoundingClientRect()]));
+}
+
+function animatePreviewReflow(before) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  for (const [element, first] of before) {
+    if (!element.isConnected || typeof element.animate !== 'function') continue;
+    element.getAnimations?.().filter(animation => animation.id === 'preview-reflow').forEach(animation => animation.cancel());
+    const last = element.getBoundingClientRect();
+    const deltaX = first.left - last.left;
+    const deltaY = first.top - last.top;
+    if (Math.abs(deltaX) < .5 && Math.abs(deltaY) < .5) continue;
+    const animation = element.animate([
+      {transform:`translate3d(${deltaX}px,${deltaY}px,0)`},
+      {transform:'translate3d(0,0,0)'},
+    ], {duration:180, easing:'cubic-bezier(.16,1,.3,1)'});
+    animation.id = 'preview-reflow';
+  }
+}
+
+function createPreviewPlaceholder(drag, parent) {
+  const tagName = ['UL', 'OL'].includes(parent?.tagName) ? 'li' : 'div';
+  if (drag.placeholder?.tagName === tagName.toUpperCase()) return drag.placeholder;
+  drag.placeholder?.remove();
+  const placeholder = document.createElement(tagName);
+  placeholder.className = 'preview-drag-placeholder';
+  placeholder.setAttribute('aria-hidden', 'true');
+  placeholder.style.width = `${drag.placeholderWidth}px`;
+  placeholder.style.height = `${drag.placeholderHeight}px`;
+  drag.placeholder = placeholder;
+  return placeholder;
+}
+
+function previewAutoScrollDelta(preview, clientY, elapsedMilliseconds = 16.67) {
+  const rect = preview.getBoundingClientRect();
+  const edgeSize = Math.min(72, Math.max(44, rect.height * .18));
+  let intensity = 0;
+  if (clientY < rect.top + edgeSize) intensity = -Math.min(1, (rect.top + edgeSize - clientY) / edgeSize);
+  else if (clientY > rect.bottom - edgeSize) intensity = Math.min(1, (clientY - (rect.bottom - edgeSize)) / edgeSize);
+  const maxScrollTop = Math.max(0, preview.scrollHeight - preview.clientHeight);
+  if (!intensity || (intensity < 0 && preview.scrollTop <= 0) || (intensity > 0 && preview.scrollTop >= maxScrollTop - 1)) return 0;
+  return Math.sign(intensity) * Math.max(1, .75 * Math.min(32, elapsedMilliseconds) * intensity * intensity);
+}
+
+function renderPreviewDrag(frameTime = performance.now()) {
+  const drag = activePreviewDrag;
+  if (!drag) return;
+  drag.frame = null;
+  if (!drag.armed) return;
+  drag.ghost.style.transform = `translate3d(${drag.x - drag.startX}px,${drag.y - drag.startY}px,0)`;
+  const preview = $('#preview');
+  const previewRect = preview.getBoundingClientRect();
+  const outsidePreview = drag.x < previewRect.left || drag.x > previewRect.right || drag.y < previewRect.top || drag.y > previewRect.bottom;
+  document.documentElement.classList.toggle('preview-drag-outside', outsidePreview);
+  const elapsed = drag.lastFrameAt ? frameTime - drag.lastFrameAt : 16.67;
+  drag.lastFrameAt = frameTime;
+  const scrollDelta = outsidePreview ? 0 : previewAutoScrollDelta(preview, drag.y, elapsed);
+  const previousScrollTop = preview.scrollTop;
+  if (scrollDelta) preview.scrollTop += scrollDelta;
+  const didScroll = Math.abs(preview.scrollTop - previousScrollTop) > .1;
+  const nextTarget = previewDragTarget(drag.x, drag.y, drag.sourceStart, drag.scope);
+  const previous = drag.target;
+  if (previous?.element !== nextTarget?.element || previous?.placement !== nextTarget?.placement) {
+    if (previous) previous.element.removeAttribute('data-preview-drop');
+    if (nextTarget) nextTarget.element.dataset.previewDrop = nextTarget.placement;
+    drag.target = nextTarget;
+    if (nextTarget) {
+      const parent = nextTarget.element.parentNode;
+      const placeholder = createPreviewPlaceholder(drag, parent);
+      const insertionPoint = nextTarget.placement === 'before' ? nextTarget.element : nextTarget.element.nextSibling;
+      if (insertionPoint !== placeholder) {
+        const before = capturePreviewLayout(parent, drag.sourceElement);
+        parent.insertBefore(placeholder, insertionPoint);
+        animatePreviewReflow(before);
+      }
+    }
+  }
+  if (didScroll && drag.frame === null) drag.frame = requestAnimationFrame(renderPreviewDrag);
+}
+
+function cancelPreviewDrag({animateReturn = true} = {}) {
+  const drag = activePreviewDrag;
+  if (!drag) return;
+  if (drag.frame !== null) cancelAnimationFrame(drag.frame);
+  const returnLayout = drag.armed && animateReturn ? capturePreviewLayout(drag.placeholder?.parentNode, drag.sourceElement) : null;
+  if (drag.armed) {
+    drag.sourceElement?.classList.remove('preview-dragging');
+    drag.visualElement?.classList.remove('preview-dragging');
+    if (drag.sourceElement) drag.sourceElement.style.display = drag.sourceDisplay;
+  }
+  drag.target?.element?.removeAttribute('data-preview-drop');
+  drag.placeholder?.remove();
+  if (returnLayout) animatePreviewReflow(returnLayout);
+  drag.portal?.remove();
+  drag.ghost?.remove();
+  document.documentElement.classList.remove('preview-drag-active', 'preview-drag-outside');
+  activePreviewDrag = null;
+  if (drag.armed) setInteractiveSourceLocked(false);
+}
+
+$('#preview').addEventListener('pointerdown', event => {
+  if (!interactivePreviewActive || !interactivePreviewSourceIsCurrent() || event.button !== 0 || event.isPrimary === false) return;
+  const startedOnHandle = Boolean(event.target.closest('.preview-drag-handle'));
+  if (event.pointerType === 'touch' && !startedOnHandle) return;
+  const item = event.target.closest('#preview > [data-interactive-start], #preview li[data-interactive-start]');
+  if (!item || event.target.closest('a,input,button,select,textarea')) return;
+  const entry = interactiveEntryByElement.get(item);
+  if (!entry) return;
+  if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
+  activePreviewDrag = {
+    pointerID:event.pointerId,
+    sourceStart:entry.start,
+    scope:entry.scope,
+    sourceElement:entry.element,
+    visualElement:entry.visualElement || entry.element,
+    startedOnHandle,
+    startedAt:performance.now(),
+    startX:event.clientX,
+    startY:event.clientY,
+    x:event.clientX,
+    y:event.clientY,
+    armed:false,
+    frame:null,
+    lastFrameAt:null,
+    target:null,
+  };
+});
+
+$('#preview').addEventListener('selectstart', () => {
+  if (activePreviewDrag && !activePreviewDrag.armed && !activePreviewDrag.startedOnHandle) activePreviewDrag = null;
+});
+
+$('#preview').addEventListener('contextmenu', event => {
+  if (event.target.closest('.preview-drag-handle')) event.preventDefault();
+});
+
+document.addEventListener('pointermove', event => {
+  const drag = activePreviewDrag;
+  if (!drag || drag.pointerID !== event.pointerId) return;
+  drag.x = event.clientX;
+  drag.y = event.clientY;
+  if (!drag.armed && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 6) return;
+  if (!drag.armed && event.pointerType === 'touch' && performance.now() - drag.startedAt < 220) return;
+  if (!drag.armed) {
+    event.preventDefault();
+    drag.armed = true;
+    window.getSelection()?.removeAllRanges();
+    const preview = $('#preview');
+    preview.setPointerCapture?.(event.pointerId);
+    const sourceRect = drag.sourceElement.getBoundingClientRect();
+    const visualRect = drag.visualElement.getBoundingClientRect();
+    const ghost = drag.visualElement.cloneNode(true);
+    ghost.removeAttribute('data-interactive-start');
+    ghost.removeAttribute('data-interactive-scope');
+    ghost.classList.add('preview-drag-ghost');
+    ghost.style.width = `${visualRect.width}px`;
+    ghost.style.height = `${visualRect.height}px`;
+    ghost.style.left = `${visualRect.left}px`;
+    ghost.style.top = `${visualRect.top}px`;
+    drag.sourceDisplay = drag.sourceElement.style.display;
+    drag.placeholderWidth = sourceRect.width;
+    drag.placeholderHeight = sourceRect.height;
+    drag.placeholder = null;
+    const placeholder = createPreviewPlaceholder(drag, drag.sourceElement.parentNode);
+    drag.sourceElement.style.display = 'none';
+    drag.sourceElement.before(placeholder);
+    setInteractiveSourceLocked(true);
+    drag.ghost = ghost;
+    const portal = document.createElement('div');
+    portal.className = 'preview preview-drag-portal interactive-preview-active';
+    portal.setAttribute('aria-hidden', 'true');
+    portal.append(ghost);
+    drag.portal = portal;
+    document.body.append(portal);
+    drag.sourceElement.classList.add('preview-dragging');
+    drag.visualElement.classList.add('preview-dragging');
+    document.documentElement.classList.add('preview-drag-active');
+  }
+  if (drag.frame === null) drag.frame = requestAnimationFrame(renderPreviewDrag);
+});
+
+function finishPreviewDrag(event) {
+  const drag = activePreviewDrag;
+  if (!drag || drag.pointerID !== event.pointerId) return;
+  if (event.type === 'pointerup' && drag.armed && drag.target) {
+    if (!interactivePreviewSourceIsCurrent()) {
+      cancelPreviewDrag({animateReturn:false});
+      if ($('#preview').hasPointerCapture?.(event.pointerId)) $('#preview').releasePointerCapture(event.pointerId);
+      return;
+    }
+    const source = $('#note-content').value;
+    const entries = [...interactiveBlockItems, ...interactiveListItems];
+    const change = window.VylkInteractive?.moveMarkdownUnit(source, entries, drag.sourceStart, drag.scope, drag.target.start, drag.target.scope, drag.target.placement);
+    cancelPreviewDrag({animateReturn:false});
+    if ($('#preview').hasPointerCapture?.(event.pointerId)) $('#preview').releasePointerCapture(event.pointerId);
+    if (change) applyInteractiveSource(change.source, {start:change.start, removed:source.slice(change.start, change.end), inserted:change.inserted});
+    return;
+  }
+  cancelPreviewDrag();
+  if ($('#preview').hasPointerCapture?.(event.pointerId)) $('#preview').releasePointerCapture(event.pointerId);
+}
+
+document.addEventListener('pointerup', finishPreviewDrag);
+document.addEventListener('pointercancel', finishPreviewDrag);
+$('#preview').addEventListener('lostpointercapture', event => {
+  if (activePreviewDrag?.pointerID === event.pointerId) cancelPreviewDrag();
+});
+
+window.addEventListener('blur', () => cancelPreviewDrag());
+
+function targetUsesNativeUndo(target) {
+  const editable = target?.closest?.('textarea, input, [contenteditable="true"]');
+  if (!editable || editable === $('#note-content')) return false;
+  if (editable.matches('textarea, [contenteditable="true"]')) return true;
+  return ['text', 'search', 'email', 'url', 'tel', 'password', 'number'].includes(editable.type);
+}
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && activePreviewDrag) {
+    event.preventDefault();
+    cancelPreviewDrag();
+    return;
+  }
+  if (!interactivePreviewActive || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'z') return;
+  if (targetUsesNativeUndo(event.target)) return;
+  if (undoInteractivePreview()) event.preventDefault();
+});
+
+function cancelPreviewApply() {
+  if (!previewApplyHandle) return;
+  if (previewApplyHandle.idle) window.cancelIdleCallback(previewApplyHandle.id);
+  else clearTimeout(previewApplyHandle.id);
+  previewApplyHandle = null;
+}
+
+function cancelPreviewDOMRender() {
+  if (previewDOMHandle !== null) {
+    clearTimeout(previewDOMHandle);
+    previewDOMHandle = null;
+  }
+  $('#preview')?.removeAttribute('aria-busy');
+}
+
+function cancelPendingPreviewRender() {
+  previewRenderGeneration++;
+  previewRenderRequest = null;
+  cancelPreviewCache();
+  cancelPreviewDOMRender();
+  if (previewTimer) clearTimeout(previewTimer);
+  previewTimer = null;
+  cancelPreviewApply();
+}
+
+function schedulePreviewApply(callback) {
+  cancelPreviewApply();
+  if (typeof window.requestIdleCallback === 'function') {
+    const id = window.requestIdleCallback(() => {
+      previewApplyHandle = null;
+      callback();
+    }, {timeout:200});
+    previewApplyHandle = {id, idle:true};
+    return;
+  }
+  const id = setTimeout(() => {
+    previewApplyHandle = null;
+    callback();
+  }, 0);
+  previewApplyHandle = {id, idle:false};
+}
+
+function previewElementFromHTML(block) {
+  if (!block?.html || !block.tagName) return null;
+  const template = document.createElement('template');
+  template.innerHTML = block.html;
+  sanitizePreview(template.content);
+  linkifyWikiLinks(template.content);
+  if ([...template.content.childNodes].some(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim())) return null;
+  const elements = [...template.content.children];
+  return elements.length === 1 && elements[0].tagName === block.tagName ? elements[0] : null;
+}
+
+function previewTopLevelElement(element) {
+  const card = element?.closest?.('.interactive-preview-block-card');
+  return card?.parentElement === $('#preview') ? card : element;
+}
+
+function syncPreviewAttributes(current, replacement) {
+  const preservedAttributes = [...current.attributes]
+    .filter(attribute => attribute.name.startsWith('data-interactive-'))
+    .map(attribute => [attribute.name, attribute.value]);
+  [...current.attributes]
+    .filter(attribute => !attribute.name.startsWith('data-interactive-'))
+    .forEach(attribute => current.removeAttribute(attribute.name));
+  [...replacement.attributes].forEach(attribute => current.setAttribute(attribute.name, attribute.value));
+  preservedAttributes.forEach(([name, value]) => current.setAttribute(name, value));
+}
+
+function canUpdatePreviewElementInPlace(current, replacement) {
+  if (!current || !replacement || current.tagName !== replacement.tagName) return false;
+  if (['UL', 'OL'].includes(current.tagName)) {
+    const currentItems = [...current.children];
+    const replacementItems = [...replacement.children];
+    return currentItems.length === replacementItems.length &&
+      currentItems.every((item, index) => item.tagName === 'LI' && replacementItems[index]?.tagName === 'LI' &&
+        !item.querySelector('ul,ol') && !replacementItems[index].querySelector('ul,ol'));
+  }
+  return !current.querySelector('ul,ol') && !replacement.querySelector('ul,ol');
+}
+
+function updatePreviewElementInPlace(current, replacement) {
+  syncPreviewAttributes(current, replacement);
+  current.replaceChildren(...[...replacement.childNodes]);
+}
+
+function updatePreviewListInPlace(current, replacement) {
+  syncPreviewAttributes(current, replacement);
+  const currentItems = [...current.children];
+  const replacementItems = [...replacement.children];
+  currentItems.forEach((item, index) => {
+    const replacementItem = replacementItems[index];
+    const body = item.querySelector(':scope > .interactive-preview-list-card > .preview-list-content > .preview-list-item-body');
+    if (!body) {
+      if (item.innerHTML === replacementItem.innerHTML) return;
+      updatePreviewElementInPlace(item, replacementItem);
+      return;
+    }
+    if (body.innerHTML === replacementItem.innerHTML) return;
+    body.replaceChildren(...[...replacementItem.childNodes]);
+    item.querySelector(':scope > .interactive-preview-list-card')?.classList.toggle('is-task', Boolean(body.querySelector('input[type="checkbox"]')));
+    syncPreviewTaskCheckbox(item);
+  });
+  return current;
+}
+
+function renderPreviewBlocksProgressively(md, renderMetadata) {
+  const preview = $('#preview');
+  const generation = previewRenderGeneration;
+  const elements = [];
+  let index = 0;
+  disconnectPreviewDecorationObserver();
+  preview.replaceChildren();
+  preview.setAttribute('aria-busy', 'true');
+  previewBlocks = [];
+  previewBlockRanges = [];
+  previewRangeSource = null;
+  interactiveBlockItems = [];
+  interactiveListItems = [];
+
+  const process = () => {
+    previewDOMHandle = null;
+    if (generation !== previewRenderGeneration || $('#note-content').value !== md || !isPreviewVisible()) {
+      preview.removeAttribute('aria-busy');
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    const started = performance.now();
+    let batchSize = 0;
+    while (index < renderMetadata.blocks.length && batchSize < 12 && performance.now() - started < 5) {
+      const element = previewElementFromHTML(renderMetadata.blocks[index++]);
+      if (!element) {
+        preview.removeAttribute('aria-busy');
+        renderPreviewHTML(md, renderMetadata.blocks.map(block => block.html || '').join(''), {...renderMetadata, incrementalSafe:false});
+        return;
+      }
+      elements.push(element);
+      fragment.append(element);
+      batchSize++;
+    }
+    preview.append(fragment);
+    if (index < renderMetadata.blocks.length) {
+      previewDOMHandle = setTimeout(process, 0);
+      return;
+    }
+    preview.removeAttribute('aria-busy');
+    renderedPreviewSource = md;
+    renderedPreviewMetadata = renderMetadata;
+    previewHighlightPending = false;
+    cachePreviewBlocks(renderMetadata, elements, {defer:true});
+  };
+  process();
+}
+
+function patchPreviewBlocks(renderMetadata) {
+  const previous = renderedPreviewMetadata;
+  if (!previous?.incrementalSafe || !renderMetadata?.incrementalSafe || previous.source !== renderedPreviewSource) return null;
+  if (!previous.blocks?.every(block => typeof block.html === 'string') || !renderMetadata.blocks?.every(block => typeof block.html === 'string')) return null;
+
+  const preview = $('#preview');
+  const current = previewBlocks.filter(element => element?.isConnected);
+  if (current.length !== previous.blocks.length) return null;
+  let prefix = 0;
+  while (prefix < current.length && prefix < renderMetadata.blocks.length &&
+    previous.blocks[prefix].tagName === renderMetadata.blocks[prefix].tagName &&
+    previous.blocks[prefix].html === renderMetadata.blocks[prefix].html) prefix++;
+  let suffix = 0;
+  while (suffix < current.length - prefix && suffix < renderMetadata.blocks.length - prefix &&
+    previous.blocks[previous.blocks.length - suffix - 1].tagName === renderMetadata.blocks[renderMetadata.blocks.length - suffix - 1].tagName &&
+    previous.blocks[previous.blocks.length - suffix - 1].html === renderMetadata.blocks[renderMetadata.blocks.length - suffix - 1].html) suffix++;
+
+  const replacements = renderMetadata.blocks
+    .slice(prefix, renderMetadata.blocks.length - suffix)
+    .map(previewElementFromHTML);
+  if (replacements.some(element => !element)) return null;
+  const currentMiddle = current.slice(prefix, current.length - suffix);
+  if (currentMiddle.length === replacements.length && currentMiddle.every((element, index) => {
+    const replacement = replacements[index];
+    return canUpdatePreviewElementInPlace(element, replacement);
+  })) {
+    currentMiddle.forEach((element, index) => {
+      const replacement = replacements[index];
+      if (['UL', 'OL'].includes(element.tagName)) updatePreviewListInPlace(element, replacement);
+      else updatePreviewElementInPlace(element, replacement);
+    });
+    return current;
+  }
+  const anchor = suffix ? previewTopLevelElement(current[current.length - suffix]) : null;
+  currentMiddle.forEach(element => previewTopLevelElement(element).remove());
+  const fragment = document.createDocumentFragment();
+  replacements.forEach(element => fragment.append(element));
+  preview.insertBefore(fragment, anchor);
+  return [
+    ...current.slice(0, prefix),
+    ...replacements,
+    ...(suffix ? current.slice(current.length - suffix) : []),
+  ];
+}
+
+function renderPreviewHTML(md, html, renderMetadata = null) {
+  if (!isPreviewVisible() || $('#note-content').value !== md) return;
+  const patchedBlocks = patchPreviewBlocks(renderMetadata);
+  if (patchedBlocks === null && renderMetadata?.incrementalSafe && renderMetadata.blocks.length > 80) {
+    renderPreviewBlocksProgressively(md, renderMetadata);
+    return;
+  }
+  cancelPreviewDOMRender();
+  if (patchedBlocks === null) {
+    disconnectPreviewDecorationObserver();
+    const fragment = document.createElement('template');
+    fragment.innerHTML = typeof html === 'string' ? html : renderMetadata?.blocks?.map(block => block.html || '').join('') || '';
+    sanitizePreview(fragment.content);
+    linkifyWikiLinks(fragment.content);
+    $('#preview').replaceChildren(fragment.content);
+  }
+  renderedPreviewSource = md;
+  cachePreviewBlocks(renderMetadata, patchedBlocks, {defer:Boolean(renderMetadata)});
+  renderedPreviewMetadata = renderMetadata?.source === md ? renderMetadata : null;
+  previewHighlightPending = false;
+  scheduleHighlight();
+}
+
+function ensurePreviewRenderWorker() {
+  if (previewRenderWorker || previewWorkerUnavailable || typeof Worker !== 'function') return previewRenderWorker;
+  try {
+    previewRenderWorker = new Worker('/preview-worker.js');
+    previewRenderWorker.addEventListener('message', event => {
+      const result = event.data || {};
+      const request = previewRenderRequest;
+      if (!request || result.id !== request.id || result.id !== previewRenderGeneration || request.source !== $('#note-content').value || !isPreviewVisible()) return;
+      previewRenderRequest = null;
+      const incrementalSafe = Boolean(result.incrementalSafe && Array.isArray(result.blocks));
+      const html = incrementalSafe ? null : result.html;
+      if (result.error || !incrementalSafe && typeof html !== 'string') {
+        previewWorkerUnavailable = true;
+        previewRenderWorker?.terminate();
+        previewRenderWorker = null;
+        schedulePreviewApply(() => updatePreview());
+        return;
+      }
+      const metadata = {source:request.source, blocks:result.blocks, incrementalSafe};
+      if (request.source === renderedPreviewSource && previewRangeSource === request.source) {
+        renderedPreviewMetadata = metadata;
+        return;
+      }
+      schedulePreviewApply(() => {
+        if (result.id !== previewRenderGeneration) return;
+        renderPreviewHTML(request.source, html, metadata);
+      });
+    });
+    previewRenderWorker.addEventListener('error', () => {
+      const generation = previewRenderGeneration;
+      previewWorkerUnavailable = true;
+      previewRenderWorker?.terminate();
+      previewRenderWorker = null;
+      schedulePreviewApply(() => {
+        if (generation === previewRenderGeneration) updatePreview();
+      });
+    });
+  } catch (_) {
+    previewWorkerUnavailable = true;
+    previewRenderWorker = null;
+  }
+  return previewRenderWorker;
+}
+
+function primePreviewMetadata(md) {
+  const worker = ensurePreviewRenderWorker();
+  if (!worker || !md) return;
+  const id = ++previewRenderGeneration;
+  previewRenderRequest = {id, source:md};
+  worker.postMessage({id, source:md});
+}
+
+function requestPreviewRender() {
+  previewTimer = null;
+  if (!isPreviewVisible()) return;
+  const md = $('#note-content').value;
+  if (md === renderedPreviewSource) {
+    scheduleHighlight();
+    return;
+  }
+  const worker = ensurePreviewRenderWorker();
+  if (!worker) {
+    updatePreview();
+    return;
+  }
+  const id = ++previewRenderGeneration;
+  previewRenderRequest = {id, source:md};
+  worker.postMessage({id, source:md});
+}
 
 function updatePreview() {
   if (!isPreviewVisible()) return;
@@ -3654,16 +4952,15 @@ function updatePreview() {
     scheduleHighlight();
     return;
   }
+  cancelPendingPreviewRender();
   if (typeof marked !== 'undefined' && marked.parse) {
-    $('#preview').innerHTML = marked.parse(md, markdownRenderOptions());
-    sanitizePreview($('#preview'));
-    linkifyWikiLinks($('#preview'));
+    renderPreviewHTML(md, marked.parse(md, markdownRenderOptions()));
+    primePreviewMetadata(md);
   } else {
     $('#preview').innerHTML = '<p><em>loading parser...</em></p>';
+    renderedPreviewSource = md;
+    previewHighlightPending = false;
   }
-  renderedPreviewSource = md;
-  cachePreviewBlocks();
-  scheduleHighlight();
 }
 
 // --- Utils ---
@@ -3837,6 +5134,7 @@ async function applyFontsNow(clearCache = false) {
     document.documentElement.style.setProperty(slot.variable, fontCSSValue(fontFamily, slot.fallback));
     if (shouldFetchGoogleFont(slot) && !isSystemFont(fontFamily) && failed.has(fontFamily) && !loaded.has(fontFamily)) setFontError(slot, 'Font not available from Google Fonts.');
   });
+  scheduleEditorCaretCue();
 }
 
 function applyFonts(clearCache = false) {
@@ -3849,6 +5147,7 @@ function applyFontSizes() {
   FONT_SLOTS.forEach(slot => {
     document.documentElement.style.setProperty(slot.sizeVariable, prefs[slot.sizePreference]);
   });
+  scheduleEditorCaretCue();
 }
 
 function renderThemeOptions() {
@@ -3902,6 +5201,7 @@ function openPreferences({route = 'push'} = {}) {
   $('#pref-save-location').value = prefs.saveButtonLocation;
   $('#pref-collapse').checked = prefs.collapseDetails;
   $('#pref-hidecursor').checked = prefs.hideCursorHighlight;
+  $('#pref-interactive-preview').checked = prefs.interactivePreview;
   $('#pref-status').value = prefs.statusDisplay;
   $('#pref-content-width').value = prefs.contentWidth;
   $('#pref-theme').value = prefs.theme;
@@ -3961,6 +5261,9 @@ $('#pref-collapse').addEventListener('change', function () {
 });
 $('#pref-hidecursor').addEventListener('change', function () {
   savePref('hideCursorHighlight', this.checked);
+});
+$('#pref-interactive-preview').addEventListener('change', function () {
+  savePref('interactivePreview', this.checked);
 });
 $('#pref-theme').addEventListener('change', function () { void savePref('theme', this.value); });
 $('#pref-accent').addEventListener('change', function () { void savePref('accentColor', this.value); });

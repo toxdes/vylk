@@ -7,6 +7,11 @@ import {expect, test, vi} from 'vitest';
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const serviceWorkerSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'sw.js'), 'utf8');
 
+test('pre-caches the interactive preview helper with the app shell', () => {
+  expect(serviceWorkerSource).toContain("'/interactive-preview.js'");
+  expect(serviceWorkerSource).toContain("'/preview-worker.js'");
+});
+
 function cacheKey(request) {
   return typeof request === 'string' ? new URL(request, 'http://localhost:8080/').href : request.url;
 }
