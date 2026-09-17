@@ -210,29 +210,41 @@ func storedSyncOperation(db *sql.DB, deviceID string, sequence int64, opID strin
 }
 
 var preferenceFieldNames = map[string]struct{}{
-	"autoSave":                {},
-	"hidePreview":             {},
-	"hideHeaderOnFullscreen":  {},
-	"hideToolbar":             {},
-	"hideSaveButton":          {},
-	"saveButtonLocation":      {},
-	"collapseDetails":         {},
-	"hideCursorHighlight":     {},
-	"interactivePreview":      {},
-	"statusDisplay":           {},
-	"contentWidth":            {},
-	"theme":                   {},
-	"accentColor":             {},
-	"fontFamily":              {},
-	"fontFamilyGoogle":        {},
-	"fontSize":                {},
-	"editorFontFamily":        {},
-	"editorFontFamilyGoogle":  {},
-	"editorFontSize":          {},
-	"previewFontFamily":       {},
-	"previewFontFamilyGoogle": {},
-	"previewFontSize":         {},
+	"autoSave":                  {},
+	"startView":                 {},
+	"hideToolbar":               {},
+	"hideSaveButton":            {},
+	"saveButtonLocation":        {},
+	"collapseDetails":           {},
+	"hideCursorHighlight":       {},
+	"interactivePreview":        {},
+	"statusDisplay":             {},
+	"contentWidth":              {},
+	"theme":                     {},
+	"accentColor":               {},
+	"fontFamily":                {},
+	"fontFamilyGoogle":          {},
+	"fontSize":                  {},
+	"editorFontFamily":          {},
+	"editorFontFamilyGoogle":    {},
+	"editorFontSize":            {},
+	"previewFontFamily":         {},
+	"previewFontFamilyGoogle":   {},
+	"previewFontSize":           {},
+	"zenFontFamily":             {},
+	"zenFontFamilyGoogle":       {},
+	"zenFontSize":               {},
+	"zenWordCount":              {},
+	"zenShowTitle":              {},
+	"zenShowControls":           {},
+	"zenInteractivePreview":     {},
+	"shortcutPrefix":            {},
+	"keyboardShortcuts":         {},
+	"shortcutConfirmationSkips": {},
 }
+
+var shortcutCommandIDPattern = regexp.MustCompile(`^[a-z][a-z0-9.-]{0,63}$`)
+var shortcutKeyPattern = regexp.MustCompile(`^[A-Za-z0-9/;]$`)
 
 var fontSizeValues = map[string]struct{}{
 	"0.8rem":  {},
@@ -246,6 +258,15 @@ var fontSizeValues = map[string]struct{}{
 func validContentWidthValue(value string) bool {
 	switch value {
 	case "compact", "standard", "wide", "full":
+		return true
+	default:
+		return false
+	}
+}
+
+func validStartViewValue(value string) bool {
+	switch value {
+	case "editor", "preview", "split", "zen":
 		return true
 	default:
 		return false
@@ -266,11 +287,63 @@ func validFontSizeValue(value string) bool {
 	return ok
 }
 
+func validShortcutBinding(binding *shortcutBinding) bool {
+	if binding == nil || len(binding.Steps) < 1 || len(binding.Steps) > 2 {
+		return false
+	}
+	for index, step := range binding.Steps {
+		if !shortcutKeyPattern.MatchString(step.Key) {
+			return false
+		}
+		modifiers := strings.Join(step.Modifiers, ",")
+		if index == 0 && modifiers != "Mod" && modifiers != "Mod,Shift" {
+			return false
+		}
+		if index == 1 && len(step.Modifiers) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func validShortcutPrefix(binding shortcutBinding) bool {
+	return len(binding.Steps) == 1 && validShortcutBinding(&binding)
+}
+
+func validKeyboardShortcuts(value map[string]*shortcutBinding) bool {
+	if len(value) > 64 {
+		return false
+	}
+	for id, binding := range value {
+		if !shortcutCommandIDPattern.MatchString(id) || (binding != nil && !validShortcutBinding(binding)) {
+			return false
+		}
+	}
+	return true
+}
+
+func validShortcutConfirmationSkips(value map[string]bool) bool {
+	if len(value) > 64 {
+		return false
+	}
+	for id, skip := range value {
+		if !shortcutCommandIDPattern.MatchString(id) || !skip {
+			return false
+		}
+	}
+	return true
+}
+
 func validatePreferenceFieldValue(key string, value json.RawMessage) error {
 	if _, ok := preferenceFieldNames[key]; !ok {
 		return fmt.Errorf("unknown preference field %q", key)
 	}
 	switch key {
+	case "startView":
+		var startView string
+		if err := json.Unmarshal(value, &startView); err != nil || !validStartViewValue(startView) {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
 	case "contentWidth":
 		var contentWidth string
 		if err := json.Unmarshal(value, &contentWidth); err != nil || !validContentWidthValue(contentWidth) {
@@ -281,9 +354,24 @@ func validatePreferenceFieldValue(key string, value json.RawMessage) error {
 		if err := json.Unmarshal(value, &saveButtonLocation); err != nil || !validSaveButtonLocationValue(saveButtonLocation) {
 			return fmt.Errorf("invalid preference value for %q", key)
 		}
-	case "fontSize", "editorFontSize", "previewFontSize":
+	case "fontSize", "editorFontSize", "previewFontSize", "zenFontSize":
 		var fontSize string
 		if err := json.Unmarshal(value, &fontSize); err != nil || !validFontSizeValue(fontSize) {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
+	case "keyboardShortcuts":
+		var shortcuts map[string]*shortcutBinding
+		if err := json.Unmarshal(value, &shortcuts); err != nil || !validKeyboardShortcuts(shortcuts) {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
+	case "shortcutPrefix":
+		var prefix shortcutBinding
+		if err := json.Unmarshal(value, &prefix); err != nil || !validShortcutPrefix(prefix) {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
+	case "shortcutConfirmationSkips":
+		var skips map[string]bool
+		if err := json.Unmarshal(value, &skips); err != nil || !validShortcutConfirmationSkips(skips) {
 			return fmt.Errorf("invalid preference value for %q", key)
 		}
 	}
@@ -291,8 +379,23 @@ func validatePreferenceFieldValue(key string, value json.RawMessage) error {
 }
 
 func validatePrefs(p *prefs) error {
+	if p.StartView == "" {
+		p.StartView = "split"
+	}
+	if len(p.ShortcutPrefix.Steps) == 0 {
+		p.ShortcutPrefix = defaultShortcutPrefix
+	}
+	if p.KeyboardShortcuts == nil {
+		p.KeyboardShortcuts = map[string]*shortcutBinding{}
+	}
+	if p.ShortcutConfirmationSkips == nil {
+		p.ShortcutConfirmationSkips = map[string]bool{}
+	}
 	if p.ContentWidth != "" && !validContentWidthValue(p.ContentWidth) {
 		return fmt.Errorf("invalid preference value for %q", "contentWidth")
+	}
+	if !validStartViewValue(p.StartView) {
+		return fmt.Errorf("invalid preference value for %q", "startView")
 	}
 	if p.SaveButtonLocation != "" && !validSaveButtonLocationValue(p.SaveButtonLocation) {
 		return fmt.Errorf("invalid preference value for %q", "saveButtonLocation")
@@ -301,10 +404,20 @@ func validatePrefs(p *prefs) error {
 		"fontSize":        p.FontSize,
 		"editorFontSize":  p.EditorFontSize,
 		"previewFontSize": p.PreviewFontSize,
+		"zenFontSize":     p.ZenFontSize,
 	} {
 		if value != "" && !validFontSizeValue(value) {
 			return fmt.Errorf("invalid preference value for %q", key)
 		}
+	}
+	if !validKeyboardShortcuts(p.KeyboardShortcuts) {
+		return fmt.Errorf("invalid preference value for %q", "keyboardShortcuts")
+	}
+	if !validShortcutPrefix(p.ShortcutPrefix) {
+		return fmt.Errorf("invalid preference value for %q", "shortcutPrefix")
+	}
+	if !validShortcutConfirmationSkips(p.ShortcutConfirmationSkips) {
+		return fmt.Errorf("invalid preference value for %q", "shortcutConfirmationSkips")
 	}
 	return nil
 }

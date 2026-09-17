@@ -1643,7 +1643,7 @@ func TestPreferenceSyncMergesDisjointChangesAndConflictsSameField(t *testing.T) 
 	if first.Acknowledged[0].Status != "applied" || first.Acknowledged[0].Revision != 2 {
 		t.Fatalf("first preference result = %#v", first.Acknowledged)
 	}
-	second := push("device_b", 1, "pref_b", map[string]json.RawMessage{"accentColor": raw("#123456"), "editorFontFamilyGoogle": json.RawMessage("true"), "contentWidth": raw("wide"), "fontSize": raw("0.9rem"), "editorFontSize": raw("1.25rem"), "previewFontSize": raw("1.5rem")}, map[string]json.RawMessage{"accentColor": raw(""), "editorFontFamilyGoogle": json.RawMessage("false"), "contentWidth": raw("standard"), "fontSize": raw("1rem"), "editorFontSize": raw("1rem"), "previewFontSize": raw("1rem")}, 1)
+	second := push("device_b", 1, "pref_b", map[string]json.RawMessage{"accentColor": raw("#123456"), "editorFontFamilyGoogle": json.RawMessage("true"), "previewFontFamilyGoogle": json.RawMessage("true"), "zenFontFamilyGoogle": json.RawMessage("true"), "contentWidth": raw("wide"), "fontSize": raw("0.9rem"), "editorFontSize": raw("1.25rem"), "previewFontSize": raw("1.5rem")}, map[string]json.RawMessage{"accentColor": raw(""), "editorFontFamilyGoogle": json.RawMessage("false"), "previewFontFamilyGoogle": json.RawMessage("false"), "zenFontFamilyGoogle": json.RawMessage("false"), "contentWidth": raw("standard"), "fontSize": raw("1rem"), "editorFontSize": raw("1rem"), "previewFontSize": raw("1rem")}, 1)
 	if second.Acknowledged[0].Status != "applied" || second.Acknowledged[0].Revision != 3 {
 		t.Fatalf("disjoint preference result = %#v", second.Acknowledged)
 	}
@@ -1651,7 +1651,7 @@ func TestPreferenceSyncMergesDisjointChangesAndConflictsSameField(t *testing.T) 
 	if err != nil {
 		t.Fatalf("load merged preferences: %v", err)
 	}
-	if p.Theme != "default-dark" || p.AccentColor != "#123456" || p.StatusDisplay != "compact" || p.ContentWidth != "wide" || p.FontSize != "0.9rem" || p.EditorFontSize != "1.25rem" || p.PreviewFontSize != "1.5rem" || !p.HideSaveButton || p.SaveButtonLocation != "header" || !p.FontFamilyGoogle || !p.EditorFontFamilyGoogle || !p.InteractivePreview || p.Revision != 3 {
+	if p.Theme != "default-dark" || p.AccentColor != "#123456" || p.StatusDisplay != "compact" || p.ContentWidth != "wide" || p.FontSize != "0.9rem" || p.EditorFontSize != "1.25rem" || p.PreviewFontSize != "1.5rem" || !p.HideSaveButton || p.SaveButtonLocation != "header" || !p.FontFamilyGoogle || !p.EditorFontFamilyGoogle || !p.PreviewFontFamilyGoogle || !p.ZenFontFamilyGoogle || !p.InteractivePreview || p.Revision != 3 {
 		t.Fatalf("merged preferences = %#v", p)
 	}
 	conflict := push("device_c", 1, "pref_c", map[string]json.RawMessage{"theme": raw("default-light")}, map[string]json.RawMessage{"theme": raw("default-light")}, 1)
@@ -2091,5 +2091,95 @@ func TestListNotesPageUsesStableCursor(t *testing.T) {
 	}
 	if _, _, err := decodeNoteCursor("not-a-cursor"); !errors.Is(err, errInvalidCursor) {
 		t.Fatalf("invalid cursor error = %v", err)
+	}
+}
+
+func TestShortcutPreferencesValidateAndPersist(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	p, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("get prefs: %v", err)
+	}
+	p.KeyboardShortcuts = map[string]*shortcutBinding{
+		"note.save":    {Steps: []shortcutStep{{Key: "s", Modifiers: []string{"Mod"}}}},
+		"editor.title": {Steps: []shortcutStep{{Key: "/", Modifiers: []string{"Mod"}}, {Key: "t", Modifiers: []string{}}}},
+		"format.link":  nil,
+	}
+	p.ShortcutPrefix = shortcutBinding{Steps: []shortcutStep{{Key: "e", Modifiers: []string{"Mod"}}}}
+	p.ShortcutConfirmationSkips = map[string]bool{"note.new": true}
+	p.StartView = "zen"
+	p.ZenFontSize = "1.1rem"
+	p.ZenInteractivePreview = true
+	if err := validatePrefs(p); err != nil {
+		t.Fatalf("validate valid shortcuts: %v", err)
+	}
+	if err := savePrefs(db, p, nil); err != nil {
+		t.Fatalf("save prefs: %v", err)
+	}
+	stored, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("reload prefs: %v", err)
+	}
+	if _, present := stored.KeyboardShortcuts["format.link"]; !present || stored.KeyboardShortcuts["format.link"] != nil || len(stored.KeyboardShortcuts["editor.title"].Steps) != 2 || stored.ShortcutPrefix.Steps[0].Key != "e" || !stored.ShortcutConfirmationSkips["note.new"] || stored.StartView != "zen" || stored.ZenFontSize != "1.1rem" || !stored.ZenInteractivePreview {
+		t.Fatalf("stored shortcut preferences = %#v", stored)
+	}
+
+	invalid := &prefs{KeyboardShortcuts: map[string]*shortcutBinding{
+		"bad id": {Steps: []shortcutStep{{Key: "s", Modifiers: []string{"Mod"}}}},
+	}}
+	if err := validatePrefs(invalid); err == nil {
+		t.Fatal("invalid shortcut ID was accepted")
+	}
+	invalid = &prefs{KeyboardShortcuts: map[string]*shortcutBinding{
+		"note.save": {Steps: []shortcutStep{{Key: "k", Modifiers: []string{"Mod"}}, {Key: "t", Modifiers: []string{"Shift"}}}},
+	}}
+	if err := validatePrefs(invalid); err == nil {
+		t.Fatal("invalid sequence was accepted")
+	}
+	invalid = &prefs{ShortcutPrefix: shortcutBinding{Steps: []shortcutStep{{Key: "k", Modifiers: []string{}}}}}
+	if err := validatePrefs(invalid); err == nil {
+		t.Fatal("invalid shortcut prefix was accepted")
+	}
+	invalid = &prefs{StartView: "unknown"}
+	if err := validatePrefs(invalid); err == nil {
+		t.Fatal("invalid start view was accepted")
+	}
+}
+
+func TestPrefsMigratesLegacyHidePreviewToStartView(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE prefs SET data = '{"hidePreview":true}' WHERE id = 1`); err != nil {
+		t.Fatalf("store legacy preferences: %v", err)
+	}
+	p, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("get migrated preferences: %v", err)
+	}
+	if p.StartView != "editor" {
+		t.Fatalf("legacy start view = %q, want editor", p.StartView)
+	}
+	if err := savePrefs(db, p, nil); err != nil {
+		t.Fatalf("save migrated preferences: %v", err)
+	}
+	var stored string
+	if err := db.QueryRow(`SELECT data FROM prefs WHERE id = 1`).Scan(&stored); err != nil {
+		t.Fatalf("read stored preferences: %v", err)
+	}
+	if strings.Contains(stored, "hidePreview") || !strings.Contains(stored, `"startView":"editor"`) {
+		t.Fatalf("stored migrated preferences = %s", stored)
 	}
 }

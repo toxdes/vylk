@@ -10,6 +10,7 @@ const themesSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 't
 const markedSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'marked.min.js'), 'utf8');
 const mergeSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'merge.js'), 'utf8');
 const interactivePreviewSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'interactive-preview.js'), 'utf8');
+const shortcutsSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'shortcuts.js'), 'utf8');
 
 const testHookSource = `
 globalThis.__vylkTestHooks = {
@@ -70,6 +71,10 @@ globalThis.__vylkTestHooks = {
   showNoteInEditor,
   updatePreview,
   setPanelState,
+  executeShortcutCommand,
+  getShortcutBinding: id => shortcutBindingFor(shortcutCommandsByID.get(id)),
+  getShortcutPrefix: () => shortcutPrefixBinding(),
+  shortcutCommands: () => shortcutCommands.map(command => command.id),
   undoInteractivePreview,
   setInteractiveSourceLocked,
   getInteractivePreviewState: () => ({
@@ -135,6 +140,7 @@ export async function createApp({deferredSave = false, deferredSyncCompletion = 
   if (serviceWorker) Object.defineProperty(window.navigator, 'serviceWorker', {value: serviceWorker, configurable: true});
   window.eval(themesSource);
   window.eval(interactivePreviewSource);
+  window.eval(shortcutsSource);
   if (realMerge) window.eval(mergeSource);
   if (realMarked) {
     window.eval(markedSource);

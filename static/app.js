@@ -20,12 +20,15 @@ let currentNoteId = null;
 let currentTag = null;
 let isDirty = false;
 let panelState = 'both';
+let zenModeReturnState = 'editor';
+let zenViewState = 'editor';
 let savedSnapshot = { title: '', tags: '', content: '' };
 let editorSessionGeneration = 0;
-const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel',
+const DEFAULT_PREFS = {revision:1, autoSave:true, startView:'split', hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel',
   collapseDetails:false, hideCursorHighlight:false, interactivePreview:false, statusDisplay:'normal', contentWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans',
   fontFamilyGoogle:false, fontSize:'1rem', editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, editorFontSize:'1rem', previewFontFamily:'system-sans',
-  previewFontFamilyGoogle:false, previewFontSize:'1rem'};
+  previewFontFamilyGoogle:false, previewFontSize:'1rem', zenFontFamily:'system-monospace', zenFontFamilyGoogle:false, zenFontSize:'1rem', zenWordCount:false, zenShowTitle:true, zenShowControls:true, zenInteractivePreview:false,
+  shortcutPrefix:{steps:[{key:'/', modifiers:['Mod']}]}, keyboardShortcuts:{}, shortcutConfirmationSkips:{}};
 const CONTENT_WIDTH_VALUES = ['compact', 'standard', 'wide', 'full'];
 const FONT_SIZE_OPTIONS = [
   {value: '0.8rem', label: 'Small (80%)'},
@@ -41,6 +44,8 @@ const SYSTEM_FONT_STACK = 'ui-sans-serif,system-ui,-apple-system,BlinkMacSystemF
 const SYSTEM_SERIF_STACK = 'ui-serif,Georgia,Cambria,"Times New Roman",Times,serif';
 const SYSTEM_MONO_STACK = 'ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace';
 let prefs = {...DEFAULT_PREFS};
+let activeShortcutRecording = null;
+let pendingShortcutSequence = null;
 let fontLoadGeneration = 0;
 let fontApplyQueue = Promise.resolve();
 let renderedPreviewSource = null;
@@ -2082,6 +2087,27 @@ function preferenceValuesEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function mergeNestedPreferencePatch(current, base, desired) {
+  if (!current || typeof current !== 'object' || !base || typeof base !== 'object' || !desired || typeof desired !== 'object') return null;
+  const merged = {...current};
+  let conflict = false;
+  let changed = false;
+  new Set([...Object.keys(base), ...Object.keys(desired)]).forEach(key => {
+    const currentValue = Object.hasOwn(current, key) ? current[key] : undefined;
+    const baseValue = Object.hasOwn(base, key) ? base[key] : undefined;
+    const desiredValue = Object.hasOwn(desired, key) ? desired[key] : undefined;
+    if (preferenceValuesEqual(baseValue, desiredValue)) return;
+    if (!preferenceValuesEqual(currentValue, baseValue) && !preferenceValuesEqual(currentValue, desiredValue)) {
+      conflict = true;
+      return;
+    }
+    changed = true;
+    if (desiredValue === undefined) delete merged[key];
+    else merged[key] = desiredValue;
+  });
+  return {value:merged, conflict, changed};
+}
+
 async function resolvePreferenceConflict(operation) {
   const remote = await api('/api/prefs', {syncRequest: true});
   const payload = operation.prefs || {};
@@ -2091,6 +2117,16 @@ async function resolvePreferenceConflict(operation) {
   const conflicts = [];
   Object.entries(patch).forEach(([key, desired]) => {
     const current = remote[key];
+    if (key === 'keyboardShortcuts' || key === 'shortcutConfirmationSkips') {
+      const merged = mergeNestedPreferencePatch(current, base[key], desired);
+      if (!merged) {
+        conflicts.push(key);
+      } else {
+        if (merged.conflict) conflicts.push(key);
+        if (merged.changed) safePatch[key] = merged.value;
+      }
+      return;
+    }
     if (!(key in base) || (!preferenceValuesEqual(current, base[key]) && !preferenceValuesEqual(current, desired))) {
       conflicts.push(key);
     } else if (!preferenceValuesEqual(current, desired)) {
@@ -2118,6 +2154,7 @@ async function resolvePreferenceConflict(operation) {
   prefs = next;
   localStorage.setItem('vylk-prefs', JSON.stringify(prefs));
   applyPrefs();
+  renderShortcutPreferences();
   if (conflicts.length) {
     showToast('Some preferences changed on another device. Those settings were kept.', 'warning');
   }
@@ -2631,23 +2668,34 @@ function applyEditorPrefs() {
   const collapsed = Boolean(prefs.collapseDetails);
   $('.meta-pane').classList.toggle('collapsed', collapsed);
   $('.meta-toggle').setAttribute('aria-expanded', String(!collapsed));
-  $('#editor').classList.toggle('header-hidden', prefs.hideHeaderOnFullscreen && panelState !== 'both');
+  $('#editor').classList.toggle('header-hidden', panelState === 'zen');
   document.documentElement.dataset.statusDisplay = prefs.statusDisplay;
-  $('#editor').classList.toggle('hide-save-button', Boolean(prefs.hideSaveButton));
+  $('#editor').classList.toggle('hide-save-button', Boolean(prefs.hideSaveButton && prefs.autoSave));
+  updateZenOverlays();
   placeSaveButton();
   if (prefs.hideToolbar) {
     $('.fmt-bar').classList.add('hidden');
   } else {
     $('.fmt-bar').classList.remove('hidden');
   }
+  const interactiveModeChanged = syncInteractivePreviewMode();
+  scheduleEditorCaretCue();
+  if (interactiveModeChanged && isPreviewVisible()) updatePreview();
+}
+
+function interactivePreviewEnabledForCurrentMode() {
+  return panelState === 'zen' ? prefs.zenInteractivePreview : prefs.interactivePreview;
+}
+
+function syncInteractivePreviewMode() {
   let interactiveModeChanged = false;
-  if (prefs.interactivePreview && !interactivePreviewActive) {
+  if (interactivePreviewEnabledForCurrentMode() && !interactivePreviewActive) {
     interactivePreviewActive = true;
     interactiveHistory = [];
     renderedPreviewSource = null;
     renderedPreviewMetadata = null;
     interactiveModeChanged = true;
-  } else if (!prefs.interactivePreview && interactivePreviewActive) {
+  } else if (!interactivePreviewEnabledForCurrentMode() && interactivePreviewActive) {
     cancelPreviewDrag({animateReturn:false});
     interactivePreviewActive = false;
     interactiveHistory = [];
@@ -2656,28 +2704,33 @@ function applyEditorPrefs() {
     interactiveModeChanged = true;
   }
   syncInteractivePreviewUI();
-  scheduleEditorCaretCue();
-  if (interactiveModeChanged && isPreviewVisible()) updatePreview();
+  return interactiveModeChanged;
 }
 
 function applyContentWidth() {
   document.documentElement.dataset.contentWidth = prefs.contentWidth;
 }
 
+function startPanelState() {
+  return {editor:'editor', preview:'preview', split:'both', zen:'zen'}[prefs.startView] || 'both';
+}
+
 function placeSaveButton() {
   const saveButton = $('#save-btn');
   const headerSlot = $('#header-save-slot');
   const panelSlot = $('#panel-save-slot');
+  const previewSlot = $('#preview-save-slot');
   const panelActions = $('#editor-panel .panel-header-actions');
-  const previewSwitch = $('#editor-panel .panel-switch');
-  if (!saveButton || !headerSlot || !panelSlot || !panelActions || !previewSwitch) return;
+  if (!saveButton || !headerSlot || !panelSlot || !previewSlot || !panelActions) return;
+  const previewOnly = panelState === 'preview';
+  saveButton.disabled = previewOnly;
+  saveButton.setAttribute('aria-disabled', String(previewOnly));
   if (prefs.saveButtonLocation === 'header') {
     headerSlot.append(saveButton);
     return;
   }
-  panelSlot.append(saveButton);
-  if (panelState === 'both') panelActions.append(panelSlot);
-  else panelActions.insertBefore(panelSlot, previewSwitch);
+  (previewOnly ? previewSlot : panelSlot).append(saveButton);
+  if (!previewOnly) panelActions.append(panelSlot);
 }
 
 // --- Editor ---
@@ -2685,7 +2738,8 @@ function startNewNote(title = '') {
   if (saveTimer) clearTimeout(saveTimer);
   if (localSaveTimer) clearTimeout(localSaveTimer);
   if (previewTimer) clearTimeout(previewTimer);
-  setPanelState(prefs.hidePreview ? 'editor' : 'both');
+  const initialPanelState = startPanelState();
+  setPanelState(initialPanelState);
   resetInteractivePreviewSession();
   editorSessionGeneration++;
   currentNoteId = newLocalNoteID();
@@ -2703,7 +2757,9 @@ function startNewNote(title = '') {
   applyEditorPrefs();
   show(screens.editor);
   scheduleEditorCaretCue();
-  $('#note-title').focus();
+  if (initialPanelState === 'zen') $('#note-content').focus();
+  else if (initialPanelState === 'preview') focusPreview();
+  else $('#note-title').focus();
 }
 
 $('#new-note-btn').addEventListener('click', () => startNewNote());
@@ -2744,7 +2800,7 @@ $('#back-btn').addEventListener('click', async () => {
 $('#back-btn').addEventListener('pointerdown', cancelPendingPreviewRender, {passive:true});
 
 function showNoteInEditor(data) {
-  setPanelState(prefs.hidePreview ? 'editor' : 'both');
+  setPanelState(startPanelState());
   resetInteractivePreviewSession();
   editorSessionGeneration++;
   currentNoteId = data.id;
@@ -3052,8 +3108,8 @@ function scheduleSave() {
   }, 2000);
 }
 
-$('#save-btn').addEventListener('click', () => { if (saveTimer) clearTimeout(saveTimer); void saveCurrentNote(); });
-$('#note-title').addEventListener('input', () => { markDirty(); scheduleSave(); });
+$('#save-btn').addEventListener('click', () => executeShortcutCommand('note.save', {source:'button'}));
+$('#note-title').addEventListener('input', () => { markDirty(); scheduleSave(); updateZenOverlays(); });
 $('#note-tags').addEventListener('input', () => { markDirty(); scheduleSave(); });
 
 // --- Formatting toolbar ---
@@ -3268,15 +3324,6 @@ document.querySelector('.fmt-bar')?.addEventListener('click', e => {
   }
 });
 
-// Shortcuts for bold/italic in textarea
-$('#note-content').addEventListener('keydown', e => {
-  if (interactiveSourceLocked) return;
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'i')) {
-    e.preventDefault();
-    insertFmt(e.key === 'b' ? 'bold' : 'italic');
-  }
-});
-
 // --- Meta pane toggle ---
 $('.meta-toggle')?.addEventListener('click', () => {
   const pane = $('.meta-pane');
@@ -3285,55 +3332,72 @@ $('.meta-toggle')?.addEventListener('click', () => {
 });
 
 // --- Panel toggle ---
+function placeViewControls() {
+  const controls = $('#view-controls');
+  const editorActions = $('#editor-panel .panel-header-actions');
+  const previewActions = $('#preview-view-controls-slot');
+  if (!controls || !editorActions || !previewActions) return;
+  (panelState === 'preview' ? previewActions : editorActions).prepend(controls);
+}
+
 function setPanelState(state) {
   // Panel transitions must never preserve a half-finished drag. A hidden
   // source element or placeholder would otherwise leak into the next layout.
   if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
+  if (state === 'zen' && panelState !== 'zen') {
+    zenModeReturnState = panelState === 'preview' ? 'editor' : panelState;
+    zenViewState = 'editor';
+  }
   panelState = state;
+  const visibleState = state === 'zen' ? zenViewState : state;
   const wrap = $('#editor-panels');
   const ed = $('.panel-editor');
   const pv = $('.panel-preview');
   wrap.classList.remove('panels-single');
   ed.classList.remove('panel-hidden');
   pv.classList.remove('panel-hidden');
-  if (state === 'editor') {
+  if (visibleState === 'editor') {
     pv.classList.add('panel-hidden');
     wrap.classList.add('panels-single');
-  } else if (state === 'preview') {
+  } else if (visibleState === 'preview') {
     ed.classList.add('panel-hidden');
     wrap.classList.add('panels-single');
   }
-  $('#editor').classList.toggle('header-hidden', prefs.hideHeaderOnFullscreen && state !== 'both');
+  $('#editor').classList.toggle('zen-mode', state === 'zen');
+  $('#editor').classList.toggle('header-hidden', state === 'zen');
+  const interactiveModeChanged = syncInteractivePreviewMode();
+  placeViewControls();
   placeSaveButton();
-  document.querySelectorAll('.panel-layout').forEach(button => {
-    const focused = state === button.dataset.panel;
-    button.title = focused ? 'Show split view' : `Focus ${button.dataset.panel}`;
-    button.setAttribute('aria-label', button.title);
-    button.setAttribute('aria-pressed', String(focused));
-    button.querySelector('use').setAttribute('href', focused ? '#icon-minimize' : '#icon-maximize');
-  });
-  document.querySelectorAll('.panel-switch').forEach(button => {
-    const targetVisible = state === 'both' || state === button.dataset.panelSwitch;
-    button.setAttribute('aria-expanded', String(targetVisible));
+  document.querySelectorAll('.view-control').forEach(button => {
+    const active = state === button.dataset.panel || (state === 'zen' && button.dataset.panel === 'zen');
+    button.setAttribute('aria-pressed', String(active));
   });
   applyPanelRatio();
   scheduleEditorCaretCue();
-  if (state !== 'editor') schedulePreviewCheck();
+  if (visibleState !== 'editor') {
+    if (interactiveModeChanged || state === 'zen') updatePreview();
+    else schedulePreviewCheck();
+  }
 }
 
 $('#editor-panels').addEventListener('click', e => {
-  const switchButton = e.target.closest('.panel-switch');
-  if (switchButton) {
-    setPanelState(switchButton.dataset.panelSwitch);
-    return;
-  }
-  const btn = e.target.closest('.panel-layout');
+  const btn = e.target.closest('.view-control');
   if (!btn) return;
-  if (panelState === 'both') {
-    setPanelState(btn.dataset.panel);
+  const commandID = {editor:'view.write', both:'view.split', preview:'view.preview', zen:'view.zen'}[btn.dataset.panel];
+  void executeShortcutCommand(commandID, {source:'button'});
+});
+
+$('.zen-controls').addEventListener('click', e => {
+  const action = e.target.closest('[data-zen-action]')?.dataset.zenAction;
+  if (!action) return;
+  if (action === 'exit') {
+    setPanelState(zenModeReturnState);
   } else {
-    setPanelState('both');
+    zenViewState = action;
+    setPanelState('zen');
   }
+  if (action === 'editor') $('#note-content').focus({preventScroll:true});
+  else if (action === 'preview') focusPreview();
 });
 
 function applyPanelRatio() {
@@ -3684,7 +3748,7 @@ function undoInteractivePreview() {
   return true;
 }
 function isPreviewVisible() {
-  return !screens.editor.classList.contains('hidden') && panelState !== 'editor';
+  return !screens.editor.classList.contains('hidden') && (panelState === 'both' || panelState === 'preview' || (panelState === 'zen' && zenViewState === 'preview'));
 }
 function schedulePreviewCheck() {
   if (previewCheckFrame !== null) return;
@@ -3853,18 +3917,44 @@ function scheduleEditorCaretCue() {
   editorCaretFrame = requestAnimationFrame(updateEditorCaretCue);
 }
 
-function centerEditorCaretInView() {
+function centerEditorCaretInView(targetRatio = .38, {defer = true} = {}) {
   const textarea = editorSourceTextarea;
   if (!textarea) return;
-  requestAnimationFrame(() => {
+  const center = () => {
     const caret = measureEditorCaret();
     if (!caret) return;
     const textareaRect = textarea.getBoundingClientRect();
     const caretOffset = caret.top - textareaRect.top + textarea.scrollTop + caret.height / 2;
-    const targetOffset = textarea.clientHeight * .38;
+    const targetOffset = textarea.clientHeight * targetRatio;
     const maxScrollTop = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
-    textarea.scrollTop = Math.max(0, Math.min(maxScrollTop, caretOffset - targetOffset));
-  });
+    const nextScrollTop = Math.max(0, Math.min(maxScrollTop, caretOffset - targetOffset));
+    if (Math.abs(textarea.scrollTop - nextScrollTop) > 2) textarea.scrollTop = nextScrollTop;
+  };
+  if (defer) requestAnimationFrame(center);
+  else center();
+}
+
+function centerZenCaretNow() {
+  if (panelState !== 'zen' || document.activeElement !== editorSourceTextarea) return;
+  centerEditorCaretInView(.48, {defer:false});
+}
+
+function wordCount(source = editorSourceTextarea?.value || '') {
+  return source.trim().match(/\S+/g)?.length || 0;
+}
+
+function updateZenOverlays() {
+  const title = $('#zen-note-title');
+  const count = $('#zen-word-count');
+  const controls = $('.zen-controls');
+  if (!title || !count || !controls) return;
+  title.textContent = $('#note-title')?.value.trim() || 'Untitled note';
+  title.hidden = !prefs.zenShowTitle;
+  const words = wordCount();
+  count.textContent = `${words} ${words === 1 ? 'word' : 'words'}`;
+  count.hidden = !prefs.zenWordCount;
+  controls.classList.toggle('is-minimal', !prefs.zenShowControls);
+  $('#zen-exit-icon')?.setAttribute('href', prefs.zenShowControls ? '#icon-minimize' : '#icon-x');
 }
 
 function previewBlockIndexAtPosition(position) {
@@ -4187,12 +4277,14 @@ $('#note-content').addEventListener('input', () => {
   previewBlockRanges = [];
   scheduleHighlight();
   scheduleEditorCaretCue();
+  updateZenOverlays();
+  centerZenCaretNow();
   cancelPendingPreviewRender();
   previewTimer = setTimeout(requestPreviewRender, 500);
 });
 $('#note-content').addEventListener('click', () => { scheduleHighlight(); scheduleEditorCaretCue(); });
-$('#note-content').addEventListener('keyup', () => { scheduleHighlight(); scheduleEditorCaretCue(); });
-$('#note-content').addEventListener('focus', scheduleEditorCaretCue);
+$('#note-content').addEventListener('keyup', () => { scheduleHighlight(); scheduleEditorCaretCue(); centerZenCaretNow(); });
+$('#note-content').addEventListener('focus', () => { scheduleEditorCaretCue(); centerZenCaretNow(); });
 $('#note-content').addEventListener('blur', scheduleEditorCaretCue);
 $('#note-content').addEventListener('select', scheduleEditorCaretCue);
 $('#note-content').addEventListener('scroll', scheduleEditorCaretCue, {passive:true});
@@ -4335,7 +4427,12 @@ function editPreviewEntry(entry) {
   if (!interactivePreviewActive || !entry || !textarea) return false;
   if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
   const position = previewEditPosition(entry, textarea.value);
-  if (panelState === 'preview') setPanelState('editor', {preservePanelWide:true});
+  if (panelState === 'zen' && zenViewState === 'preview') {
+    zenViewState = 'editor';
+    setPanelState('zen');
+  } else if (panelState === 'preview') {
+    setPanelState('editor', {preservePanelWide:true});
+  }
   textarea.focus({preventScroll:true});
   textarea.setSelectionRange(position, position);
   centerEditorCaretInView();
@@ -4995,7 +5092,7 @@ function validFontValue(value) {
 }
 
 function normalizeFontValue(value, key) {
-  if (value === 'system') return key === 'editorFontFamily' ? 'system-monospace' : 'system-sans';
+  if (value === 'system') return ['editorFontFamily', 'zenFontFamily'].includes(key) ? 'system-monospace' : 'system-sans';
   return validFontValue(value) ? value.trim() : DEFAULT_PREFS[key];
 }
 
@@ -5015,21 +5112,55 @@ function legacyThemeID() {
   return window.matchMedia('(prefers-color-scheme:dark)').matches ? 'default-dark' : 'default-light';
 }
 
+function normalizeShortcutOverrides(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const entries = Object.entries(value).slice(0, 64).flatMap(([id, binding]) => {
+    if (!/^[a-z][a-z0-9.-]{0,63}$/.test(id)) return [];
+    if (binding === null) return [[id, null]];
+    const normalized = window.VylkShortcuts?.normalizeBinding(binding);
+    return normalized ? [[id, normalized]] : [];
+  });
+  return Object.fromEntries(entries);
+}
+
+function normalizeShortcutPrefix(value) {
+  const binding = window.VylkShortcuts?.normalizeBinding(value);
+  if (!window.VylkShortcuts?.isAllowedPrefix(binding)) return {steps:[{key:'/', modifiers:['Mod']}]};
+  return binding;
+}
+
+function normalizeShortcutConfirmationSkips(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).slice(0, 64).filter(([id, skip]) => /^[a-z][a-z0-9.-]{0,63}$/.test(id) && skip === true));
+}
+
 function normalizePrefs(value = {}, fallback = {}) {
   const merged = {...DEFAULT_PREFS, ...fallback, ...value};
   merged.revision = Number.isSafeInteger(Number(merged.revision)) && Number(merged.revision) > 0 ? Number(merged.revision) : 1;
   if (!['normal', 'compact', 'off'].includes(merged.statusDisplay)) merged.statusDisplay = DEFAULT_PREFS.statusDisplay;
   if (!CONTENT_WIDTH_VALUES.includes(merged.contentWidth)) merged.contentWidth = DEFAULT_PREFS.contentWidth;
+  const savedStartView = value.startView ?? fallback.startView;
+  if (['editor', 'preview', 'split', 'zen'].includes(savedStartView)) merged.startView = savedStartView;
+  else merged.startView = (value.hidePreview ?? fallback.hidePreview) ? 'editor' : DEFAULT_PREFS.startView;
   if (!['panel', 'header'].includes(merged.saveButtonLocation)) merged.saveButtonLocation = DEFAULT_PREFS.saveButtonLocation;
   if (!value.theme && !fallback.theme) merged.theme = legacyThemeID();
   if (!themeByID.has(merged.theme)) merged.theme = legacyThemeID();
   if (!validAccentColor(merged.accentColor)) merged.accentColor = '';
-  ['fontFamily', 'editorFontFamily', 'previewFontFamily'].forEach(key => {
+  ['fontFamily', 'editorFontFamily', 'previewFontFamily', 'zenFontFamily'].forEach(key => {
     merged[key] = normalizeFontValue(merged[key], key);
   });
-  ['fontSize', 'editorFontSize', 'previewFontSize'].forEach(key => {
+  ['fontSize', 'editorFontSize', 'previewFontSize', 'zenFontSize'].forEach(key => {
     merged[key] = normalizeFontSizeValue(merged[key], key);
   });
+  merged.shortcutPrefix = normalizeShortcutPrefix(merged.shortcutPrefix);
+  merged.keyboardShortcuts = normalizeShortcutOverrides(merged.keyboardShortcuts);
+  merged.shortcutConfirmationSkips = normalizeShortcutConfirmationSkips(merged.shortcutConfirmationSkips);
+  merged.zenWordCount = Boolean(merged.zenWordCount);
+  merged.zenShowTitle = Boolean(merged.zenShowTitle);
+  merged.zenShowControls = Boolean(merged.zenShowControls);
+  merged.zenInteractivePreview = Boolean(merged.zenInteractivePreview);
+  delete merged.hidePreview;
+  delete merged.hideHeaderOnFullscreen;
   return merged;
 }
 
@@ -5069,6 +5200,7 @@ const FONT_SLOTS = [
   {preference:'fontFamily', fetchPreference:'fontFamilyGoogle', sizePreference:'fontSize', variable:'--font', sizeVariable:'--font-size', input:'#pref-font', sizeInput:'#pref-font-size', fetch:'#pref-font-google', error:'#pref-font-error', fallback:SYSTEM_FONT_STACK},
   {preference:'editorFontFamily', fetchPreference:'editorFontFamilyGoogle', sizePreference:'editorFontSize', variable:'--editor-font', sizeVariable:'--editor-font-size', input:'#pref-editor-font', sizeInput:'#pref-editor-font-size', fetch:'#pref-editor-font-google', error:'#pref-editor-font-error', fallback:SYSTEM_MONO_STACK},
   {preference:'previewFontFamily', fetchPreference:'previewFontFamilyGoogle', sizePreference:'previewFontSize', variable:'--preview-font', sizeVariable:'--preview-font-size', input:'#pref-preview-font', sizeInput:'#pref-preview-font-size', fetch:'#pref-preview-font-google', error:'#pref-preview-font-error', fallback:SYSTEM_FONT_STACK},
+  {preference:'zenFontFamily', fetchPreference:'zenFontFamilyGoogle', sizePreference:'zenFontSize', variable:'--zen-font', sizeVariable:'--zen-font-size', input:'#pref-zen-font', sizeInput:'#pref-zen-font-size', fetch:'#pref-zen-font-google', error:'#pref-zen-font-error', fallback:SYSTEM_MONO_STACK},
 ];
 
 function fontCSSValue(fontFamily, fallback) {
@@ -5164,7 +5296,7 @@ function renderFontOptions() {
       sizeSelect.innerHTML = FONT_SIZE_OPTIONS.map(option => `<option value="${option.value}">${option.label}</option>`).join('');
       sizeSelect.value = prefs[slot.sizePreference];
     }
-    const fetchToggle = $(slot.fetch);
+    const fetchToggle = slot.fetch ? $(slot.fetch) : null;
     if (fetchToggle) fetchToggle.checked = Boolean(prefs[slot.fetchPreference]);
   });
 }
@@ -5194,10 +5326,9 @@ try {
 
 function openPreferences({route = 'push'} = {}) {
   $('#pref-autosave').checked = prefs.autoSave;
-  $('#pref-hidepreview').checked = prefs.hidePreview;
-  $('#pref-hideheader').checked = prefs.hideHeaderOnFullscreen;
-  $('#pref-hidetoolbar').checked = prefs.hideToolbar;
-  $('#pref-hidesave').checked = prefs.hideSaveButton;
+  $('#pref-start-view').value = prefs.startView;
+  $('#pref-hidetoolbar').checked = !prefs.hideToolbar;
+  updateManualSavePreferenceControl();
   $('#pref-save-location').value = prefs.saveButtonLocation;
   $('#pref-collapse').checked = prefs.collapseDetails;
   $('#pref-hidecursor').checked = prefs.hideCursorHighlight;
@@ -5206,7 +5337,14 @@ function openPreferences({route = 'push'} = {}) {
   $('#pref-content-width').value = prefs.contentWidth;
   $('#pref-theme').value = prefs.theme;
   $('#pref-accent').value = prefs.accentColor || themeByID.get(prefs.theme)?.vars.accent || '#ae2448';
+  $('#pref-accent-mode').value = prefs.accentColor ? 'custom' : 'theme';
+  $('#pref-accent').hidden = !prefs.accentColor;
+  $('#pref-zen-word-count').checked = prefs.zenWordCount;
+  $('#pref-zen-show-title').checked = prefs.zenShowTitle;
+  $('#pref-zen-show-controls').checked = prefs.zenShowControls;
+  $('#pref-zen-interactive-preview').checked = prefs.zenInteractivePreview;
   renderFontOptions();
+  renderShortcutPreferences();
   if (route === 'push') setPreferencesRoute();
   openModal($('#prefs-modal'));
 }
@@ -5233,27 +5371,35 @@ async function savePref(key, value) {
     },
   });
   if (key === 'theme' || key === 'accentColor') applyTheme(prefs.theme);
-  if (['fontFamily', 'fontFamilyGoogle', 'editorFontFamily', 'editorFontFamilyGoogle', 'previewFontFamily', 'previewFontFamilyGoogle'].includes(key)) void applyFonts(true);
+  if (['fontFamily', 'fontFamilyGoogle', 'editorFontFamily', 'editorFontFamilyGoogle', 'previewFontFamily', 'previewFontFamilyGoogle', 'zenFontFamily', 'zenFontFamilyGoogle'].includes(key)) void applyFonts(true);
   applyFontSizes();
   applyContentWidth();
   applyEditorPrefs();
+  if (key === 'autoSave' || key === 'hideSaveButton') updateManualSavePreferenceControl();
+  if (key === 'shortcutPrefix' || key === 'keyboardShortcuts' || key === 'shortcutConfirmationSkips') renderShortcutPreferences();
   scheduleSync();
 }
 
+function updateManualSavePreferenceControl() {
+  const control = $('#pref-hidesave');
+  const copy = $('#pref-manual-save-copy');
+  if (!control || !copy) return;
+  control.checked = prefs.autoSave ? !prefs.hideSaveButton : true;
+  control.disabled = !prefs.autoSave;
+  copy.textContent = prefs.autoSave
+    ? 'Show a control for syncing changes now.'
+    : 'Manual Save stays available while automatic sync is off.';
+}
+
 $('#pref-autosave').addEventListener('change', function () {
-  savePref('autoSave', this.checked);
+  void savePref('autoSave', this.checked).then(updateManualSavePreferenceControl);
 });
-$('#pref-hidepreview').addEventListener('change', function () {
-  savePref('hidePreview', this.checked);
-});
-$('#pref-hideheader').addEventListener('change', function () {
-  savePref('hideHeaderOnFullscreen', this.checked);
-});
+$('#pref-start-view').addEventListener('change', function () { void savePref('startView', this.value); });
 $('#pref-hidetoolbar').addEventListener('change', function () {
-  savePref('hideToolbar', this.checked);
+  savePref('hideToolbar', !this.checked);
 });
 $('#pref-hidesave').addEventListener('change', function () {
-  savePref('hideSaveButton', this.checked);
+  savePref('hideSaveButton', !this.checked);
 });
 $('#pref-save-location').addEventListener('change', function () { void savePref('saveButtonLocation', this.value); });
 $('#pref-collapse').addEventListener('change', function () {
@@ -5265,8 +5411,22 @@ $('#pref-hidecursor').addEventListener('change', function () {
 $('#pref-interactive-preview').addEventListener('change', function () {
   savePref('interactivePreview', this.checked);
 });
+$('#pref-zen-word-count').addEventListener('change', function () { void savePref('zenWordCount', this.checked); });
+$('#pref-zen-show-title').addEventListener('change', function () { void savePref('zenShowTitle', this.checked); });
+$('#pref-zen-show-controls').addEventListener('change', function () { void savePref('zenShowControls', this.checked); });
+$('#pref-zen-interactive-preview').addEventListener('change', function () { void savePref('zenInteractivePreview', this.checked); });
 $('#pref-theme').addEventListener('change', function () { void savePref('theme', this.value); });
 $('#pref-accent').addEventListener('change', function () { void savePref('accentColor', this.value); });
+$('#pref-accent-mode').addEventListener('change', function () {
+  if (this.value === 'theme') {
+    void savePref('accentColor', '');
+    $('#pref-accent').hidden = true;
+    return;
+  }
+  const color = $('#pref-accent');
+  color.hidden = false;
+  void savePref('accentColor', color.value);
+});
 FONT_SLOTS.forEach(slot => {
   const input = $(slot.input);
   input.addEventListener('input', function () {
@@ -5281,7 +5441,8 @@ FONT_SLOTS.forEach(slot => {
     setFontError(slot);
     void savePref(slot.preference, this.value);
   });
-  $(slot.fetch).addEventListener('change', function () {
+  const fetchToggle = slot.fetch ? $(slot.fetch) : null;
+  fetchToggle?.addEventListener('change', function () {
     void savePref(slot.fetchPreference, this.checked);
   });
   const sizeSelect = $(slot.sizeInput);
@@ -5331,6 +5492,7 @@ async function loadPrefs() {
     prefs = normalizePrefs(p, cached);
     localStorage.setItem('vylk-prefs', JSON.stringify(prefs));
     applyPrefs();
+    renderShortcutPreferences();
     return;
   }
   try {
@@ -5338,7 +5500,446 @@ async function loadPrefs() {
     if (cached) prefs = normalizePrefs(JSON.parse(cached));
   } catch (_) {}
   applyPrefs();
+  renderShortcutPreferences();
 }
+
+// --- Commands and keyboard shortcuts ---
+const directShortcut = (key, shift = false) => ({steps:[{key, modifiers:shift ? ['Mod', 'Shift'] : ['Mod']}]});
+const sequenceShortcut = key => ({steps:[{key:'/', modifiers:['Mod']}, {key, modifiers:[]}]});
+const shortcutCommands = [];
+const shortcutCommandsByID = new Map();
+
+function registerShortcutCommand(command) {
+  shortcutCommands.push(command);
+  shortcutCommandsByID.set(command.id, command);
+}
+
+function editorIsVisible() {
+  return !screens.editor.classList.contains('hidden');
+}
+
+function detailsExpanded() {
+  return !$('.meta-pane').classList.contains('collapsed');
+}
+
+function setDetailsExpanded(expanded) {
+  $('.meta-pane').classList.toggle('collapsed', !expanded);
+  $('.meta-toggle').setAttribute('aria-expanded', String(expanded));
+}
+
+function focusPreview() {
+  $('#preview').focus({preventScroll:true});
+}
+
+function focusSourceEditor() {
+  if (panelState === 'zen' && zenViewState === 'preview') {
+    zenViewState = 'editor';
+    setPanelState('zen');
+  } else if (panelState === 'preview') setPanelState('editor');
+  $('#note-content').focus({preventScroll:true});
+}
+
+function setWritingView(view) {
+  if (panelState === 'zen') {
+    zenViewState = view;
+    setPanelState('zen');
+    if (view === 'preview') focusPreview();
+    else $('#note-content').focus({preventScroll:true});
+    return;
+  }
+  setPanelState(view);
+  if (view === 'preview') focusPreview();
+  else $('#note-content').focus({preventScroll:true});
+}
+
+function switchEditorPreview() {
+  if (panelState === 'zen') {
+    zenViewState = zenViewState === 'preview' ? 'editor' : 'preview';
+    setPanelState('zen');
+    if (zenViewState === 'preview') focusPreview();
+    else $('#note-content').focus({preventScroll:true});
+    return;
+  }
+  if (panelState === 'editor') {
+    setPanelState('preview');
+    focusPreview();
+    return;
+  }
+  if (panelState === 'preview') {
+    setPanelState('editor');
+    $('#note-content').focus({preventScroll:true});
+    return;
+  }
+  if (document.activeElement?.closest?.('#preview-panel')) $('#note-content').focus({preventScroll:true});
+  else focusPreview();
+}
+
+async function createNewNoteFromShortcut() {
+  if (!editorIsVisible()) {
+    startNewNote();
+    return;
+  }
+  if (prefs.shortcutConfirmationSkips['note.new']) {
+    const saved = await saveCurrentNote(false);
+    if (saved) startNewNote();
+    return;
+  }
+  $('#shortcut-confirm-skip').checked = false;
+  openModal($('#shortcut-confirm-modal'));
+  $('#shortcut-confirm-continue').focus();
+}
+
+registerShortcutCommand({id:'note.new', group:'General', label:'New note', description:'Create a new blank note.', defaultBinding:sequenceShortcut('n'), scope:'global', intrusive:true, run:createNewNoteFromShortcut});
+registerShortcutCommand({id:'note.save', group:'General', label:'Save note', description:'Save the current note now.', defaultBinding:directShortcut('s'), scope:'editor', run:() => { if (saveTimer) clearTimeout(saveTimer); return saveCurrentNote(); }});
+registerShortcutCommand({id:'preferences.open', group:'General', label:'Open preferences', description:'Open application preferences.', defaultBinding:sequenceShortcut('p'), scope:'global', run:() => openPreferences()});
+registerShortcutCommand({id:'editor.title', group:'Editor', label:'Edit title', description:'Show Details and replace the title.', defaultBinding:sequenceShortcut('t'), scope:'editor', run:() => { setDetailsExpanded(true); $('#note-title').focus({preventScroll:true}); $('#note-title').select(); }});
+registerShortcutCommand({id:'editor.tags', group:'Editor', label:'Edit tags', description:'Show Details and add or change tags.', defaultBinding:sequenceShortcut('g'), scope:'editor', run:() => { setDetailsExpanded(true); const tags = $('#note-tags'); tags.focus({preventScroll:true}); tags.selectionStart = tags.selectionEnd = tags.value.length; }});
+registerShortcutCommand({id:'editor.focus', group:'Editor', label:'Focus editor', description:'Move focus to the Markdown editor.', defaultBinding:sequenceShortcut('e'), scope:'editor', run:focusSourceEditor});
+registerShortcutCommand({id:'view.write', group:'View', label:'Write view', description:'Show only the Markdown editor.', defaultBinding:sequenceShortcut('1'), scope:'editor', run:() => setWritingView('editor')});
+registerShortcutCommand({id:'view.preview', group:'View', label:'Preview view', description:'Show only the rendered preview.', defaultBinding:sequenceShortcut('2'), scope:'editor', run:() => setWritingView('preview')});
+registerShortcutCommand({id:'view.split', group:'View', label:'Split view', description:'Show editor and preview together.', defaultBinding:sequenceShortcut('3'), scope:'editor', run:() => { setPanelState('both'); $('#note-content').focus({preventScroll:true}); }});
+registerShortcutCommand({id:'view.zen', group:'View', label:'Zen mode', description:'Write without app chrome. Press Escape to return.', scope:'editor', run:() => { setPanelState('zen'); $('#note-content').focus({preventScroll:true}); }});
+registerShortcutCommand({id:'view.switch', group:'View', label:'Switch editor and preview', description:'Move to the other pane.', defaultBinding:sequenceShortcut('4'), scope:'editor', run:switchEditorPreview});
+[
+  ['format.bold', 'Bold', 'Make selected text bold.', 'bold', directShortcut('b')],
+  ['format.italic', 'Italic', 'Make selected text italic.', 'italic', directShortcut('i')],
+  ['format.strike', 'Strikethrough', 'Strike through selected text.', 'strike'],
+  ['format.code', 'Inline code', 'Format selected text as code.', 'code'],
+  ['format.link', 'Link', 'Insert or format a link.', 'link'],
+  ['format.ul', 'Bulleted list', 'Turn text into a bulleted list.', 'ul'],
+  ['format.ol', 'Numbered list', 'Turn text into a numbered list.', 'ol'],
+  ['format.task', 'Task list', 'Turn text into a task list.', 'task'],
+  ['format.blockquote', 'Blockquote', 'Turn text into a quote.', 'blockquote'],
+].forEach(([id, label, description, format, defaultBinding = null]) => {
+  registerShortcutCommand({id, group:'Formatting', label, description, defaultBinding, scope:'source', run:() => insertFmt(format)});
+});
+
+function shortcutPrefixBinding() {
+  return prefs.shortcutPrefix;
+}
+
+function materializeShortcutBinding(binding) {
+  if (!binding || binding.steps.length !== 2) return binding;
+  return {steps:[shortcutPrefixBinding().steps[0], binding.steps[1]]};
+}
+
+function shortcutBindingFor(command) {
+  const binding = Object.hasOwn(prefs.keyboardShortcuts, command.id) ? prefs.keyboardShortcuts[command.id] : command.defaultBinding || null;
+  return materializeShortcutBinding(binding);
+}
+
+function shortcutPreferenceLabel(binding) {
+  if (!binding) return 'Not set';
+  if (binding.steps.length === 2) return `Prefix, ${binding.steps[1].key.toUpperCase()}`;
+  return window.VylkShortcuts.displayBinding(binding);
+}
+
+function commandCanRun(command) {
+  if (command.scope === 'global') return !screens.dashboard.classList.contains('hidden') || editorIsVisible();
+  if (command.scope === 'editor') return editorIsVisible();
+  return editorIsVisible() && !interactiveSourceLocked;
+}
+
+function commandForBinding(binding, {sequence = false} = {}) {
+  return shortcutCommands.find(command => {
+    const current = shortcutBindingFor(command);
+    return current && current.steps.length === (sequence ? 2 : 1) && window.VylkShortcuts.sameBinding(current, binding);
+  });
+}
+
+function updateShortcutAffordances() {
+  shortcutCommands.forEach(command => {
+    const binding = shortcutBindingFor(command);
+    const aria = binding ? window.VylkShortcuts.ariaBinding(binding) : '';
+    const suffix = binding ? ` (${window.VylkShortcuts.displayBinding(binding)})` : '';
+    const selector = command.id === 'note.save' ? '#save-btn'
+      : command.id.startsWith('view.') ? `.view-control[data-panel="${command.id === 'view.write' ? 'editor' : command.id === 'view.split' ? 'both' : command.id === 'view.preview' ? 'preview' : ''}"]`
+        : command.id.startsWith('format.') ? `.fmt-bar [data-fmt="${command.id.slice('format.'.length)}"]` : '';
+    if (!selector) return;
+    $$(selector).forEach(button => {
+      button.title = `${command.label}${suffix}`;
+      if (aria) button.setAttribute('aria-keyshortcuts', aria);
+      else button.removeAttribute('aria-keyshortcuts');
+    });
+  });
+}
+
+function renderShortcutPreferences() {
+  const prefix = $('#shortcut-prefix');
+  if (prefix) {
+    const recording = activeShortcutRecording?.type === 'prefix';
+    prefix.classList.toggle('is-recording', recording);
+    prefix.textContent = recording ? 'Press prefix…' : window.VylkShortcuts.displayBinding(shortcutPrefixBinding());
+    prefix.setAttribute('aria-label', recording ? 'Recording shortcut prefix' : `Record shortcut prefix, currently ${window.VylkShortcuts.ariaBinding(shortcutPrefixBinding())}`);
+  }
+  const groups = $('#shortcut-groups');
+  if (!groups) return;
+  groups.replaceChildren();
+  const byGroup = new Map();
+  shortcutCommands.forEach(command => {
+    if (!byGroup.has(command.group)) byGroup.set(command.group, []);
+    byGroup.get(command.group).push(command);
+  });
+  byGroup.forEach((commands, group) => {
+    const section = document.createElement('section');
+    section.className = 'shortcut-group';
+    const title = document.createElement('h3');
+    title.className = 'shortcut-group-title';
+    title.textContent = group;
+    section.append(title);
+    commands.forEach(command => {
+      const row = document.createElement('div');
+      row.className = 'shortcut-row';
+      const copy = document.createElement('span');
+      copy.className = 'shortcut-copy';
+      copy.innerHTML = `<strong>${esc(command.label)}</strong><small>${esc(command.description)}</small>`;
+      const actions = document.createElement('div');
+      actions.className = 'shortcut-row-actions';
+      actions.setAttribute('role', 'group');
+      actions.setAttribute('aria-label', `Shortcut controls for ${command.label}`);
+      const record = document.createElement('button');
+      record.type = 'button';
+      record.className = 'shortcut-binding';
+      record.dataset.shortcutCommand = command.id;
+      const binding = shortcutBindingFor(command);
+      const recording = activeShortcutRecording?.type === 'command' && activeShortcutRecording.id === command.id;
+      record.textContent = recording ? (activeShortcutRecording.awaitingSequenceKey ? 'Prefix,' : 'Press shortcut…') : shortcutPreferenceLabel(binding);
+      record.setAttribute('aria-label', `Record shortcut for ${command.label}. Press Backspace or Delete to clear it.`);
+      actions.append(record);
+      row.append(copy, actions);
+      section.append(row);
+    });
+    groups.append(section);
+  });
+  updateShortcutAffordances();
+}
+
+function setShortcutRecorderStatus(message = '', error = false) {
+  const status = $('#shortcut-recorder-status');
+  status.textContent = message;
+  status.classList.toggle('is-error', error);
+}
+
+function stopShortcutRecording({render = true} = {}) {
+  activeShortcutRecording = null;
+  if (render) renderShortcutPreferences();
+}
+
+function shortcutBindingConflict(commandID, binding) {
+  return shortcutCommands.find(command => command.id !== commandID && window.VylkShortcuts.sameBinding(shortcutBindingFor(command), binding));
+}
+
+async function setShortcutOverride(commandID, binding) {
+  const command = shortcutCommandsByID.get(commandID);
+  if (!command) return;
+  const next = {...prefs.keyboardShortcuts};
+  const defaultBinding = materializeShortcutBinding(command.defaultBinding);
+  if (binding && defaultBinding && window.VylkShortcuts.sameBinding(binding, defaultBinding)) delete next[commandID];
+  else next[commandID] = binding;
+  const saved = savePref('keyboardShortcuts', next);
+  renderShortcutPreferences();
+  await saved;
+}
+
+function startShortcutRecording(commandID) {
+  const command = shortcutCommandsByID.get(commandID);
+  if (!command) return;
+  activeShortcutRecording = {type:'command', id:commandID, awaitingSequenceKey:false};
+  setShortcutRecorderStatus('Press a shortcut, or press Prefix then a key for a sequence. Press Escape to cancel.');
+  renderShortcutPreferences();
+}
+
+function startShortcutPrefixRecording() {
+  activeShortcutRecording = {type:'prefix'};
+  setShortcutRecorderStatus('Press Ctrl/Command and a key. Press Escape to cancel.');
+  renderShortcutPreferences();
+}
+
+function startShortcutSequence() {
+  pendingShortcutSequence = {};
+  const hint = $('#shortcut-sequence-hint');
+  const available = shortcutCommands.filter(item => commandCanRun(item) && shortcutBindingFor(item)?.steps.length === 2);
+  const title = document.createElement('strong');
+  title.className = 'shortcut-sequence-title';
+  title.textContent = 'Keyboard shortcuts';
+  const subtitle = document.createElement('span');
+  subtitle.className = 'shortcut-sequence-subtitle';
+  subtitle.textContent = 'Choose a key, or press Escape to cancel.';
+  const options = document.createElement('div');
+  options.className = 'shortcut-sequence-options';
+  available.forEach(command => {
+    const option = document.createElement('span');
+    option.className = 'shortcut-sequence-option';
+    const key = document.createElement('kbd');
+    key.textContent = shortcutBindingFor(command).steps[1].key.toUpperCase();
+    const label = document.createElement('span');
+    label.textContent = command.label;
+    option.append(key, label);
+    options.append(option);
+  });
+  hint.replaceChildren(title, subtitle, options);
+  hint.classList.remove('hidden');
+}
+
+function cancelShortcutSequence() {
+  pendingShortcutSequence = null;
+  $('#shortcut-sequence-hint')?.classList.add('hidden');
+}
+
+async function executeShortcutCommand(commandID, {source = 'shortcut'} = {}) {
+  const command = shortcutCommandsByID.get(commandID);
+  if (!command || !commandCanRun(command)) return false;
+  if (command.intrusive && source === 'shortcut') {
+    await createNewNoteFromShortcut();
+    return true;
+  }
+  await command.run();
+  return true;
+}
+
+function hasOpenModal() {
+  return [...$$('.modal')].some(modal => !modal.classList.contains('hidden'));
+}
+
+document.addEventListener('keydown', event => {
+  if (activeShortcutRecording) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      stopShortcutRecording();
+      setShortcutRecorderStatus('Shortcut recording cancelled.');
+      return;
+    }
+    if (activeShortcutRecording.type === 'command' && (event.key === 'Backspace' || event.key === 'Delete')) {
+      event.preventDefault();
+      const id = activeShortcutRecording.id;
+      stopShortcutRecording({render:false});
+      void setShortcutOverride(id, null);
+      setShortcutRecorderStatus('Shortcut cleared.');
+      return;
+    }
+    if (activeShortcutRecording.type === 'prefix') {
+      const binding = window.VylkShortcuts.bindingFromEvent(event);
+      if (!binding) return;
+      event.preventDefault();
+      if (!window.VylkShortcuts.isAllowedPrefix(binding)) {
+        setShortcutRecorderStatus('Use Ctrl/Command and a supported key for the prefix.', true);
+        return;
+      }
+      const conflict = shortcutBindingConflict(null, binding);
+      if (conflict) {
+        setShortcutRecorderStatus(`Already used by ${conflict.label}.`, true);
+        return;
+      }
+      stopShortcutRecording({render:false});
+      void savePref('shortcutPrefix', binding);
+      setShortcutRecorderStatus('Prefix updated.');
+      return;
+    }
+    if (activeShortcutRecording.awaitingSequenceKey) {
+      const second = window.VylkShortcuts.capturedSequenceStep(event);
+      if (!second) return;
+      event.preventDefault();
+      const binding = {steps:[shortcutPrefixBinding().steps[0], second]};
+      const conflict = shortcutBindingConflict(activeShortcutRecording.id, binding);
+      if (conflict) {
+        setShortcutRecorderStatus(`Already used by ${conflict.label}.`, true);
+        stopShortcutRecording({render:true});
+        return;
+      }
+      const id = activeShortcutRecording.id;
+      stopShortcutRecording({render:false});
+      void setShortcutOverride(id, binding);
+      setShortcutRecorderStatus('Shortcut updated.');
+      return;
+    }
+    const binding = window.VylkShortcuts.bindingFromEvent(event);
+    if (!binding) return;
+    event.preventDefault();
+    if (window.VylkShortcuts.sameBinding(binding, shortcutPrefixBinding())) {
+      activeShortcutRecording.awaitingSequenceKey = true;
+      setShortcutRecorderStatus('Prefix registered. Press the next key, or Escape to cancel.');
+      renderShortcutPreferences();
+      return;
+    }
+    if (window.VylkShortcuts.isReservedBinding(binding)) {
+      setShortcutRecorderStatus('That shortcut belongs to your browser or operating system.', true);
+      return;
+    }
+    const conflict = shortcutBindingConflict(activeShortcutRecording.id, binding);
+    if (conflict) {
+      setShortcutRecorderStatus(`Already used by ${conflict.label}.`, true);
+      return;
+    }
+    const id = activeShortcutRecording.id;
+    stopShortcutRecording({render:false});
+    void setShortcutOverride(id, binding);
+    setShortcutRecorderStatus('Shortcut updated.');
+    return;
+  }
+  if (pendingShortcutSequence) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelShortcutSequence();
+      return;
+    }
+    const second = window.VylkShortcuts.capturedSequenceStep(event);
+    if (!second) return;
+    const binding = {steps:[shortcutPrefixBinding().steps[0], second]};
+    const command = commandForBinding(binding, {sequence:true});
+    cancelShortcutSequence();
+    if (!command || !commandCanRun(command)) return;
+    event.preventDefault();
+    void executeShortcutCommand(command.id);
+    return;
+  }
+  if (event.key === 'Escape' && panelState === 'zen') {
+    event.preventDefault();
+    setPanelState(zenModeReturnState);
+    $('#note-content').focus({preventScroll:true});
+    return;
+  }
+  if (event.defaultPrevented || event.isComposing || event.repeat || hasOpenModal()) return;
+  const first = window.VylkShortcuts.bindingFromEvent(event);
+  if (!first) return;
+  if (window.VylkShortcuts.isLeader(first, shortcutPrefixBinding().steps[0])) {
+    const hasSequence = shortcutCommands.some(command => commandCanRun(command) && shortcutBindingFor(command)?.steps.length === 2);
+    if (!hasSequence) return;
+    event.preventDefault();
+    startShortcutSequence();
+    return;
+  }
+  const command = commandForBinding(first);
+  if (!command || !commandCanRun(command)) return;
+  event.preventDefault();
+  void executeShortcutCommand(command.id);
+}, true);
+
+$('#shortcut-groups').addEventListener('click', event => {
+  const record = event.target.closest('[data-shortcut-command]');
+  if (record) startShortcutRecording(record.dataset.shortcutCommand);
+});
+
+$('#shortcut-prefix').addEventListener('click', startShortcutPrefixRecording);
+
+$('#shortcut-reset').addEventListener('click', () => {
+  setShortcutRecorderStatus('Restoring default shortcuts…');
+  void savePref('shortcutPrefix', DEFAULT_PREFS.shortcutPrefix)
+    .then(() => savePref('keyboardShortcuts', {}))
+    .then(() => setShortcutRecorderStatus('Default shortcuts restored.'));
+});
+
+$('#shortcut-confirm-close').addEventListener('click', () => closeModal($('#shortcut-confirm-modal')));
+$('#shortcut-confirm-cancel').addEventListener('click', () => closeModal($('#shortcut-confirm-modal')));
+$('#shortcut-confirm-modal .modal-backdrop').addEventListener('click', () => closeModal($('#shortcut-confirm-modal')));
+$('#shortcut-confirm-continue').addEventListener('click', async () => {
+  const skip = $('#shortcut-confirm-skip').checked;
+  closeModal($('#shortcut-confirm-modal'));
+  if (skip) await savePref('shortcutConfirmationSkips', {...prefs.shortcutConfirmationSkips, 'note.new':true});
+  const saved = await saveCurrentNote(false);
+  if (saved) startNewNote();
+});
+
+renderShortcutPreferences();
 
 // --- Init ---
 async function init() {
@@ -5442,13 +6043,5 @@ setInterval(async () => {
     console.warn('periodic sync check failed', error);
   }
 }, 30000);
-
-// Keyboard shortcuts
-document.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault();
-    saveCurrentNote();
-  }
-});
 
 })();
