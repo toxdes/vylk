@@ -1964,7 +1964,7 @@ describe('conflict deletion recovery', () => {
 describe('F-04 service worker revisions', () => {
   test('does not register a provisional legacy revision before the server revision is known', async () => {
     const register = vi.fn(async () => {});
-    const app = track(await createApp({serviceWorker: {register}}));
+    track(await createApp({serviceWorker: {register}}));
 
     expect(register).not.toHaveBeenCalled();
   });

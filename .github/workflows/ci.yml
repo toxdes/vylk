@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    environment: ci-approval
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@b7a1c7ccf290d58743029c4f6903da283811b979 # v2.1.0
+        with:
+          bun-version: 1.4.2
+
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+
+      - name: Verify Go modules
+        run: go mod verify
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run Staticcheck
+        run: go tool staticcheck ./...
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Build Go packages
+        run: go build ./...
+
+      - name: Install frontend dependencies
+        run: bun ci
+
+      - name: Lint frontend
+        run: bun run lint
+
+      - name: Run frontend behavior tests
+        run: bun run test:frontend
+
+      - name: Run browser tests
+        run: bun run test:browser

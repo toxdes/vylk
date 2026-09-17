@@ -1002,7 +1002,6 @@ function apiErrorFromTransport(error) {
 async function api(path, opts) {
   const method = opts?.method || 'GET';
   const syncRequest = opts?.syncRequest === true;
-  const throwOnError = opts?.throwOnError === true;
   const requestOpts = {...opts};
   delete requestOpts.syncRequest;
   delete requestOpts.throwOnError;
