@@ -211,8 +211,7 @@ func storedSyncOperation(db *sql.DB, deviceID string, sequence int64, opID strin
 
 var preferenceFieldNames = map[string]struct{}{
 	"autoSave":                  {},
-	"hidePreview":               {},
-	"hideHeaderOnFullscreen":    {},
+	"startView":                 {},
 	"hideToolbar":               {},
 	"hideSaveButton":            {},
 	"saveButtonLocation":        {},
@@ -232,6 +231,13 @@ var preferenceFieldNames = map[string]struct{}{
 	"previewFontFamily":         {},
 	"previewFontFamilyGoogle":   {},
 	"previewFontSize":           {},
+	"zenFontFamily":             {},
+	"zenFontFamilyGoogle":       {},
+	"zenFontSize":               {},
+	"zenWordCount":              {},
+	"zenShowTitle":              {},
+	"zenShowControls":           {},
+	"zenInteractivePreview":     {},
 	"shortcutPrefix":            {},
 	"keyboardShortcuts":         {},
 	"shortcutConfirmationSkips": {},
@@ -252,6 +258,15 @@ var fontSizeValues = map[string]struct{}{
 func validContentWidthValue(value string) bool {
 	switch value {
 	case "compact", "standard", "wide", "full":
+		return true
+	default:
+		return false
+	}
+}
+
+func validStartViewValue(value string) bool {
+	switch value {
+	case "editor", "preview", "split", "zen":
 		return true
 	default:
 		return false
@@ -324,6 +339,11 @@ func validatePreferenceFieldValue(key string, value json.RawMessage) error {
 		return fmt.Errorf("unknown preference field %q", key)
 	}
 	switch key {
+	case "startView":
+		var startView string
+		if err := json.Unmarshal(value, &startView); err != nil || !validStartViewValue(startView) {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
 	case "contentWidth":
 		var contentWidth string
 		if err := json.Unmarshal(value, &contentWidth); err != nil || !validContentWidthValue(contentWidth) {
@@ -334,7 +354,7 @@ func validatePreferenceFieldValue(key string, value json.RawMessage) error {
 		if err := json.Unmarshal(value, &saveButtonLocation); err != nil || !validSaveButtonLocationValue(saveButtonLocation) {
 			return fmt.Errorf("invalid preference value for %q", key)
 		}
-	case "fontSize", "editorFontSize", "previewFontSize":
+	case "fontSize", "editorFontSize", "previewFontSize", "zenFontSize":
 		var fontSize string
 		if err := json.Unmarshal(value, &fontSize); err != nil || !validFontSizeValue(fontSize) {
 			return fmt.Errorf("invalid preference value for %q", key)
@@ -359,6 +379,9 @@ func validatePreferenceFieldValue(key string, value json.RawMessage) error {
 }
 
 func validatePrefs(p *prefs) error {
+	if p.StartView == "" {
+		p.StartView = "split"
+	}
 	if len(p.ShortcutPrefix.Steps) == 0 {
 		p.ShortcutPrefix = defaultShortcutPrefix
 	}
@@ -371,6 +394,9 @@ func validatePrefs(p *prefs) error {
 	if p.ContentWidth != "" && !validContentWidthValue(p.ContentWidth) {
 		return fmt.Errorf("invalid preference value for %q", "contentWidth")
 	}
+	if !validStartViewValue(p.StartView) {
+		return fmt.Errorf("invalid preference value for %q", "startView")
+	}
 	if p.SaveButtonLocation != "" && !validSaveButtonLocationValue(p.SaveButtonLocation) {
 		return fmt.Errorf("invalid preference value for %q", "saveButtonLocation")
 	}
@@ -378,6 +404,7 @@ func validatePrefs(p *prefs) error {
 		"fontSize":        p.FontSize,
 		"editorFontSize":  p.EditorFontSize,
 		"previewFontSize": p.PreviewFontSize,
+		"zenFontSize":     p.ZenFontSize,
 	} {
 		if value != "" && !validFontSizeValue(value) {
 			return fmt.Errorf("invalid preference value for %q", key)

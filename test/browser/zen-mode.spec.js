@@ -14,7 +14,7 @@ async function openZenMode(page) {
   await page.locator('#note-title').fill('A calm page');
   await page.locator('#note-content').fill(Array.from({length:120}, (_, index) => `A deliberately long paragraph ${index} keeps the writing surface scrollable without changing its shape.`).join('\n\n'));
   await page.locator('#editor-prefs-btn').click();
-  await page.locator('#prefs-tab-editor').click();
+  await page.locator('#prefs-tab-zen').click();
   await page.locator('#pref-zen-word-count').check();
   await page.locator('#prefs-close').click();
   await page.locator('[data-panel="zen"]').click();

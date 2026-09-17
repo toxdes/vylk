@@ -24,7 +24,7 @@ let zenModeReturnState = 'editor';
 let zenViewState = 'editor';
 let savedSnapshot = { title: '', tags: '', content: '' };
 let editorSessionGeneration = 0;
-const DEFAULT_PREFS = {revision:1, autoSave:true, hidePreview:false, hideHeaderOnFullscreen:false, hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel',
+const DEFAULT_PREFS = {revision:1, autoSave:true, startView:'split', hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel',
   collapseDetails:false, hideCursorHighlight:false, interactivePreview:false, statusDisplay:'normal', contentWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans',
   fontFamilyGoogle:false, fontSize:'1rem', editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, editorFontSize:'1rem', previewFontFamily:'system-sans',
   previewFontFamilyGoogle:false, previewFontSize:'1rem', zenFontFamily:'system-monospace', zenFontFamilyGoogle:false, zenFontSize:'1rem', zenWordCount:false, zenShowTitle:true, zenShowControls:true, zenInteractivePreview:false,
@@ -2668,9 +2668,9 @@ function applyEditorPrefs() {
   const collapsed = Boolean(prefs.collapseDetails);
   $('.meta-pane').classList.toggle('collapsed', collapsed);
   $('.meta-toggle').setAttribute('aria-expanded', String(!collapsed));
-  $('#editor').classList.toggle('header-hidden', panelState === 'zen' || (prefs.hideHeaderOnFullscreen && panelState !== 'both'));
+  $('#editor').classList.toggle('header-hidden', panelState === 'zen');
   document.documentElement.dataset.statusDisplay = prefs.statusDisplay;
-  $('#editor').classList.toggle('hide-save-button', Boolean(prefs.hideSaveButton));
+  $('#editor').classList.toggle('hide-save-button', Boolean(prefs.hideSaveButton && prefs.autoSave));
   updateZenOverlays();
   placeSaveButton();
   if (prefs.hideToolbar) {
@@ -2711,6 +2711,10 @@ function applyContentWidth() {
   document.documentElement.dataset.contentWidth = prefs.contentWidth;
 }
 
+function startPanelState() {
+  return {editor:'editor', preview:'preview', split:'both', zen:'zen'}[prefs.startView] || 'both';
+}
+
 function placeSaveButton() {
   const saveButton = $('#save-btn');
   const headerSlot = $('#header-save-slot');
@@ -2734,7 +2738,8 @@ function startNewNote(title = '') {
   if (saveTimer) clearTimeout(saveTimer);
   if (localSaveTimer) clearTimeout(localSaveTimer);
   if (previewTimer) clearTimeout(previewTimer);
-  setPanelState(prefs.hidePreview ? 'editor' : 'both');
+  const initialPanelState = startPanelState();
+  setPanelState(initialPanelState);
   resetInteractivePreviewSession();
   editorSessionGeneration++;
   currentNoteId = newLocalNoteID();
@@ -2752,7 +2757,9 @@ function startNewNote(title = '') {
   applyEditorPrefs();
   show(screens.editor);
   scheduleEditorCaretCue();
-  $('#note-title').focus();
+  if (initialPanelState === 'zen') $('#note-content').focus();
+  else if (initialPanelState === 'preview') focusPreview();
+  else $('#note-title').focus();
 }
 
 $('#new-note-btn').addEventListener('click', () => startNewNote());
@@ -2793,7 +2800,7 @@ $('#back-btn').addEventListener('click', async () => {
 $('#back-btn').addEventListener('pointerdown', cancelPendingPreviewRender, {passive:true});
 
 function showNoteInEditor(data) {
-  setPanelState(prefs.hidePreview ? 'editor' : 'both');
+  setPanelState(startPanelState());
   resetInteractivePreviewSession();
   editorSessionGeneration++;
   currentNoteId = data.id;
@@ -3357,7 +3364,7 @@ function setPanelState(state) {
     wrap.classList.add('panels-single');
   }
   $('#editor').classList.toggle('zen-mode', state === 'zen');
-  $('#editor').classList.toggle('header-hidden', state === 'zen' || (prefs.hideHeaderOnFullscreen && state !== 'both'));
+  $('#editor').classList.toggle('header-hidden', state === 'zen');
   const interactiveModeChanged = syncInteractivePreviewMode();
   placeViewControls();
   placeSaveButton();
@@ -5132,6 +5139,9 @@ function normalizePrefs(value = {}, fallback = {}) {
   merged.revision = Number.isSafeInteger(Number(merged.revision)) && Number(merged.revision) > 0 ? Number(merged.revision) : 1;
   if (!['normal', 'compact', 'off'].includes(merged.statusDisplay)) merged.statusDisplay = DEFAULT_PREFS.statusDisplay;
   if (!CONTENT_WIDTH_VALUES.includes(merged.contentWidth)) merged.contentWidth = DEFAULT_PREFS.contentWidth;
+  const savedStartView = value.startView ?? fallback.startView;
+  if (['editor', 'preview', 'split', 'zen'].includes(savedStartView)) merged.startView = savedStartView;
+  else merged.startView = (value.hidePreview ?? fallback.hidePreview) ? 'editor' : DEFAULT_PREFS.startView;
   if (!['panel', 'header'].includes(merged.saveButtonLocation)) merged.saveButtonLocation = DEFAULT_PREFS.saveButtonLocation;
   if (!value.theme && !fallback.theme) merged.theme = legacyThemeID();
   if (!themeByID.has(merged.theme)) merged.theme = legacyThemeID();
@@ -5149,6 +5159,8 @@ function normalizePrefs(value = {}, fallback = {}) {
   merged.zenShowTitle = Boolean(merged.zenShowTitle);
   merged.zenShowControls = Boolean(merged.zenShowControls);
   merged.zenInteractivePreview = Boolean(merged.zenInteractivePreview);
+  delete merged.hidePreview;
+  delete merged.hideHeaderOnFullscreen;
   return merged;
 }
 
@@ -5314,10 +5326,9 @@ try {
 
 function openPreferences({route = 'push'} = {}) {
   $('#pref-autosave').checked = prefs.autoSave;
-  $('#pref-hidepreview').checked = prefs.hidePreview;
-  $('#pref-hideheader').checked = prefs.hideHeaderOnFullscreen;
-  $('#pref-hidetoolbar').checked = prefs.hideToolbar;
-  $('#pref-hidesave').checked = prefs.hideSaveButton;
+  $('#pref-start-view').value = prefs.startView;
+  $('#pref-hidetoolbar').checked = !prefs.hideToolbar;
+  updateManualSavePreferenceControl();
   $('#pref-save-location').value = prefs.saveButtonLocation;
   $('#pref-collapse').checked = prefs.collapseDetails;
   $('#pref-hidecursor').checked = prefs.hideCursorHighlight;
@@ -5326,6 +5337,8 @@ function openPreferences({route = 'push'} = {}) {
   $('#pref-content-width').value = prefs.contentWidth;
   $('#pref-theme').value = prefs.theme;
   $('#pref-accent').value = prefs.accentColor || themeByID.get(prefs.theme)?.vars.accent || '#ae2448';
+  $('#pref-accent-mode').value = prefs.accentColor ? 'custom' : 'theme';
+  $('#pref-accent').hidden = !prefs.accentColor;
   $('#pref-zen-word-count').checked = prefs.zenWordCount;
   $('#pref-zen-show-title').checked = prefs.zenShowTitle;
   $('#pref-zen-show-controls').checked = prefs.zenShowControls;
@@ -5362,24 +5375,31 @@ async function savePref(key, value) {
   applyFontSizes();
   applyContentWidth();
   applyEditorPrefs();
+  if (key === 'autoSave' || key === 'hideSaveButton') updateManualSavePreferenceControl();
   if (key === 'shortcutPrefix' || key === 'keyboardShortcuts' || key === 'shortcutConfirmationSkips') renderShortcutPreferences();
   scheduleSync();
 }
 
+function updateManualSavePreferenceControl() {
+  const control = $('#pref-hidesave');
+  const copy = $('#pref-manual-save-copy');
+  if (!control || !copy) return;
+  control.checked = prefs.autoSave ? !prefs.hideSaveButton : true;
+  control.disabled = !prefs.autoSave;
+  copy.textContent = prefs.autoSave
+    ? 'Show a control for syncing changes now.'
+    : 'Manual Save stays available while automatic sync is off.';
+}
+
 $('#pref-autosave').addEventListener('change', function () {
-  savePref('autoSave', this.checked);
+  void savePref('autoSave', this.checked).then(updateManualSavePreferenceControl);
 });
-$('#pref-hidepreview').addEventListener('change', function () {
-  savePref('hidePreview', this.checked);
-});
-$('#pref-hideheader').addEventListener('change', function () {
-  savePref('hideHeaderOnFullscreen', this.checked);
-});
+$('#pref-start-view').addEventListener('change', function () { void savePref('startView', this.value); });
 $('#pref-hidetoolbar').addEventListener('change', function () {
-  savePref('hideToolbar', this.checked);
+  savePref('hideToolbar', !this.checked);
 });
 $('#pref-hidesave').addEventListener('change', function () {
-  savePref('hideSaveButton', this.checked);
+  savePref('hideSaveButton', !this.checked);
 });
 $('#pref-save-location').addEventListener('change', function () { void savePref('saveButtonLocation', this.value); });
 $('#pref-collapse').addEventListener('change', function () {
@@ -5397,6 +5417,16 @@ $('#pref-zen-show-controls').addEventListener('change', function () { void saveP
 $('#pref-zen-interactive-preview').addEventListener('change', function () { void savePref('zenInteractivePreview', this.checked); });
 $('#pref-theme').addEventListener('change', function () { void savePref('theme', this.value); });
 $('#pref-accent').addEventListener('change', function () { void savePref('accentColor', this.value); });
+$('#pref-accent-mode').addEventListener('change', function () {
+  if (this.value === 'theme') {
+    void savePref('accentColor', '');
+    $('#pref-accent').hidden = true;
+    return;
+  }
+  const color = $('#pref-accent');
+  color.hidden = false;
+  void savePref('accentColor', color.value);
+});
 FONT_SLOTS.forEach(slot => {
   const input = $(slot.input);
   input.addEventListener('input', function () {

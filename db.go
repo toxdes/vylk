@@ -66,8 +66,7 @@ func openDB(path string) (*sql.DB, error) {
 type prefs struct {
 	Revision                  int64                       `json:"revision,omitempty"`
 	AutoSave                  bool                        `json:"autoSave"`
-	HidePreview               bool                        `json:"hidePreview"`
-	HideHeaderOnFullscreen    bool                        `json:"hideHeaderOnFullscreen"`
+	StartView                 string                      `json:"startView,omitempty"`
 	HideToolbar               bool                        `json:"hideToolbar"`
 	HideSaveButton            bool                        `json:"hideSaveButton"`
 	SaveButtonLocation        string                      `json:"saveButtonLocation,omitempty"`
@@ -87,6 +86,13 @@ type prefs struct {
 	PreviewFontFamily         string                      `json:"previewFontFamily,omitempty"`
 	PreviewFontFamilyGoogle   bool                        `json:"previewFontFamilyGoogle"`
 	PreviewFontSize           string                      `json:"previewFontSize,omitempty"`
+	ZenFontFamily             string                      `json:"zenFontFamily,omitempty"`
+	ZenFontFamilyGoogle       bool                        `json:"zenFontFamilyGoogle"`
+	ZenFontSize               string                      `json:"zenFontSize,omitempty"`
+	ZenWordCount              bool                        `json:"zenWordCount"`
+	ZenShowTitle              bool                        `json:"zenShowTitle"`
+	ZenShowControls           bool                        `json:"zenShowControls"`
+	ZenInteractivePreview     bool                        `json:"zenInteractivePreview"`
 	ShortcutPrefix            shortcutBinding             `json:"shortcutPrefix"`
 	KeyboardShortcuts         map[string]*shortcutBinding `json:"keyboardShortcuts"`
 	ShortcutConfirmationSkips map[string]bool             `json:"shortcutConfirmationSkips"`
@@ -514,9 +520,21 @@ func getPrefsTx(tx *sql.Tx) (*prefs, error) {
 	if err := tx.QueryRow("SELECT data, revision FROM prefs WHERE id = 1").Scan(&data, &revision); err != nil {
 		return nil, err
 	}
-	p := &prefs{AutoSave: true, SaveButtonLocation: "panel", ContentWidth: "standard", FontSize: "1rem", EditorFontSize: "1rem", PreviewFontSize: "1rem", ShortcutPrefix: defaultShortcutPrefix, KeyboardShortcuts: map[string]*shortcutBinding{}, ShortcutConfirmationSkips: map[string]bool{}, Revision: revision}
+	p := &prefs{AutoSave: true, SaveButtonLocation: "panel", ContentWidth: "standard", FontSize: "1rem", EditorFontSize: "1rem", PreviewFontSize: "1rem", ZenFontSize: "1rem", ZenShowTitle: true, ZenShowControls: true, ShortcutPrefix: defaultShortcutPrefix, KeyboardShortcuts: map[string]*shortcutBinding{}, ShortcutConfirmationSkips: map[string]bool{}, Revision: revision}
 	if err := json.Unmarshal([]byte(data), p); err != nil {
 		return nil, fmt.Errorf("decode preferences: %w", err)
+	}
+	var legacy struct {
+		HidePreview *bool `json:"hidePreview"`
+	}
+	if err := json.Unmarshal([]byte(data), &legacy); err != nil {
+		return nil, fmt.Errorf("decode legacy preferences: %w", err)
+	}
+	if p.StartView == "" && legacy.HidePreview != nil && *legacy.HidePreview {
+		p.StartView = "editor"
+	}
+	if p.StartView == "" {
+		p.StartView = "split"
 	}
 	p.Revision = revision
 	p.SyncPatch = nil
