@@ -113,6 +113,7 @@ SOFTWARE.
   </div>
 
   <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+  <div id="shortcut-sequence-hint" class="shortcut-sequence-hint hidden" role="status" aria-live="polite"></div>
 
   <div id="prefs-modal" class="modal hidden" aria-hidden="true">
     <div class="modal-backdrop"></div>
@@ -122,6 +123,8 @@ SOFTWARE.
         <nav class="prefs-tabs" role="tablist" aria-label="Preference sections">
           <button id="prefs-tab-appearance" class="prefs-nav active" role="tab" aria-selected="true" aria-controls="prefs-panel-appearance" tabindex="0" type="button" data-pref-section="appearance">Appearance</button>
           <button id="prefs-tab-editor" class="prefs-nav" role="tab" aria-selected="false" aria-controls="prefs-panel-editor" tabindex="-1" type="button" data-pref-section="editor">Editor</button>
+          <button id="prefs-tab-zen" class="prefs-nav" role="tab" aria-selected="false" aria-controls="prefs-panel-zen" tabindex="-1" type="button" data-pref-section="zen">Zen mode</button>
+          <button id="prefs-tab-shortcuts" class="prefs-nav" role="tab" aria-selected="false" aria-controls="prefs-panel-shortcuts" tabindex="-1" type="button" data-pref-section="shortcuts">Shortcuts</button>
           <button id="prefs-tab-account" class="prefs-nav" role="tab" aria-selected="false" aria-controls="prefs-panel-account" tabindex="-1" type="button" data-pref-section="account">Account</button>
           <button id="prefs-tab-about" class="prefs-nav" role="tab" aria-selected="false" aria-controls="prefs-panel-about" tabindex="-1" type="button" data-pref-section="about">About</button>
         </nav>
@@ -144,14 +147,31 @@ SOFTWARE.
           <div class="pref-control font-control"><label class="font-label" for="pref-preview-font"><strong>Preview font</strong><small>Used for rendered note content.</small></label><div class="font-input-wrap"><div class="font-input-row"><input type="text" id="pref-preview-font" placeholder="e.g. Spectral or system-serif" autocomplete="off" spellcheck="false" aria-describedby="pref-preview-font-error"><select id="pref-preview-font-size" aria-label="Preview font size"></select></div><label class="font-fetch-toggle"><input type="checkbox" id="pref-preview-font-google"><span>Use Google Fonts to fetch</span></label><small id="pref-preview-font-error" class="font-error" role="alert" hidden></small></div></div>
           <label class="pref-row"><span>Auto Save</span><input type="checkbox" id="pref-autosave" checked></label>
           <label class="pref-row"><span>Hide Preview by default</span><input type="checkbox" id="pref-hidepreview"></label>
-          <label class="pref-row"><span>Fullscreen in editor hides header</span><input type="checkbox" id="pref-hideheader"></label>
+          <label class="pref-row"><span>Single-panel views hide app header</span><input type="checkbox" id="pref-hideheader"></label>
           <label class="pref-row"><span>Hide Editor Toolbar</span><input type="checkbox" id="pref-hidetoolbar"></label>
           <label class="pref-row"><span>Hide Save button</span><input type="checkbox" id="pref-hidesave"></label>
           <label class="pref-control"><span><strong>Save button location</strong><small>Choose where the manual save control appears.</small></span><select id="pref-save-location"><option value="panel">Panel header</option><option value="header">App header</option></select></label>
           <label class="pref-row"><span>Collapse Details by default</span><input type="checkbox" id="pref-collapse"></label>
           <label class="pref-row"><span>Hide cursor position preview</span><input type="checkbox" id="pref-hidecursor"></label>
-          <label class="pref-row"><span><strong>Interactive preview</strong><small>Toggle tasks and move list items in preview. Markdown stays the source of truth.</small></span><input type="checkbox" id="pref-interactive-preview"></label>
+          <label class="pref-row"><span><strong>Interactive preview</strong><small>Use interactive blocks in editor and split preview. Zen mode has its own setting.</small></span><input type="checkbox" id="pref-interactive-preview"></label>
           <label class="pref-control"><span><strong>Status</strong><small>Choose how sync status is shown.</small></span><select id="pref-status"><option value="normal">Normal</option><option value="compact">Compact</option><option value="off">Off</option></select></label>
+        </section>
+        <section id="prefs-panel-zen" class="prefs-section" role="tabpanel" aria-labelledby="prefs-tab-zen" data-pref-panel="zen" hidden>
+          <p class="prefs-section-intro">Choose how Zen mode looks and how its preview behaves.</p>
+          <div class="pref-control font-control"><label class="font-label" for="pref-zen-font"><strong>Editor font</strong><small>Used while writing in Zen mode.</small></label><div class="font-input-wrap"><div class="font-input-row"><input type="text" id="pref-zen-font" placeholder="e.g. Rubik or system-monospace" autocomplete="off" spellcheck="false" aria-describedby="pref-zen-font-error"><select id="pref-zen-font-size" aria-label="Zen mode editor font size"></select></div><label class="font-fetch-toggle"><input type="checkbox" id="pref-zen-font-google"><span>Use Google Fonts to fetch</span></label><small id="pref-zen-font-error" class="font-error" role="alert" hidden></small></div></div>
+          <label class="pref-row"><span><strong>Show word count</strong><small>Show the current word count in the lower-right corner.</small></span><input type="checkbox" id="pref-zen-word-count"></label>
+          <label class="pref-row"><span><strong>Show title</strong><small>Show the note title in the lower-left corner.</small></span><input type="checkbox" id="pref-zen-show-title"></label>
+          <label class="pref-row"><span><strong>Show controls</strong><small>Show the Zen view controls. The exit control stays available when this is off.</small></span><input type="checkbox" id="pref-zen-show-controls"></label>
+          <label class="pref-row"><span><strong>Interactive preview</strong><small>Toggle tasks and rearrange blocks while Zen shows Preview. Markdown remains the source of truth.</small></span><input type="checkbox" id="pref-zen-interactive-preview"></label>
+        </section>
+        <section id="prefs-panel-shortcuts" class="prefs-section" role="tabpanel" aria-labelledby="prefs-tab-shortcuts" data-pref-panel="shortcuts" hidden>
+          <p class="prefs-section-intro">Use a direct shortcut, or Prefix followed by a second key. Browser-reserved combinations may not be available.</p>
+          <div class="shortcut-footer"><span id="shortcut-recorder-status" class="shortcut-recorder-status" role="status" aria-live="polite"></span><button id="shortcut-reset" class="btn-text" type="button">Restore defaults</button></div>
+          <div class="shortcut-prefix-row">
+            <span class="shortcut-copy"><strong>Shortcut prefix</strong><small>Start a two-key sequence.</small></span>
+            <button id="shortcut-prefix" class="shortcut-binding" type="button" aria-label="Record shortcut prefix"></button>
+          </div>
+          <div id="shortcut-groups" class="shortcut-groups"></div>
         </section>
         <section id="prefs-panel-account" class="prefs-section" role="tabpanel" aria-labelledby="prefs-tab-account" data-pref-panel="account" hidden>
           <p class="prefs-section-intro">Manage this signed-in session.</p>
@@ -172,6 +192,16 @@ SOFTWARE.
           </div>
         </section>
       </main>
+    </div>
+  </div>
+
+  <div id="shortcut-confirm-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-body shortcut-confirm-body" role="dialog" aria-modal="true" aria-labelledby="shortcut-confirm-title" aria-describedby="shortcut-confirm-copy" tabindex="-1">
+      <div class="modal-heading"><h3 id="shortcut-confirm-title">Create a new note?</h3><button id="shortcut-confirm-close" class="modal-close" type="button" aria-label="Cancel"><svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg></button></div>
+      <p id="shortcut-confirm-copy" class="shortcut-confirm-copy">Your current note will be saved on this device first.</p>
+      <label class="pref-row shortcut-confirm-skip"><span>Don’t ask again for this shortcut</span><input id="shortcut-confirm-skip" type="checkbox"></label>
+      <div class="shortcut-confirm-actions"><button id="shortcut-confirm-cancel" class="btn-text" type="button">Cancel</button><button id="shortcut-confirm-continue" class="btn-primary" type="button">Create note</button></div>
     </div>
   </div>
 
@@ -273,13 +303,13 @@ SOFTWARE.
           <div class="panel-header">
             <span class="panel-label">Editor</span>
             <div class="panel-header-actions">
-              <button type="button" class="panel-layout" data-panel="editor" title="Focus editor" aria-label="Focus editor">
-                <svg class="icon" aria-hidden="true"><use href="#icon-maximize"></use></svg>
-              </button>
+              <span id="view-controls" class="view-controls" role="group" aria-label="Editor view">
+                <button type="button" class="view-control" data-panel="editor" title="Write view" aria-label="Write view" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#icon-code"></use></svg></button>
+                <button type="button" class="view-control" data-panel="preview" title="Preview view" aria-label="Preview view" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#icon-eye-bolt"></use></svg></button>
+                <button type="button" class="view-control" data-panel="both" title="Split view" aria-label="Split view" aria-pressed="true"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"/><path d="M12 4v16"/></svg></button>
+                <button type="button" class="view-control" data-panel="zen" title="Enter Zen mode (Escape to exit)" aria-label="Enter Zen mode" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#icon-maximize"></use></svg></button>
+              </span>
               <span id="panel-save-slot" class="save-slot"><button id="save-btn" class="prefs-btn icon-btn save-note-btn" type="button" title="Save note" aria-label="Save note"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg></button></span>
-              <button type="button" class="panel-switch" data-panel-switch="preview" title="Show preview" aria-label="Show preview" aria-controls="preview-panel" aria-expanded="false">
-                <svg class="icon" aria-hidden="true"><use href="#icon-eye-bolt"></use></svg>
-              </button>
             </div>
           </div>
           <div class="fmt-bar" role="toolbar" aria-label="Formatting">
@@ -317,15 +347,20 @@ SOFTWARE.
           <div class="panel-header">
             <span class="panel-label">Preview</span>
             <div class="panel-header-actions">
-              <button type="button" class="panel-layout" data-panel="preview" title="Focus preview" aria-label="Focus preview">
-                <svg class="icon" aria-hidden="true"><use href="#icon-maximize"></use></svg>
-              </button>
-              <button type="button" class="panel-switch" data-panel-switch="editor" title="Show editor" aria-label="Show editor" aria-controls="editor-panel" aria-expanded="false">
-                <svg class="icon" aria-hidden="true"><use href="#icon-code"></use></svg>
-              </button>
+              <span id="preview-view-controls-slot"></span>
+              <span id="preview-save-slot" class="save-slot"></span>
             </div>
           </div>
-          <div id="preview" class="preview"></div>
+          <div id="preview" class="preview" tabindex="-1"></div>
+        </div>
+      </div>
+      <div class="zen-overlays">
+        <span id="zen-note-title" class="zen-note-title"></span>
+        <span id="zen-word-count" class="zen-word-count" hidden></span>
+        <div class="zen-controls" role="group" aria-label="Zen mode view controls">
+          <button type="button" data-zen-action="editor" title="Show editor" aria-label="Show editor"><svg class="icon" aria-hidden="true"><use href="#icon-code"></use></svg></button>
+          <button type="button" data-zen-action="preview" title="Show preview" aria-label="Show preview"><svg class="icon" aria-hidden="true"><use href="#icon-eye-bolt"></use></svg></button>
+          <button type="button" data-zen-action="exit" title="Exit Zen mode (Escape)" aria-label="Exit Zen mode"><svg class="icon" aria-hidden="true"><use id="zen-exit-icon" href="#icon-minimize"></use></svg></button>
         </div>
       </div>
     </div>
@@ -334,6 +369,7 @@ SOFTWARE.
     <script src="/marked.min.js"></script>
     <script src="/merge.js"></script>
     <script src="/interactive-preview.js"></script>
+    <script src="/shortcuts.js"></script>
     <script src="/app.js"></script>
 </body>
 </html>

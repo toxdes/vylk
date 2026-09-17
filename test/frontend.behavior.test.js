@@ -34,6 +34,163 @@ function pointerEvent(window, type, {pointerId = 1, pointerType = 'mouse', ...in
 }
 const styleSource = fs.readFileSync(new URL('../static/style.css', import.meta.url), 'utf8');
 
+describe('keyboard shortcuts', () => {
+  test('registers the curated commands with portable defaults', async () => {
+    const app = track(await createApp());
+    expect(app.hooks.shortcutCommands()).toEqual(expect.arrayContaining([
+      'note.new', 'note.save', 'preferences.open', 'editor.title', 'editor.tags', 'editor.focus',
+      'view.write', 'view.preview', 'view.split', 'view.zen', 'view.switch', 'format.bold', 'format.italic',
+    ]));
+    expect(app.hooks.shortcutCommands()).not.toContain('editor.details');
+    expect(app.hooks.getShortcutBinding('note.save').steps).toEqual([{key:'s', modifiers:['Mod']}]);
+    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key:'/', modifiers:['Mod']}]);
+    expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([{key:'/', modifiers:['Mod']}, {key:'t', modifiers:[]}]);
+    expect(app.hooks.getShortcutBinding('format.link')).toBeNull();
+  });
+
+  test('uses the configurable Mod+/ sequence to reveal Details and select the title', async () => {
+    const app = track(await createApp());
+    app.hooks.showNoteInEditor({id:'note-a', title:'Rename me', tags:'work', content:'body'});
+    app.window.document.querySelector('.meta-pane').classList.add('collapsed');
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'/', ctrlKey:true, bubbles:true, cancelable:true}));
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'t', bubbles:true, cancelable:true}));
+    const title = app.window.document.querySelector('#note-title');
+    expect(app.window.document.querySelector('.meta-pane').classList.contains('collapsed')).toBe(false);
+    expect(app.window.document.activeElement).toBe(title);
+    expect(title.selectionStart).toBe(0);
+    expect(title.selectionEnd).toBe(title.value.length);
+  });
+
+  test('starts global sequences from the dashboard', async () => {
+    const app = track(await createApp());
+    app.window.document.querySelector('#login-screen').classList.add('hidden');
+    app.window.document.querySelector('#dashboard').classList.remove('hidden');
+    app.window.document.querySelector('#editor').classList.add('hidden');
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'/', ctrlKey:true, bubbles:true, cancelable:true}));
+    expect(app.window.document.querySelector('#shortcut-sequence-hint').classList.contains('hidden')).toBe(false);
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'p', bubbles:true, cancelable:true}));
+    expect(app.window.document.querySelector('#prefs-modal').classList.contains('hidden')).toBe(false);
+  });
+
+  test('moves the view through the registry and exposes a shortcut recorder', async () => {
+    const app = track(await createApp());
+    app.hooks.showNoteInEditor({id:'note-a', title:'Note', tags:'', content:'body'});
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'/', ctrlKey:true, bubbles:true, cancelable:true}));
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'2', bubbles:true, cancelable:true}));
+    expect(app.window.document.querySelector('#editor-panel').classList.contains('panel-hidden')).toBe(true);
+    expect(app.window.document.querySelector('#preview-panel').classList.contains('panel-hidden')).toBe(false);
+    app.window.document.querySelector('#editor-prefs-btn').click();
+    app.window.document.querySelector('#prefs-tab-shortcuts').click();
+    expect(app.window.document.querySelectorAll('[data-shortcut-command]')).not.toHaveLength(0);
+    expect(app.window.document.querySelector('[data-shortcut-command="editor.title"]').textContent).toBe('Prefix, T');
+    expect(app.window.document.querySelector('[data-shortcut-command="format.link"]').textContent).toBe('Not set');
+    const viewGroup = [...app.window.document.querySelectorAll('.shortcut-group')].find(group => group.querySelector('h3').textContent === 'View');
+    expect([...viewGroup.querySelectorAll('.shortcut-copy strong')].map(element => element.textContent)).toEqual(['Write view', 'Preview view', 'Split view', 'Zen mode', 'Switch editor and preview']);
+  });
+
+  test('uses Zen mode to leave only the editor, then returns on Escape', async () => {
+    const app = track(await createApp());
+    app.hooks.showNoteInEditor({id:'note-a', title:'Note', tags:'', content:'one two'});
+    app.hooks.setPanelState('zen');
+    const editor = app.window.document.querySelector('#editor');
+    expect(editor.classList.contains('zen-mode')).toBe(true);
+    expect(editor.classList.contains('header-hidden')).toBe(true);
+    expect(app.window.document.querySelector('#preview-panel').classList.contains('panel-hidden')).toBe(true);
+    expect(app.window.document.querySelector('[data-panel="zen"]').getAttribute('aria-pressed')).toBe('true');
+    expect(app.window.document.querySelectorAll('[data-zen-action]')).toHaveLength(3);
+    expect(app.window.document.querySelector('#zen-note-title').textContent).toBe('Note');
+    expect(app.window.document.querySelector('#zen-note-title').hidden).toBe(false);
+    expect(app.window.document.querySelector('.zen-controls').classList.contains('is-minimal')).toBe(false);
+    expect(app.window.document.querySelector('#zen-word-count').hidden).toBe(true);
+    await app.hooks.savePref('zenWordCount', true);
+    expect(app.window.document.querySelector('#zen-word-count').textContent).toBe('2 words');
+    expect(app.window.document.querySelector('#zen-word-count').hidden).toBe(false);
+    await app.hooks.savePref('zenShowTitle', false);
+    expect(app.window.document.querySelector('#zen-note-title').hidden).toBe(true);
+    await app.hooks.savePref('zenShowControls', false);
+    expect(app.window.document.querySelector('.zen-controls').classList.contains('is-minimal')).toBe(true);
+    expect(app.window.document.querySelector('[data-zen-action="exit"]').hidden).toBe(false);
+    expect(app.window.document.querySelector('#zen-exit-icon').getAttribute('href')).toBe('#icon-x');
+    app.window.document.querySelector('[data-zen-action="preview"]').click();
+    expect(app.window.document.querySelector('#preview-panel').classList.contains('panel-hidden')).toBe(false);
+    expect(app.window.document.querySelector('#editor-panel').classList.contains('panel-hidden')).toBe(true);
+    expect(editor.classList.contains('zen-mode')).toBe(true);
+    app.window.document.querySelector('[data-zen-action="editor"]').click();
+    expect(app.window.document.querySelector('#editor-panel').classList.contains('panel-hidden')).toBe(false);
+    expect(app.window.document.querySelector('#preview-panel').classList.contains('panel-hidden')).toBe(true);
+    expect(editor.classList.contains('zen-mode')).toBe(true);
+    app.hooks.setPanelState('both');
+    app.hooks.setPanelState('zen');
+    app.window.document.querySelector('[data-zen-action="exit"]').click();
+    expect(editor.classList.contains('zen-mode')).toBe(false);
+    app.hooks.setPanelState('zen');
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
+    expect(editor.classList.contains('zen-mode')).toBe(false);
+    expect(editor.classList.contains('header-hidden')).toBe(false);
+    expect(app.window.document.querySelector('#preview-panel').classList.contains('panel-hidden')).toBe(false);
+  });
+
+  test('keeps Zen settings in their own preference tab', async () => {
+    const app = track(await createApp());
+    app.window.document.querySelector('#editor-prefs-btn').click();
+    app.window.document.querySelector('#prefs-tab-zen').click();
+
+    expect(app.window.document.querySelector('#prefs-title').textContent).toBe('Zen mode');
+    expect(app.window.document.querySelector('#prefs-panel-zen').hidden).toBe(false);
+    expect(app.window.document.querySelector('#prefs-panel-editor').hidden).toBe(true);
+    expect(app.window.document.querySelector('#pref-zen-interactive-preview')).not.toBeNull();
+  });
+
+  test('clears a shortcut from its recorder with Delete and keeps Escape as cancel', async () => {
+    const app = track(await createApp());
+    app.window.document.querySelector('#editor-prefs-btn').click();
+    app.window.document.querySelector('#prefs-tab-shortcuts').click();
+    let titleShortcut = app.window.document.querySelector('[data-shortcut-command="editor.title"]');
+    titleShortcut.click();
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
+    titleShortcut = app.window.document.querySelector('[data-shortcut-command="editor.title"]');
+    expect(titleShortcut.textContent).toBe('Prefix, T');
+    titleShortcut.click();
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'Delete', bubbles:true, cancelable:true}));
+    await vi.waitFor(() => expect(app.hooks.getShortcutBinding('editor.title')).toBeNull());
+    await vi.waitFor(() => expect(app.window.document.querySelector('[data-shortcut-command="editor.title"]').textContent).toBe('Not set'));
+    await new Promise(resolve => app.window.setTimeout(resolve, 200));
+  });
+
+  test('records direct shortcuts or Prefix sequences for every command', async () => {
+    const app = track(await createApp());
+    app.window.document.querySelector('#editor-prefs-btn').click();
+    app.window.document.querySelector('#prefs-tab-shortcuts').click();
+    const linkShortcut = app.window.document.querySelector('[data-shortcut-command="format.link"]');
+    linkShortcut.click();
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'y', ctrlKey:true, bubbles:true, cancelable:true}));
+    await vi.waitFor(() => expect(app.hooks.getShortcutBinding('format.link').steps).toEqual([{key:'y', modifiers:['Mod']}]));
+    expect(app.window.document.querySelector('[data-shortcut-command="format.link"]').textContent).toBe('Ctrl + Y');
+
+    let titleShortcut = app.window.document.querySelector('[data-shortcut-command="editor.title"]');
+    titleShortcut.click();
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'/', ctrlKey:true, bubbles:true, cancelable:true}));
+    expect(app.window.document.querySelector('[data-shortcut-command="editor.title"]').textContent).toBe('Prefix,');
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'t', bubbles:true, cancelable:true}));
+    await vi.waitFor(() => expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([{key:'/', modifiers:['Mod']}, {key:'t', modifiers:[]}]));
+    await new Promise(resolve => app.window.setTimeout(resolve, 200));
+  });
+
+  test('updates every sequence command when the prefix changes', async () => {
+    const app = track(await createApp());
+    app.window.document.querySelector('#editor-prefs-btn').click();
+    app.window.document.querySelector('#prefs-tab-shortcuts').click();
+    app.window.document.querySelector('#shortcut-prefix').click();
+    app.window.document.dispatchEvent(new app.window.KeyboardEvent('keydown', {key:'e', ctrlKey:true, bubbles:true, cancelable:true}));
+    await vi.waitFor(() => expect(app.hooks.getShortcutPrefix().steps).toEqual([{key:'e', modifiers:['Mod']}]));
+    expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([{key:'e', modifiers:['Mod']}, {key:'t', modifiers:[]}]);
+    app.window.document.querySelector('#shortcut-reset').click();
+    await vi.waitFor(() => expect(app.hooks.getShortcutPrefix().steps).toEqual([{key:'/', modifiers:['Mod']}]));
+    expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([{key:'/', modifiers:['Mod']}, {key:'t', modifiers:[]}]);
+    await new Promise(resolve => app.window.setTimeout(resolve, 200));
+  });
+});
+
 describe('font preferences', () => {
   test('uses font controls and leaves Google Fonts fetching disabled by default', async () => {
     const app = track(await createApp());
@@ -41,7 +198,8 @@ describe('font preferences', () => {
     expect(app.window.document.querySelector('#pref-font').tagName).toBe('INPUT');
     expect(app.window.document.querySelector('#pref-editor-font').tagName).toBe('INPUT');
     expect(app.window.document.querySelector('#pref-preview-font').tagName).toBe('INPUT');
-    for (const selector of ['#pref-font-size', '#pref-editor-font-size', '#pref-preview-font-size']) {
+    expect(app.window.document.querySelector('#pref-zen-font').tagName).toBe('INPUT');
+    for (const selector of ['#pref-font-size', '#pref-editor-font-size', '#pref-preview-font-size', '#pref-zen-font-size']) {
       const sizeSelect = app.window.document.querySelector(selector);
       expect(sizeSelect.tagName).toBe('SELECT');
       expect([...sizeSelect.options].map(option => option.value)).toEqual(['0.8rem', '0.9rem', '1rem', '1.1rem', '1.25rem', '1.5rem']);
@@ -50,9 +208,11 @@ describe('font preferences', () => {
     expect(app.window.document.querySelector('#pref-font-google').checked).toBe(false);
     expect(app.window.document.querySelector('#pref-editor-font-google').checked).toBe(false);
     expect(app.window.document.querySelector('#pref-preview-font-google').checked).toBe(false);
+    expect(app.window.document.querySelector('#pref-zen-font-google').checked).toBe(false);
     expect(app.window.document.querySelector('#pref-font-google').closest('.font-input-wrap')).not.toBeNull();
     expect(app.window.document.querySelector('#pref-editor-font-google').closest('.font-input-wrap')).not.toBeNull();
     expect(app.window.document.querySelector('#pref-preview-font-google').closest('.font-input-wrap')).not.toBeNull();
+    expect(app.window.document.querySelector('#pref-zen-font-google').closest('.font-input-wrap')).not.toBeNull();
   });
 
   test('gives each font size select an accessible name without a visible size label', async () => {
@@ -61,6 +221,7 @@ describe('font preferences', () => {
       ['#pref-font-size', 'Interface font size'],
       ['#pref-editor-font-size', 'Editor font size'],
       ['#pref-preview-font-size', 'Preview font size'],
+      ['#pref-zen-font-size', 'Zen mode editor font size'],
     ];
 
     expect(app.window.document.querySelectorAll('.font-size-label')).toHaveLength(0);
@@ -265,6 +426,13 @@ describe('editor display preferences', () => {
     await app.hooks.savePref('saveButtonLocation', 'panel');
     expect(app.window.document.querySelector('#panel-save-slot #save-btn')).not.toBeNull();
 
+    app.hooks.setPanelState('preview');
+    const previewSave = app.window.document.querySelector('#preview-save-slot #save-btn');
+    expect(previewSave).not.toBeNull();
+    expect(previewSave.disabled).toBe(true);
+    app.hooks.setPanelState('both');
+    expect(app.window.document.querySelector('#panel-save-slot #save-btn').disabled).toBe(false);
+
     await app.hooks.savePref('statusDisplay', 'compact');
     expect(root.dataset.statusDisplay).toBe('compact');
     expect(statusLabel).not.toBeNull();
@@ -331,6 +499,39 @@ describe('markdown preview policy', () => {
     expect(textarea.readOnly).toBe(false);
     expect(app.window.document.querySelector('#preview').classList.contains('interactive-preview-active')).toBe(false);
     expect(app.window.document.querySelectorAll('#preview [data-preview-drag-indicator]')).toHaveLength(0);
+  });
+
+  test('keeps interactive preview usable inside Zen mode', async () => {
+    const app = track(await createApp({realMarked: true}));
+    const source = '# Heading\n\n- [ ] ship this\n- Keep writing';
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Tasks', content: source});
+    await app.hooks.savePref('zenInteractivePreview', true);
+    app.hooks.setPanelState('zen');
+    app.window.document.querySelector('[data-zen-action="preview"]').click();
+
+    const editor = app.window.document.querySelector('#editor');
+    const previewPanel = app.window.document.querySelector('.panel-preview');
+    const editorPanel = app.window.document.querySelector('.panel-editor');
+    const preview = app.window.document.querySelector('#preview');
+    expect(editor.classList.contains('zen-mode')).toBe(true);
+    expect(previewPanel.classList.contains('panel-hidden')).toBe(false);
+    expect(editorPanel.classList.contains('panel-hidden')).toBe(true);
+    expect(preview.querySelectorAll('[data-preview-drag-indicator]')).toHaveLength(3);
+
+    const checkbox = preview.querySelector('input[type="checkbox"]');
+    checkbox.click();
+    expect(app.window.document.querySelector('#note-content').value).toContain('- [x] ship this');
+
+    preview.querySelector('.preview-edit-button').click();
+    expect(editor.classList.contains('zen-mode')).toBe(true);
+    expect(previewPanel.classList.contains('panel-hidden')).toBe(true);
+    expect(editorPanel.classList.contains('panel-hidden')).toBe(false);
+    expect(app.window.document.activeElement).toBe(app.window.document.querySelector('#note-content'));
+
+    app.hooks.setPanelState('both');
+    expect(preview.classList.contains('interactive-preview-active')).toBe(false);
+    await app.hooks.savePref('interactivePreview', true);
+    expect(preview.classList.contains('interactive-preview-active')).toBe(true);
   });
 
   test('toggles a task checkbox without replacing the rendered preview', async () => {

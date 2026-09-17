@@ -6,7 +6,7 @@ Lightweight, low-resource single-binary Markdown files editor with SQLite metada
 
 - Live markdown preview via marked.js with cursor-position block highlighting
 - Formatting toolbar: bold, italic, strike, code, code blocks, headings (h1-h4), links, images, lists, blockquotes, horizontal rules, tables
-- Fullscreen mode for editor or preview panel
+- Single-panel editor and preview views, plus Zen mode for focused writing
 - Tags support with filtering
 - Mobile-friendly responsive layout with dark theme
 - Autosave (2s debounce) with manual save

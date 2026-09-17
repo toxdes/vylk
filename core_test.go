@@ -2093,3 +2093,55 @@ func TestListNotesPageUsesStableCursor(t *testing.T) {
 		t.Fatalf("invalid cursor error = %v", err)
 	}
 }
+
+func TestShortcutPreferencesValidateAndPersist(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	p, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("get prefs: %v", err)
+	}
+	p.KeyboardShortcuts = map[string]*shortcutBinding{
+		"note.save":    {Steps: []shortcutStep{{Key: "s", Modifiers: []string{"Mod"}}}},
+		"editor.title": {Steps: []shortcutStep{{Key: "/", Modifiers: []string{"Mod"}}, {Key: "t", Modifiers: []string{}}}},
+		"format.link":  nil,
+	}
+	p.ShortcutPrefix = shortcutBinding{Steps: []shortcutStep{{Key: "e", Modifiers: []string{"Mod"}}}}
+	p.ShortcutConfirmationSkips = map[string]bool{"note.new": true}
+	if err := validatePrefs(p); err != nil {
+		t.Fatalf("validate valid shortcuts: %v", err)
+	}
+	if err := savePrefs(db, p, nil); err != nil {
+		t.Fatalf("save prefs: %v", err)
+	}
+	stored, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("reload prefs: %v", err)
+	}
+	if _, present := stored.KeyboardShortcuts["format.link"]; !present || stored.KeyboardShortcuts["format.link"] != nil || len(stored.KeyboardShortcuts["editor.title"].Steps) != 2 || stored.ShortcutPrefix.Steps[0].Key != "e" || !stored.ShortcutConfirmationSkips["note.new"] {
+		t.Fatalf("stored shortcut preferences = %#v", stored)
+	}
+
+	invalid := &prefs{KeyboardShortcuts: map[string]*shortcutBinding{
+		"bad id": {Steps: []shortcutStep{{Key: "s", Modifiers: []string{"Mod"}}}},
+	}}
+	if err := validatePrefs(invalid); err == nil {
+		t.Fatal("invalid shortcut ID was accepted")
+	}
+	invalid = &prefs{KeyboardShortcuts: map[string]*shortcutBinding{
+		"note.save": {Steps: []shortcutStep{{Key: "k", Modifiers: []string{"Mod"}}, {Key: "t", Modifiers: []string{"Shift"}}}},
+	}}
+	if err := validatePrefs(invalid); err == nil {
+		t.Fatal("invalid sequence was accepted")
+	}
+	invalid = &prefs{ShortcutPrefix: shortcutBinding{Steps: []shortcutStep{{Key: "k", Modifiers: []string{}}}}}
+	if err := validatePrefs(invalid); err == nil {
+		t.Fatal("invalid shortcut prefix was accepted")
+	}
+}

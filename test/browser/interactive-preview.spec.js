@@ -232,7 +232,7 @@ test('source caret cue stays at the active end while text is selected', async ({
   const lineHeight = await editor.evaluate(textarea => parseFloat(getComputedStyle(textarea).lineHeight));
   const top = await editor.evaluate(textarea => parseFloat(getComputedStyle(document.querySelector('.editor-current-line')).top) + textarea.scrollTop);
   expect(top - firstTop).toBeCloseTo(lineHeight, 1);
-  expect(await page.locator('.editor-source-wrap')).toHaveClass(/is-caret-visible/);
+  await expect(page.locator('.editor-source-wrap')).toHaveClass(/is-caret-visible/);
   expect(lineHeight).toBeGreaterThan(0);
 });
 
@@ -291,7 +291,7 @@ test('editing from preview-only mode opens source at the selected block', async 
   await page.locator('#note-content').fill('# Heading\n\nA paragraph to edit.');
   await enableInteractivePreview(page);
 
-  await page.locator('.panel-preview .panel-layout').click();
+  await page.locator('.view-control[data-panel="preview"]').click();
   await expect(page.locator('.panel-editor')).toBeHidden();
   const paragraphCard = page.locator('#preview .interactive-preview-block-card').filter({hasText:'A paragraph to edit.'});
   await paragraphCard.hover();
@@ -477,7 +477,7 @@ test('centers a preview edit target within the source viewport', async ({page}) 
   await page.locator('#note-content').fill(items.join('\n'));
   await enableInteractivePreview(page);
 
-  await page.locator('.panel-preview .panel-layout').click();
+  await page.locator('.view-control[data-panel="preview"]').click();
   const target = page.locator('#preview .interactive-preview-list-card').nth(19);
   await target.hover();
   await target.getByRole('button', {name:'Edit this block in source'}).click();
