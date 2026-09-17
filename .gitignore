@@ -8,3 +8,5 @@ playwright-report/
 *.db
 /notes/
 .env
+.worktrees
+.impeccable
