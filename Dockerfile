@@ -1,6 +1,6 @@
 # Build Vylk and package it for the selected Linux architecture.
 
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 
 ARG TARGETOS=linux
 ARG TARGETARCH

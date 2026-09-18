@@ -1,6 +1,6 @@
 # Build and run Vylk as a standalone multi-platform container image.
 
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 
 ARG TARGETOS=linux
 ARG TARGETARCH
