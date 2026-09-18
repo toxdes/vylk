@@ -139,6 +139,7 @@ describe('keyboard shortcuts', () => {
     expect(app.window.document.querySelector('#prefs-panel-zen').hidden).toBe(false);
     expect(app.window.document.querySelector('#prefs-panel-editor').hidden).toBe(true);
     expect(app.window.document.querySelector('#pref-zen-interactive-preview')).toBeNull();
+    expect([...app.window.document.querySelectorAll('#pref-zen-page-width option')].map(option => option.value)).toEqual(['compact', 'standard', 'wide', 'full']);
   });
 
   test('clears a shortcut from its recorder with Delete and keeps Escape as cancel', async () => {
@@ -510,6 +511,25 @@ describe('editor display preferences', () => {
     const pending = await app.hooks.pendingOperations();
     expect(pending).toHaveLength(1);
     expect(pending[0].prefs._sync_patch).toEqual({contentWidth: 'wide'});
+  });
+
+  test('applies and syncs Zen page width independently from the app content width', async () => {
+    const app = track(await createApp());
+    const root = app.window.document.documentElement;
+
+    expect(root.dataset.contentWidth).toBe('standard');
+    expect(root.dataset.zenPageWidth).toBe('standard');
+    await app.hooks.savePref('contentWidth', 'full');
+    await app.hooks.savePref('zenPageWidth', 'compact');
+    expect(root.dataset.contentWidth).toBe('full');
+    expect(root.dataset.zenPageWidth).toBe('compact');
+    expect(styleSource).toContain(':root[data-zen-page-width="compact"]{--zen-content-max-width:54rem}');
+    expect(styleSource).toContain('--zen-page-width:min(100%,var(--zen-content-max-width));');
+
+    app.hooks.cancelScheduledSync();
+    const pending = await app.hooks.pendingOperations();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].prefs._sync_patch).toEqual({contentWidth:'full', zenPageWidth:'compact'});
   });
 });
 
@@ -2257,13 +2277,14 @@ describe('preference sync coordination', () => {
     expect(fetchFonts.checked).toBe(true);
   });
 
-  test('restores and normalizes the global content width preference', async () => {
+  test('restores and normalizes global and Zen width preferences independently', async () => {
     const app = track(await createApp({
       fetchImpl: async path => {
         if (String(path) === '/api/prefs') return response(200, JSON.stringify({
           revision: 2,
           autoSave: true,
           contentWidth: 'full',
+          zenPageWidth: 'compact',
         }));
         throw new Error(`unexpected request: ${path}`);
       },
@@ -2271,17 +2292,20 @@ describe('preference sync coordination', () => {
 
     await app.hooks.loadPrefs();
     expect(app.window.document.documentElement.dataset.contentWidth).toBe('full');
+    expect(app.window.document.documentElement.dataset.zenPageWidth).toBe('compact');
 
     app.window.fetch = async path => {
       if (String(path) === '/api/prefs') return response(200, JSON.stringify({
         revision: 3,
         autoSave: true,
         contentWidth: 'not-a-width',
+        zenPageWidth: 'also-not-a-width',
       }));
       throw new Error(`unexpected request: ${path}`);
     };
     await app.hooks.loadPrefs();
     expect(app.window.document.documentElement.dataset.contentWidth).toBe('standard');
+    expect(app.window.document.documentElement.dataset.zenPageWidth).toBe('standard');
   });
 
   test('restores font sizes from remote preferences and defaults missing sizes', async () => {

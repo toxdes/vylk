@@ -15,6 +15,7 @@ async function openZenMode(page) {
   await page.locator('#note-content').fill(Array.from({length:120}, (_, index) => `A deliberately long paragraph ${index} keeps the writing surface scrollable without changing its shape.`).join('\n\n'));
   await page.locator('#editor-prefs-btn').click();
   await page.locator('#prefs-tab-zen').click();
+  await page.locator('#pref-zen-page-width').selectOption('standard');
   await page.locator('#pref-zen-word-count').check();
   await page.locator('#prefs-close').click();
   await page.locator('[data-panel="zen"]').click();
@@ -48,8 +49,9 @@ test('Zen mode presents a page, overlays its controls, and keeps a long document
   await signIn(page);
   await openZenMode(page);
 
-  const [pageBox, controlsBox, titleBox, metrics] = await Promise.all([
+  const [pageBox, writingPageBox, controlsBox, titleBox, metrics] = await Promise.all([
     page.locator('#editor-panel').boundingBox(),
+    page.locator('.editor-source-wrap').boundingBox(),
     page.locator('.zen-controls').boundingBox(),
     page.locator('#zen-note-title').boundingBox(),
     page.locator('#zen-source-editor').evaluate(editor => ({
@@ -63,6 +65,7 @@ test('Zen mode presents a page, overlays its controls, and keeps a long document
     })),
   ]);
   expect(pageBox).not.toBeNull();
+  expect(writingPageBox).not.toBeNull();
   expect(controlsBox).not.toBeNull();
   expect(titleBox).not.toBeNull();
   expect(controlsBox.width).toBeLessThan(110);
@@ -75,10 +78,35 @@ test('Zen mode presents a page, overlays its controls, and keeps a long document
   expect(metrics.maxScrollTop).toBeGreaterThan(metrics.lineHeight * 3);
   expect(metrics.scrollTop).toBeLessThanOrEqual(metrics.maxScrollTop);
   expect(metrics.scrollbarWidth).toBe('none');
-  expect(metrics.width).toBeGreaterThan(pageBox.width * .8);
+  expect(writingPageBox.width).toBeGreaterThan(pageBox.width * .8);
+  expect(metrics.width).toBeGreaterThan(writingPageBox.width * .8);
   expect(metrics.wordCount).toMatch(/\d+ words/);
 
   await page.screenshot({path:'/tmp/vylk-zen-desktop.png'});
+});
+
+test('Zen page width is independent from the app content width', async ({page}) => {
+  await page.setViewportSize({width:1440, height:960});
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-content').fill('Independent Zen page width');
+  await page.locator('#editor-prefs-btn').click();
+  await page.locator('#pref-content-width').selectOption('full');
+  await page.locator('#prefs-tab-zen').click();
+  await page.locator('#pref-zen-page-width').selectOption('compact');
+  await page.locator('#prefs-close').click();
+  await page.locator('[data-panel="zen"]').click();
+
+  const layout = await page.evaluate(() => ({
+    contentWidth:document.documentElement.dataset.contentWidth,
+    zenPageWidth:document.documentElement.dataset.zenPageWidth,
+    bodyWidth:document.querySelector('#editor .editor-body').getBoundingClientRect().width,
+    pageWidth:document.querySelector('#editor .editor-source-wrap').getBoundingClientRect().width,
+  }));
+  expect(layout).toMatchObject({contentWidth:'full', zenPageWidth:'compact'});
+  expect(layout.bodyWidth).toBeGreaterThan(1300);
+  expect(layout.pageWidth).toBeGreaterThanOrEqual(860);
+  expect(layout.pageWidth).toBeLessThanOrEqual(865);
 });
 
 test('Zen mode styles Markdown without replacing its editable source', async ({page}) => {

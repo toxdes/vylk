@@ -86,7 +86,7 @@ let zenViewState = 'editor';
 let savedSnapshot = { title: '', tags: '', content: '' };
 let editorSessionGeneration = 0;
 const DEFAULT_PREFS = {revision:1, autoSave:true, startView:'split', hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel',
-  collapseDetails:false, hideCursorHighlight:false, interactivePreview:false, statusDisplay:'normal', contentWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans',
+  collapseDetails:false, hideCursorHighlight:false, interactivePreview:false, statusDisplay:'normal', contentWidth:'standard', zenPageWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans',
   fontFamilyGoogle:false, fontSize:'1rem', editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, editorFontSize:'1rem', previewFontFamily:'system-sans',
   previewFontFamilyGoogle:false, previewFontSize:'1rem', zenFontFamily:'system-monospace', zenFontFamilyGoogle:false, zenFontSize:'1rem', zenWordCount:false, zenShowTitle:true, zenShowControls:true, zenInteractivePreview:false,
   shortcutPrefix:{steps:[{key:'/', modifiers:['Mod']}]}, keyboardShortcuts:{}, shortcutConfirmationSkips:{}};
@@ -2794,6 +2794,7 @@ function syncInteractivePreviewMode() {
 
 function applyContentWidth() {
   document.documentElement.dataset.contentWidth = prefs.contentWidth;
+  document.documentElement.dataset.zenPageWidth = prefs.zenPageWidth;
 }
 
 function startPanelState() {
@@ -5517,6 +5518,7 @@ function normalizePrefs(value = {}, fallback = {}) {
   merged.revision = Number.isSafeInteger(Number(merged.revision)) && Number(merged.revision) > 0 ? Number(merged.revision) : 1;
   if (!['normal', 'compact', 'off'].includes(merged.statusDisplay)) merged.statusDisplay = DEFAULT_PREFS.statusDisplay;
   if (!CONTENT_WIDTH_VALUES.includes(merged.contentWidth)) merged.contentWidth = DEFAULT_PREFS.contentWidth;
+  if (!CONTENT_WIDTH_VALUES.includes(merged.zenPageWidth)) merged.zenPageWidth = DEFAULT_PREFS.zenPageWidth;
   const savedStartView = value.startView ?? fallback.startView;
   if (['editor', 'preview', 'split', 'zen'].includes(savedStartView)) merged.startView = savedStartView;
   else merged.startView = (value.hidePreview ?? fallback.hidePreview) ? 'editor' : DEFAULT_PREFS.startView;
@@ -5713,6 +5715,7 @@ function openPreferences({route = 'push'} = {}) {
   $('#pref-interactive-preview').checked = prefs.interactivePreview;
   $('#pref-status').value = prefs.statusDisplay;
   $('#pref-content-width').value = prefs.contentWidth;
+  $('#pref-zen-page-width').value = prefs.zenPageWidth;
   $('#pref-theme').value = prefs.theme;
   $('#pref-accent').value = prefs.accentColor || themeByID.get(prefs.theme)?.vars.accent || '#ae2448';
   $('#pref-accent-mode').value = prefs.accentColor ? 'custom' : 'theme';
@@ -5828,6 +5831,7 @@ FONT_SLOTS.forEach(slot => {
 });
 $('#pref-status').addEventListener('change', function () { void savePref('statusDisplay', this.value); });
 $('#pref-content-width').addEventListener('change', function () { void savePref('contentWidth', this.value); });
+$('#pref-zen-page-width').addEventListener('change', function () { void savePref('zenPageWidth', this.value); });
 
 $$('.prefs-nav').forEach(button => button.addEventListener('click', () => {
   const section = button.dataset.prefSection;
