@@ -48,11 +48,16 @@ test('dashboard note actions are reachable as native controls', async ({page}) =
   await page.locator('#note-title').fill('Keyboard note');
   await page.locator('#note-content').fill('Keyboard content');
   await page.locator('#save-btn').click();
+  await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
+  const noteID = new URL(page.url()).pathname.slice(1);
   await page.locator('#back-btn').click();
 
-  const note = page.locator('.note-item').filter({hasText: 'Keyboard note'});
+  const note = page.locator(`.note-item[data-id="${noteID}"]`);
   await expect(note).toHaveAttribute('type', 'button');
   await note.focus();
-  await page.keyboard.press('Enter');
+  await expect(note).toBeFocused();
+  await page.locator('#tag-bar .tag').first().evaluate(button => button.click());
+  await expect(note).toBeFocused();
+  await note.press('Enter');
   await expect(page.locator('#editor')).toBeVisible();
 });

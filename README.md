@@ -21,6 +21,11 @@ Lightweight, low-resource single-binary Markdown files editor with SQLite metada
 VYLK_PASSWORD=<password> ./vylk
 ```
 
+vylk opens the local server in the default browser after the listener is ready.
+This is best-effort; a missing desktop browser does not prevent the server from
+starting. Use `--no-browser` or `VYLK_NO_BROWSER=1` in CI, containers, and
+other headless environments.
+
 Set `VYLK_APP_NAME` to change the server-wide PWA and app-shell branding. The
 default is `VYLK`; restart the server after changing it.
 
@@ -36,6 +41,7 @@ Optional environment variables:
 | VYLK_ENCRYPTION_KEY | (none) | Enable encryption with a `hex:` or `base64:` encoded 32-byte key; arbitrary legacy values remain readable for migration |
 | VYLK_TRUST_PROXY | (unset) | Set to `1` only when a trusted reverse proxy supplies client-IP headers |
 | VYLK_MIGRATE_ENCRYPTION | (unset) | Set to `1` once with a v2 encryption setting to upgrade all legacy encrypted notes before serving requests |
+| VYLK_NO_BROWSER | (unset) | Set to `1` to suppress the default browser opening (equivalent to `--no-browser`) |
 | ARTIFICIAL_RTT_DELAY_MS | 0 | Development-only delay added once before each request, in milliseconds; `/api/events` is excluded |
 
 Every secret variable also accepts a `_FILE` form—for example, `VYLK_ENCRYPTION_PASSWORD_FILE=/run/secrets/vylk_encryption_password`. This is preferred for Docker or Kubernetes secrets.

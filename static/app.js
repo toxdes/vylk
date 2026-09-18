@@ -2670,6 +2670,125 @@ async function unresolvedConflictIDs() {
     .map(record => record.value.note_id));
 }
 
+function dashboardNoteFingerprint(note, conflicts) {
+  return JSON.stringify([
+    note.id,
+    note.title || '',
+    note.updated_at || '',
+    note.tags || '',
+    Boolean(note.pinned),
+    conflicts.has(note.id),
+  ]);
+}
+
+function dashboardNoteTags(tags) {
+  return (tags || '').split(',').map(tag => tag.trim()).filter(Boolean);
+}
+
+function createDashboardNoteRow(note, conflicts) {
+  const row = document.createElement('li');
+  row.className = 'note-item-row';
+  row.dataset.noteId = note.id;
+
+  const noteButton = document.createElement('button');
+  noteButton.type = 'button';
+  noteButton.className = 'note-item';
+  noteButton.dataset.id = note.id;
+
+  const title = document.createElement('div');
+  title.className = 'note-title';
+  const meta = document.createElement('div');
+  meta.className = 'note-meta';
+  noteButton.append(title, meta);
+
+  const pin = document.createElement('button');
+  pin.type = 'button';
+  pin.className = 'note-pin';
+  row.append(noteButton, pin);
+  updateDashboardNoteRow(row, note, conflicts);
+  return row;
+}
+
+function updateDashboardNoteRow(row, note, conflicts) {
+  const fingerprint = dashboardNoteFingerprint(note, conflicts);
+  if (row.dataset.fingerprint === fingerprint) return;
+  row.dataset.noteId = note.id;
+  row.dataset.fingerprint = fingerprint;
+
+  const noteButton = row.querySelector(':scope > .note-item');
+  noteButton.dataset.id = note.id;
+  const title = noteButton.querySelector('.note-title');
+  title.replaceChildren(document.createTextNode(note.title || 'Untitled'));
+  if (conflicts.has(note.id)) {
+    const conflict = document.createElement('span');
+    conflict.className = 'note-conflict';
+    conflict.textContent = 'Conflict';
+    title.append(conflict);
+  }
+  noteButton.querySelector('.note-meta').textContent = formatDate(note.updated_at);
+
+  const tags = dashboardNoteTags(note.tags);
+  let tagList = noteButton.querySelector('.note-tags');
+  if (tags.length) {
+    if (!tagList) {
+      tagList = document.createElement('div');
+      tagList.className = 'note-tags';
+      noteButton.append(tagList);
+    }
+    tagList.replaceChildren(...tags.map(tag => {
+      const label = document.createElement('span');
+      label.className = 'tag';
+      label.textContent = tag;
+      return label;
+    }));
+  } else {
+    tagList?.remove();
+  }
+
+  const pin = row.querySelector(':scope > .note-pin');
+  const pinned = Boolean(note.pinned);
+  pin.dataset.id = note.id;
+  pin.setAttribute('aria-pressed', String(pinned));
+  pin.setAttribute('aria-label', `${pinned ? 'Unpin' : 'Pin'} note`);
+  pin.title = `${pinned ? 'Unpin' : 'Pin'} note`;
+  pin.innerHTML = `<svg class="icon pin-icon" aria-hidden="true"><use href="#icon-${pinned ? 'pinned' : 'pin'}"></use></svg><svg class="icon unpin-icon" aria-hidden="true"><use href="#icon-pinned-off"></use></svg>`;
+}
+
+function reconcileDashboardNotes(notes, conflicts) {
+  const list = $('#note-list');
+  if (notes.length === 0) {
+    const message = dashboardHydrationState === 'loading'
+      ? 'Loading notes…'
+      : dashboardHydrationState === 'offline-empty'
+        ? 'No notes are available on this device yet.'
+        : 'No notes yet';
+    const empty = list.querySelector(':scope > .note-empty');
+    if (list.childElementCount === 1 && empty?.textContent === message) return;
+    const item = document.createElement('li');
+    item.className = 'note-empty';
+    item.textContent = message;
+    list.replaceChildren(item);
+    return;
+  }
+
+  const existing = new Map([...list.querySelectorAll(':scope > .note-item-row')]
+    .map(row => [row.dataset.noteId, row]));
+  const rows = notes.map(note => {
+    const row = existing.get(note.id) || createDashboardNoteRow(note, conflicts);
+    existing.delete(note.id);
+    updateDashboardNoteRow(row, note, conflicts);
+    return row;
+  });
+
+  rows.forEach((row, index) => {
+    if (list.children[index] !== row) list.insertBefore(row, list.children[index] || null);
+  });
+  const desiredRows = new Set(rows);
+  [...list.children].forEach(row => {
+    if (!desiredRows.has(row)) row.remove();
+  });
+}
+
 function renderDashboard(notes, conflicts) {
   const tags = [...new Set(notes.flatMap(note => (note.tags || '').split(',').map(tag => tag.trim()).filter(Boolean)))].sort((a, b) => a.localeCompare(b));
   if (currentTag && !tags.includes(currentTag)) currentTag = null;
@@ -2687,36 +2806,19 @@ function renderDashboard(notes, conflicts) {
     });
   });
   if (currentTag) notes = notes.filter(note => noteHasTag(note, currentTag));
-  const list = $('#note-list');
-  if (notes.length === 0) {
-    const message = dashboardHydrationState === 'loading'
-      ? 'Loading notes…'
-      : dashboardHydrationState === 'offline-empty'
-        ? 'No notes are available on this device yet.'
-        : 'No notes yet';
-    list.innerHTML = `<li class="note-empty">${message}</li>`;
+  reconcileDashboardNotes(notes, conflicts);
+}
+
+$('#note-list').addEventListener('click', event => {
+  const pin = event.target.closest('.note-pin');
+  if (pin) {
+    event.stopPropagation();
+    void toggleNotePin(pin.dataset.id);
     return;
   }
-  list.innerHTML = notes.map(n => `
-    <li class="note-item-row">
-      <button type="button" class="note-item" data-id="${esc(n.id)}">
-        <div class="note-title">${esc(n.title || 'Untitled')}${conflicts.has(n.id) ? '<span class="note-conflict">Conflict</span>' : ''}</div>
-        <div class="note-meta">${esc(formatDate(n.updated_at))}</div>
-        ${n.tags ? '<div class="note-tags">'+n.tags.split(',').map(t=>`<span class="tag">${esc(t.trim())}</span>`).join('')+'</div>' : ''}
-      </button>
-      <button type="button" class="note-pin" data-id="${esc(n.id)}" aria-pressed="${Boolean(n.pinned)}" aria-label="${n.pinned ? 'Unpin' : 'Pin'} note" title="${n.pinned ? 'Unpin' : 'Pin'} note"><svg class="icon pin-icon" aria-hidden="true"><use href="#icon-${n.pinned ? 'pinned' : 'pin'}"></use></svg><svg class="icon unpin-icon" aria-hidden="true"><use href="#icon-pinned-off"></use></svg></button>
-    </li>
-  `).join('');
-  list.querySelectorAll('.note-item').forEach(el => {
-    el.addEventListener('click', () => openNote(el.dataset.id));
-  });
-  list.querySelectorAll('.note-pin').forEach(el => {
-    el.addEventListener('click', event => {
-      event.stopPropagation();
-      void toggleNotePin(el.dataset.id);
-    });
-  });
-}
+  const note = event.target.closest('.note-item');
+  if (note) void openNote(note.dataset.id);
+});
 
 function noteHasTag(note, tag) {
   return (note.tags || '').split(',').some(noteTag => noteTag.trim() === tag);

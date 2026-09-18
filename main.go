@@ -9,10 +9,13 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -134,6 +137,42 @@ func artificialRTTDelayMiddleware(delay time.Duration, next http.Handler) http.H
 	})
 }
 
+func shouldOpenBrowser(args []string, getenv func(string) string) bool {
+	open := true
+	for _, arg := range args {
+		switch arg {
+		case "--no-browser":
+			open = false
+		}
+	}
+	return open && getenv("VYLK_NO_BROWSER") != "1"
+}
+
+func browserCommand(goos, targetURL string) (string, []string) {
+	switch goos {
+	case "darwin":
+		return "open", []string{targetURL}
+	case "windows":
+		return "rundll32", []string{"url.dll,FileProtocolHandler", targetURL}
+	default:
+		return "xdg-open", []string{targetURL}
+	}
+}
+
+func openBrowser(targetURL string) error {
+	command, args := browserCommand(runtime.GOOS, targetURL)
+	process := exec.Command(command, args...)
+	process.Stdout = io.Discard
+	process.Stderr = io.Discard
+	if err := process.Start(); err != nil {
+		return err
+	}
+	go func() {
+		_ = process.Wait()
+	}()
+	return nil
+}
+
 func staticCacheMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -184,6 +223,7 @@ func main() {
 	}
 	appName = configuredName
 	appRevision = embeddedAppRevision(appName)
+	openBrowserOnStart := shouldOpenBrowser(os.Args[1:], os.Getenv)
 
 	password, err := readSecret("VYLK_PASSWORD")
 	if err != nil {
@@ -331,13 +371,24 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	listener, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		log.Fatalf("server: %v", err)
+	}
+	actualPort := listener.Addr().(*net.TCPAddr).Port
+	serverURL := "http://127.0.0.1:" + strconv.Itoa(actualPort) + "/"
 	go func() {
-		log.Printf("vylk running on :%s (notes: %s, db: %s)", port, notesDir, dbPath)
-		err := srv.ListenAndServe()
+		err := srv.Serve(listener)
 		if err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server: %v", err)
 		}
 	}()
+	log.Printf("vylk running on :%d (notes: %s, db: %s)", actualPort, notesDir, dbPath)
+	if openBrowserOnStart {
+		if err := openBrowser(serverURL); err != nil {
+			log.Printf("could not open browser at %s: %v", serverURL, err)
+		}
+	}
 
 	<-ctx.Done()
 	log.Println("shutting down...")
