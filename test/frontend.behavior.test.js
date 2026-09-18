@@ -2085,6 +2085,41 @@ describe('permanent queue rejection recovery', () => {
 });
 
 describe('batched queue flushing', () => {
+  test('keeps the conflict base local when syncing a large edited note', async () => {
+    let pushBody = '';
+    const app = track(await createApp({
+      fetchImpl: async (path, options) => {
+        if (String(path) !== '/api/sync/push') throw new Error(`unexpected request: ${path}`);
+        pushBody = options.body;
+        const request = JSON.parse(pushBody);
+        const operation = request.operations[0];
+        return response(200, JSON.stringify({
+          acknowledged: [{client_sequence: operation.client_sequence, op_id: operation.op_id, status: 'applied', revision: 2}],
+          expected_sequence: operation.client_sequence + 1,
+        }));
+      },
+    }));
+    const baseContent = 'a'.repeat(3_310_106);
+    const content = `${baseContent.slice(0, -1)}b`;
+    await app.hooks.putLocalNote({
+      id: 'large-note', title: 'Large note', tags: '', content,
+      revision: 1, pending: true, base_revision: 1, base_content: baseContent,
+    });
+    await app.hooks.queueOperation({
+      type: 'note.save', note_id: 'large-note', base_revision: 1,
+      note: {id: 'large-note', title: 'Large note', tags: '', content, base_revision: 1, base_content: baseContent},
+    });
+
+    const queued = (await app.hooks.pendingOperations())[0];
+    expect(queued.note.base_content).toBe(baseContent);
+    await app.hooks.flushPendingChanges();
+
+    const sent = JSON.parse(pushBody).operations[0];
+    expect(new TextEncoder().encode(pushBody).byteLength).toBeLessThan(4 * 1024 * 1024);
+    expect(sent.content).toBe(content);
+    expect(sent).not.toHaveProperty('base_content');
+  });
+
   test('sends ordered pending operations in one bounded push', async () => {
     const requests = [];
     const app = track(await createApp({

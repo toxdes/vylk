@@ -1902,7 +1902,6 @@ function outgoingSyncOperation(operation) {
     outgoing.title = operation.note.title;
     outgoing.tags = operation.note.tags;
     outgoing.content = operation.note.content;
-    outgoing.base_content = operation.note.base_content || '';
     outgoing.pinned = Boolean(operation.note.pinned);
   } else if (operation.type === 'note.pin') {
     outgoing.pinned = Boolean(operation.pinned);
