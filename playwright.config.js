@@ -31,6 +31,7 @@ export default defineConfig({
     env: {
       ...process.env,
       PORT: String(port),
+      VYLK_NO_BROWSER: '1',
       VYLK_PASSWORD: 'browser-test-password',
       VYLK_DIR: path.join(dataRoot, 'notes'),
       VYLK_DB: path.join(dataRoot, 'vylk.db'),
