@@ -4827,6 +4827,7 @@ function renderPreviewDrag(frameTime = performance.now()) {
   drag.frame = null;
   if (!drag.armed) return;
   drag.ghost.style.transform = `translate3d(${drag.x - drag.startX}px,${drag.y - drag.startY}px,0)`;
+  if (!drag.hasMoved) return;
   const preview = $('#preview');
   const previewRect = preview.getBoundingClientRect();
   const outsidePreview = drag.x < previewRect.left || drag.x > previewRect.right || drag.y < previewRect.top || drag.y > previewRect.bottom;
@@ -4860,7 +4861,9 @@ function renderPreviewDrag(frameTime = performance.now()) {
 function cancelPreviewDrag({animateReturn = true} = {}) {
   const drag = activePreviewDrag;
   if (!drag) return;
+  if (drag.holdTimer !== null) clearTimeout(drag.holdTimer);
   if (drag.frame !== null) cancelAnimationFrame(drag.frame);
+  drag.pendingElement?.classList.remove('is-drag-pending');
   const returnLayout = drag.armed && animateReturn ? capturePreviewLayout(drag.placeholder?.parentNode, drag.sourceElement) : null;
   if (drag.armed) {
     drag.sourceElement?.classList.remove('preview-dragging');
@@ -4877,83 +4880,128 @@ function cancelPreviewDrag({animateReturn = true} = {}) {
   if (drag.armed) setInteractiveSourceLocked(false);
 }
 
+function armPreviewDrag(drag = activePreviewDrag) {
+  if (!drag || drag !== activePreviewDrag || drag.armed) return false;
+  if (!interactivePreviewSourceIsCurrent() || !drag.sourceElement?.isConnected || !drag.visualElement?.isConnected) {
+    cancelPreviewDrag({animateReturn:false});
+    return false;
+  }
+  if (drag.holdTimer !== null) clearTimeout(drag.holdTimer);
+  drag.holdTimer = null;
+  drag.pendingElement?.classList.remove('is-drag-pending');
+  drag.armed = true;
+  window.getSelection()?.removeAllRanges();
+  const preview = $('#preview');
+  try {
+    preview.setPointerCapture?.(drag.pointerID);
+  } catch {
+    // The pointer may have been cancelled between the hold timer and this frame.
+  }
+  const sourceRect = drag.sourceElement.getBoundingClientRect();
+  const visualRect = drag.visualElement.getBoundingClientRect();
+  const ghost = drag.visualElement.cloneNode(true);
+  ghost.removeAttribute('data-interactive-start');
+  ghost.removeAttribute('data-interactive-scope');
+  ghost.classList.add('preview-drag-ghost');
+  ghost.style.width = `${visualRect.width}px`;
+  ghost.style.height = `${visualRect.height}px`;
+  ghost.style.left = `${visualRect.left}px`;
+  ghost.style.top = `${visualRect.top}px`;
+  drag.sourceDisplay = drag.sourceElement.style.display;
+  drag.placeholderWidth = sourceRect.width;
+  drag.placeholderHeight = sourceRect.height;
+  drag.placeholder = null;
+  const placeholder = createPreviewPlaceholder(drag, drag.sourceElement.parentNode);
+  drag.sourceElement.style.display = 'none';
+  drag.sourceElement.before(placeholder);
+  setInteractiveSourceLocked(true);
+  drag.ghost = ghost;
+  const portal = document.createElement('div');
+  portal.className = 'preview preview-drag-portal interactive-preview-active';
+  portal.setAttribute('aria-hidden', 'true');
+  portal.append(ghost);
+  drag.portal = portal;
+  document.body.append(portal);
+  drag.sourceElement.classList.add('preview-dragging');
+  drag.visualElement.classList.add('preview-dragging');
+  document.documentElement.classList.add('preview-drag-active');
+  if (drag.frame === null) drag.frame = requestAnimationFrame(renderPreviewDrag);
+  return true;
+}
+
 $('#preview').addEventListener('pointerdown', event => {
   if (!interactivePreviewActive || !interactivePreviewSourceIsCurrent() || event.button !== 0 || event.isPrimary === false) return;
   const startedOnHandle = Boolean(event.target.closest('.preview-drag-handle'));
-  if (event.pointerType === 'touch' && !startedOnHandle) return;
+  if (!startedOnHandle) return;
   const item = event.target.closest('#preview > [data-interactive-start], #preview li[data-interactive-start]');
   if (!item || event.target.closest('a,input,button,select,textarea')) return;
   const entry = interactiveEntryByElement.get(item);
   if (!entry) return;
   if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
-  activePreviewDrag = {
+  const pointerType = event.pointerType || 'mouse';
+  const pendingElement = entry.card || entry.visualElement || entry.element;
+  const drag = {
     pointerID:event.pointerId,
+    pointerType,
     sourceStart:entry.start,
     scope:entry.scope,
     sourceElement:entry.element,
     visualElement:entry.visualElement || entry.element,
-    startedOnHandle,
-    startedAt:performance.now(),
+    pendingElement,
     startX:event.clientX,
     startY:event.clientY,
     x:event.clientX,
     y:event.clientY,
+    hasMoved:false,
     armed:false,
+    holdTimer:null,
     frame:null,
     lastFrameAt:null,
     target:null,
   };
+  activePreviewDrag = drag;
+  if (pointerType === 'touch') {
+    event.preventDefault();
+    pendingElement.classList.add('is-drag-pending');
+    try {
+      $('#preview').setPointerCapture?.(event.pointerId);
+    } catch {
+      // Synthetic and already-cancelled pointers cannot be captured.
+    }
+    drag.holdTimer = window.setTimeout(() => armPreviewDrag(drag), 220);
+  }
 });
 
-$('#preview').addEventListener('selectstart', () => {
-  if (activePreviewDrag && !activePreviewDrag.armed && !activePreviewDrag.startedOnHandle) activePreviewDrag = null;
+$('#preview').addEventListener('touchstart', event => {
+  if (event.target.closest('.preview-drag-handle')) event.preventDefault();
+}, {passive:false});
+
+$('#preview').addEventListener('selectstart', event => {
+  if (event.target.closest('.preview-drag-handle')) {
+    event.preventDefault();
+  }
 });
 
 $('#preview').addEventListener('contextmenu', event => {
   if (event.target.closest('.preview-drag-handle')) event.preventDefault();
 });
 
+$('#preview').addEventListener('dragstart', event => {
+  if (event.target.closest('.preview-drag-handle')) event.preventDefault();
+});
+
 document.addEventListener('pointermove', event => {
   const drag = activePreviewDrag;
   if (!drag || drag.pointerID !== event.pointerId) return;
+  if (drag.pointerType === 'touch') event.preventDefault();
   drag.x = event.clientX;
   drag.y = event.clientY;
-  if (!drag.armed && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 6) return;
-  if (!drag.armed && event.pointerType === 'touch' && performance.now() - drag.startedAt < 220) return;
+  const moved = Math.hypot(drag.x - drag.startX, drag.y - drag.startY) >= 6;
+  if (moved) drag.hasMoved = true;
   if (!drag.armed) {
+    if (drag.pointerType === 'touch' || !moved) return;
     event.preventDefault();
-    drag.armed = true;
-    window.getSelection()?.removeAllRanges();
-    const preview = $('#preview');
-    preview.setPointerCapture?.(event.pointerId);
-    const sourceRect = drag.sourceElement.getBoundingClientRect();
-    const visualRect = drag.visualElement.getBoundingClientRect();
-    const ghost = drag.visualElement.cloneNode(true);
-    ghost.removeAttribute('data-interactive-start');
-    ghost.removeAttribute('data-interactive-scope');
-    ghost.classList.add('preview-drag-ghost');
-    ghost.style.width = `${visualRect.width}px`;
-    ghost.style.height = `${visualRect.height}px`;
-    ghost.style.left = `${visualRect.left}px`;
-    ghost.style.top = `${visualRect.top}px`;
-    drag.sourceDisplay = drag.sourceElement.style.display;
-    drag.placeholderWidth = sourceRect.width;
-    drag.placeholderHeight = sourceRect.height;
-    drag.placeholder = null;
-    const placeholder = createPreviewPlaceholder(drag, drag.sourceElement.parentNode);
-    drag.sourceElement.style.display = 'none';
-    drag.sourceElement.before(placeholder);
-    setInteractiveSourceLocked(true);
-    drag.ghost = ghost;
-    const portal = document.createElement('div');
-    portal.className = 'preview preview-drag-portal interactive-preview-active';
-    portal.setAttribute('aria-hidden', 'true');
-    portal.append(ghost);
-    drag.portal = portal;
-    document.body.append(portal);
-    drag.sourceElement.classList.add('preview-dragging');
-    drag.visualElement.classList.add('preview-dragging');
-    document.documentElement.classList.add('preview-drag-active');
+    if (!armPreviewDrag(drag)) return;
   }
   if (drag.frame === null) drag.frame = requestAnimationFrame(renderPreviewDrag);
 });
