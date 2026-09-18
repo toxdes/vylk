@@ -517,7 +517,11 @@ test('centers a preview edit target within the source viewport', async ({page}) 
   await enableInteractivePreview(page);
 
   await page.locator('.view-control[data-panel="preview"]').click();
-  const target = page.locator('#preview .interactive-preview-list-card').nth(19);
+  const targetItem = page.locator('#preview li').filter({hasText:'Item 20'}).first();
+  await expect(targetItem).toHaveText('Item 20');
+  await targetItem.scrollIntoViewIfNeeded();
+  const target = targetItem.locator(':scope > .interactive-preview-list-card');
+  await expect(target).toBeVisible();
   await target.hover();
   await target.getByRole('button', {name:'Edit this block in source'}).click();
 
