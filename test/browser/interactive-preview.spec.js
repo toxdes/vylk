@@ -84,6 +84,45 @@ test('interactive preview preserves selection and tracks drag reflow', async ({p
   await expect(page.locator('.preview-drag-ghost')).toHaveCount(0);
 });
 
+test.describe('mobile interactive preview', () => {
+  test.use({viewport:{width:390, height:844}, hasTouch:true, isMobile:true});
+
+  test('uses direct touch controls and reorders after a stationary hold', async ({page, context}) => {
+    await signIn(page);
+    await page.locator('#new-note-btn').click();
+    await page.locator('#note-content').fill('- Alpha\n- Bravo\n- Charlie');
+    await enableInteractivePreview(page);
+
+    const handles = page.locator('#preview .preview-drag-handle');
+    const editButtons = page.getByRole('button', {name:'Edit this block in source'});
+    const sourceHandle = await handles.first().boundingBox();
+    const targetHandle = await handles.nth(2).boundingBox();
+    expect(sourceHandle).not.toBeNull();
+    expect(targetHandle).not.toBeNull();
+    expect(sourceHandle.width).toBeGreaterThanOrEqual(44);
+    expect(sourceHandle.height).toBeGreaterThanOrEqual(44);
+    await expect.poll(() => editButtons.first().evaluate(element => ({
+      opacity:Number(getComputedStyle(element).opacity),
+      pointerEvents:getComputedStyle(element).pointerEvents,
+      width:element.getBoundingClientRect().width,
+      height:element.getBoundingClientRect().height,
+    }))).toEqual({opacity:.72, pointerEvents:'auto', width:44, height:44});
+
+    const start = {x:sourceHandle.x + sourceHandle.width / 2, y:sourceHandle.y + sourceHandle.height / 2};
+    const destination = {x:targetHandle.x + targetHandle.width / 2, y:targetHandle.y + targetHandle.height - 2};
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchStart', touchPoints:[{...start, id:1}]});
+    await expect(page.locator('#preview .interactive-preview-list-card').first()).toHaveClass(/is-drag-pending/);
+    await expect(page.locator('.preview-drag-ghost')).toHaveCount(1, {timeout:1000});
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchMove', touchPoints:[{...destination, id:1}]});
+    await expect(page.locator('#preview li[data-preview-drop]')).toHaveCount(1);
+    await cdp.send('Input.dispatchTouchEvent', {type:'touchEnd', touchPoints:[]});
+
+    await expect(page.locator('#note-content')).toHaveValue('- Bravo\n- Charlie\n- Alpha');
+    await expect(page.locator('.preview-drag-ghost')).toHaveCount(0);
+  });
+});
+
 test('source caret cue follows wrapped visual rows', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
@@ -478,17 +517,19 @@ test('centers a preview edit target within the source viewport', async ({page}) 
   await enableInteractivePreview(page);
 
   await page.locator('.view-control[data-panel="preview"]').click();
-  const target = page.locator('#preview .interactive-preview-list-card').nth(19);
+  const targetItem = page.locator('#preview li').filter({hasText:'Item 20'}).first();
+  await expect(targetItem).toHaveText('Item 20');
+  await targetItem.scrollIntoViewIfNeeded();
+  const target = targetItem.locator(':scope > .interactive-preview-list-card');
+  await expect(target).toBeVisible();
   await target.hover();
   await target.getByRole('button', {name:'Edit this block in source'}).click();
 
   await expect(page.locator('#note-content')).toBeFocused();
-  await expect.poll(() => page.locator('#note-content').evaluate(textarea => textarea.scrollTop)).toBeGreaterThan(0);
-  const scrollState = await page.locator('#note-content').evaluate(textarea => ({
-    scrollTop: textarea.scrollTop,
-    maxScrollTop: Math.max(0, textarea.scrollHeight - textarea.clientHeight),
-  }));
-  expect(scrollState.scrollTop).toBeLessThan(scrollState.maxScrollTop);
+  await expect.poll(() => page.locator('#note-content').evaluate(textarea => {
+    const maxScrollTop = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+    return textarea.scrollTop > 0 && textarea.scrollTop < maxScrollTop;
+  })).toBe(true);
 });
 
 test('interactive preview preserves checkbox position and auto-scrolls during drag', async ({page}) => {

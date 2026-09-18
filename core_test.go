@@ -25,7 +25,7 @@ type sseTestRecorder struct {
 func TestStaticCachePreventsProxyTransforms(t *testing.T) {
 	handler := staticCacheMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 
-	for _, path := range []string{"/", "/style.css", "/interactive-preview.js", "/preview-worker.js"} {
+	for _, path := range []string{"/", "/style.css", "/interactive-preview.js", "/zen-editor.js", "/preview-worker.js"} {
 		result := httptest.NewRecorder()
 		handler.ServeHTTP(result, httptest.NewRequest(http.MethodGet, path, nil))
 		if cacheControl := result.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "no-transform") {
@@ -1643,7 +1643,7 @@ func TestPreferenceSyncMergesDisjointChangesAndConflictsSameField(t *testing.T) 
 	if first.Acknowledged[0].Status != "applied" || first.Acknowledged[0].Revision != 2 {
 		t.Fatalf("first preference result = %#v", first.Acknowledged)
 	}
-	second := push("device_b", 1, "pref_b", map[string]json.RawMessage{"accentColor": raw("#123456"), "editorFontFamilyGoogle": json.RawMessage("true"), "previewFontFamilyGoogle": json.RawMessage("true"), "zenFontFamilyGoogle": json.RawMessage("true"), "contentWidth": raw("wide"), "fontSize": raw("0.9rem"), "editorFontSize": raw("1.25rem"), "previewFontSize": raw("1.5rem")}, map[string]json.RawMessage{"accentColor": raw(""), "editorFontFamilyGoogle": json.RawMessage("false"), "previewFontFamilyGoogle": json.RawMessage("false"), "zenFontFamilyGoogle": json.RawMessage("false"), "contentWidth": raw("standard"), "fontSize": raw("1rem"), "editorFontSize": raw("1rem"), "previewFontSize": raw("1rem")}, 1)
+	second := push("device_b", 1, "pref_b", map[string]json.RawMessage{"accentColor": raw("#123456"), "editorFontFamilyGoogle": json.RawMessage("true"), "previewFontFamilyGoogle": json.RawMessage("true"), "zenFontFamilyGoogle": json.RawMessage("true"), "contentWidth": raw("wide"), "zenPageWidth": raw("compact"), "fontSize": raw("0.9rem"), "editorFontSize": raw("1.25rem"), "previewFontSize": raw("1.5rem")}, map[string]json.RawMessage{"accentColor": raw(""), "editorFontFamilyGoogle": json.RawMessage("false"), "previewFontFamilyGoogle": json.RawMessage("false"), "zenFontFamilyGoogle": json.RawMessage("false"), "contentWidth": raw("standard"), "zenPageWidth": raw("standard"), "fontSize": raw("1rem"), "editorFontSize": raw("1rem"), "previewFontSize": raw("1rem")}, 1)
 	if second.Acknowledged[0].Status != "applied" || second.Acknowledged[0].Revision != 3 {
 		t.Fatalf("disjoint preference result = %#v", second.Acknowledged)
 	}
@@ -1651,7 +1651,7 @@ func TestPreferenceSyncMergesDisjointChangesAndConflictsSameField(t *testing.T) 
 	if err != nil {
 		t.Fatalf("load merged preferences: %v", err)
 	}
-	if p.Theme != "default-dark" || p.AccentColor != "#123456" || p.StatusDisplay != "compact" || p.ContentWidth != "wide" || p.FontSize != "0.9rem" || p.EditorFontSize != "1.25rem" || p.PreviewFontSize != "1.5rem" || !p.HideSaveButton || p.SaveButtonLocation != "header" || !p.FontFamilyGoogle || !p.EditorFontFamilyGoogle || !p.PreviewFontFamilyGoogle || !p.ZenFontFamilyGoogle || !p.InteractivePreview || p.Revision != 3 {
+	if p.Theme != "default-dark" || p.AccentColor != "#123456" || p.StatusDisplay != "compact" || p.ContentWidth != "wide" || p.ZenPageWidth != "compact" || p.FontSize != "0.9rem" || p.EditorFontSize != "1.25rem" || p.PreviewFontSize != "1.5rem" || !p.HideSaveButton || p.SaveButtonLocation != "header" || !p.FontFamilyGoogle || !p.EditorFontFamilyGoogle || !p.PreviewFontFamilyGoogle || !p.ZenFontFamilyGoogle || !p.InteractivePreview || p.Revision != 3 {
 		t.Fatalf("merged preferences = %#v", p)
 	}
 	conflict := push("device_c", 1, "pref_c", map[string]json.RawMessage{"theme": raw("default-light")}, map[string]json.RawMessage{"theme": raw("default-light")}, 1)
@@ -1680,6 +1680,7 @@ func TestPreferenceSyncRejectsInvalidValuesPermanently(t *testing.T) {
 				"fontSize":           json.RawMessage(`"calc(1rem + 2px)"`),
 				"editorFontSize":     json.RawMessage(`"14px"`),
 				"contentWidth":       json.RawMessage(`"bogus"`),
+				"zenPageWidth":       json.RawMessage(`"enormous"`),
 				"saveButtonLocation": json.RawMessage(`"toolbar"`),
 			}},
 		}},
@@ -1744,6 +1745,7 @@ func TestDirectPreferencesRejectInvalidValues(t *testing.T) {
 	a := &app{db: db}
 	for name, mutate := range map[string]func(*prefs){
 		"content width":        func(p *prefs) { p.ContentWidth = "bogus" },
+		"Zen page width":       func(p *prefs) { p.ZenPageWidth = "enormous" },
 		"font size":            func(p *prefs) { p.FontSize = "calc(1rem + 2px)" },
 		"save button location": func(p *prefs) { p.SaveButtonLocation = "toolbar" },
 	} {

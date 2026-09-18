@@ -220,6 +220,7 @@ var preferenceFieldNames = map[string]struct{}{
 	"interactivePreview":        {},
 	"statusDisplay":             {},
 	"contentWidth":              {},
+	"zenPageWidth":              {},
 	"theme":                     {},
 	"accentColor":               {},
 	"fontFamily":                {},
@@ -344,7 +345,7 @@ func validatePreferenceFieldValue(key string, value json.RawMessage) error {
 		if err := json.Unmarshal(value, &startView); err != nil || !validStartViewValue(startView) {
 			return fmt.Errorf("invalid preference value for %q", key)
 		}
-	case "contentWidth":
+	case "contentWidth", "zenPageWidth":
 		var contentWidth string
 		if err := json.Unmarshal(value, &contentWidth); err != nil || !validContentWidthValue(contentWidth) {
 			return fmt.Errorf("invalid preference value for %q", key)
@@ -393,6 +394,9 @@ func validatePrefs(p *prefs) error {
 	}
 	if p.ContentWidth != "" && !validContentWidthValue(p.ContentWidth) {
 		return fmt.Errorf("invalid preference value for %q", "contentWidth")
+	}
+	if p.ZenPageWidth != "" && !validContentWidthValue(p.ZenPageWidth) {
+		return fmt.Errorf("invalid preference value for %q", "zenPageWidth")
 	}
 	if !validStartViewValue(p.StartView) {
 		return fmt.Errorf("invalid preference value for %q", "startView")

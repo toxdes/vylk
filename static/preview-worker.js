@@ -45,6 +45,7 @@ function gapDoesNotRender(source, options) {
 
 function describeBlocks(source, options, tokens) {
   const blocks = [];
+  const htmlChunks = [];
   let incrementalSafe = true;
   let offset = 0;
   for (const token of tokens) {
@@ -57,6 +58,7 @@ function describeBlocks(source, options, tokens) {
     const tokenList = [token];
     tokenList.links = tokens.links;
     const blockHTML = marked.parser(tokenList, options);
+    if (blockHTML) htmlChunks.push(blockHTML);
     if (!tagName) {
       if (token.type !== 'space' && blockHTML.trim()) incrementalSafe = false;
       continue;
@@ -74,6 +76,7 @@ function describeBlocks(source, options, tokens) {
   }
   return {
     blocks:gapDoesNotRender(source.slice(offset), options) ? blocks : [],
+    htmlChunks,
     incrementalSafe,
   };
 }
@@ -85,16 +88,24 @@ self.addEventListener('message', event => {
     const options = markdownOptions();
     const tokens = marked.lexer(source, options);
     const description = describeBlocks(source, options, tokens);
-    // Marked mutates some token trees while rendering, notably loose task
-    // lists where it injects checkbox markup. Parse the full document from
-    // source so block rendering and full rendering never reuse token objects.
-    const html = marked.parse(source, options);
-    description.incrementalSafe = description.incrementalSafe && description.blocks.map(block => block.html).join('') === html;
-    const result = {id, ...description};
+    let html = null;
+    // Keep exact full-document equivalence validation for ordinary notes.
+    // Large notes avoid the duplicate parse; their token stream still has to
+    // consist entirely of independently renderable top-level blocks.
+    if (description.incrementalSafe && source.length <= 250_000) {
+      html = marked.parse(source, options);
+      description.incrementalSafe = description.htmlChunks.join('') === html;
+    }
+    const {htmlChunks, ...metadata} = description;
+    const result = {id, ...metadata};
     // Incrementally safe responses already contain the complete rendered
-    // output in their block HTML. Avoid cloning the source and a duplicate
-    // full-document HTML string back onto the main thread.
-    if (!description.incrementalSafe) result.html = html;
+    // output in their block HTML. Only unsafe token streams need a second,
+    // full-document parse and HTML payload.
+    if (!description.incrementalSafe) {
+      html ||= marked.parse(source, options);
+      if (htmlChunks.join('') === html) result.htmlChunks = htmlChunks;
+      else result.html = html;
+    }
     self.postMessage(result);
   } catch (error) {
     self.postMessage({id, error:error?.message || 'preview rendering failed'});

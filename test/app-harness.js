@@ -11,6 +11,7 @@ const markedSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'm
 const mergeSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'merge.js'), 'utf8');
 const interactivePreviewSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'interactive-preview.js'), 'utf8');
 const shortcutsSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'shortcuts.js'), 'utf8');
+const zenEditorSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'zen-editor.js'), 'utf8');
 
 const testHookSource = `
 globalThis.__vylkTestHooks = {
@@ -65,7 +66,7 @@ globalThis.__vylkTestHooks = {
     savedSnapshot = {...(state.savedSnapshot || {title: '', tags: '', content: ''})};
     $('#note-title').value = state.title ?? savedSnapshot.title ?? '';
     $('#note-tags').value = state.tags ?? savedSnapshot.tags ?? '';
-    $('#note-content').value = state.content ?? savedSnapshot.content ?? '';
+    setEditorSourceValue(state.content ?? savedSnapshot.content ?? '');
   },
   markDirty,
   showNoteInEditor,
@@ -169,6 +170,7 @@ export async function createApp({deferredSave = false, deferredSyncCompletion = 
   window.eval(themesSource);
   window.eval(interactivePreviewSource);
   window.eval(shortcutsSource);
+  window.eval(zenEditorSource);
   if (realMerge) window.eval(mergeSource);
   if (realMarked) {
     window.eval(markedSource);

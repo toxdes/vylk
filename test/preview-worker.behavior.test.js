@@ -22,7 +22,7 @@ function loadPreviewWorker() {
     }
   };
   vm.runInContext(fs.readFileSync(path.join(staticDirectory, 'preview-worker.js'), 'utf8'), context);
-  return {handlers, messages};
+  return {handlers, messages, context};
 }
 
 test('renders Markdown and source metadata away from the app thread', () => {
@@ -38,9 +38,10 @@ test('renders Markdown and source metadata away from the app thread', () => {
     ],
   });
   expect(worker.messages[0]).not.toHaveProperty('source');
-  expect(worker.messages[0].html).toContain('<h1>Heading</h1>');
-  expect(worker.messages[0].html).not.toContain('<script>');
-  expect(worker.messages[0].html).toContain('&lt;script&gt;');
+  const rendered = worker.messages[0].html || worker.messages[0].htmlChunks.join('');
+  expect(rendered).toContain('<h1>Heading</h1>');
+  expect(rendered).not.toContain('<script>');
+  expect(rendered).toContain('&lt;script&gt;');
   expect(worker.messages[0].incrementalSafe).toBe(false);
 });
 
@@ -63,4 +64,21 @@ test('renders one checkbox per task in loose Markdown lists', () => {
   const rendered = result.html || result.blocks.map(block => block.html).join('');
   expect(result.incrementalSafe).toBe(true);
   expect(rendered.match(/type="checkbox"/g)).toHaveLength(2);
+});
+
+test('incremental block output matches full rendering for supported Markdown structures', () => {
+  const sources = [
+    '# Heading\n\nParagraph with **bold**, *emphasis*, and [a reference][ref].\n\n[ref]: https://example.com',
+    '> A quote\n> over two lines\n\n```js\nconst value = 1;\n```',
+    '| Name | Value |\n| --- | ---: |\n| alpha | 1 |\n\n---',
+    '1. first\n2. second\n   - nested\n\n- [ ] task\n- [x] complete',
+  ];
+
+  sources.forEach((source, index) => {
+    const worker = loadPreviewWorker();
+    worker.handlers.get('message')({data:{id:index + 20, source}});
+    const result = worker.messages[0];
+    expect(result.incrementalSafe).toBe(true);
+    expect(result.blocks.map(block => block.html).join('')).toBe(worker.context.marked.parse(source, {breaks:true, gfm:true}));
+  });
 });

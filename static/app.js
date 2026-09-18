@@ -6,6 +6,67 @@ const $$ = s => document.querySelectorAll(s);
 const editorSourceTextarea = $('#note-content');
 const editorSourceWrap = $('.editor-source-wrap');
 const editorCurrentLine = $('.editor-current-line');
+const zenSourceEditorElement = $('#zen-source-editor');
+let zenSourceEditor = null;
+
+function ensureZenSourceEditor() {
+  if (!zenSourceEditor && zenSourceEditorElement && window.VylkZenEditor) {
+    zenSourceEditor = new window.VylkZenEditor(zenSourceEditorElement);
+    zenSourceEditor.addEventListener('input', event => handleEditorSourceInput({
+      inputType:event.detail?.inputType || '',
+      data:event.detail?.data ?? null,
+      length:event.detail?.length ?? zenSourceEditor.length,
+    }));
+  }
+  return zenSourceEditor;
+}
+
+function zenSourceIsActive() {
+  return Boolean(zenSourceEditor?.active);
+}
+
+function editorSourceValue() {
+  return zenSourceIsActive() ? zenSourceEditor.value : editorSourceTextarea?.value || '';
+}
+
+function editorSourceSelection() {
+  if (zenSourceIsActive()) return zenSourceEditor.selection();
+  return {
+    start:editorSourceTextarea?.selectionStart || 0,
+    end:editorSourceTextarea?.selectionEnd || 0,
+    direction:editorSourceTextarea?.selectionDirection || 'none',
+  };
+}
+
+function setEditorSourceValue(value, selectionStart = 0, selectionEnd = selectionStart) {
+  const source = String(value ?? '');
+  editorSourceTextarea.value = source;
+  editorSourceTextarea.setSelectionRange(selectionStart, selectionEnd);
+  if (zenSourceIsActive()) zenSourceEditor.setValue(source, selectionStart, selectionEnd);
+  editorDocumentLength = source.length;
+}
+
+function activateZenSourceEditor() {
+  const editor = ensureZenSourceEditor();
+  if (!editor || editor.active) return;
+  editor.setValue(editorSourceTextarea.value, editorSourceTextarea.selectionStart, editorSourceTextarea.selectionEnd);
+  editor.active = true;
+}
+
+function deactivateZenSourceEditor() {
+  if (!zenSourceIsActive()) return;
+  const selection = zenSourceEditor.selection();
+  editorSourceTextarea.value = zenSourceEditor.value;
+  editorSourceTextarea.setSelectionRange(selection.start, selection.end, selection.direction);
+  zenSourceEditor.active = false;
+}
+
+function focusCurrentSourceEditor() {
+  if (zenSourceIsActive()) {
+    zenSourceEditor.focus({preventScroll:true});
+    requestAnimationFrame(() => zenSourceEditor?.ensureSelectionVisible());
+  } else editorSourceTextarea?.focus({preventScroll:true});
+}
 
 const bootScreen = $('#boot-screen');
 if (bootScreen) bootScreen.hidden = false;
@@ -25,7 +86,7 @@ let zenViewState = 'editor';
 let savedSnapshot = { title: '', tags: '', content: '' };
 let editorSessionGeneration = 0;
 const DEFAULT_PREFS = {revision:1, autoSave:true, startView:'split', hideToolbar:false, hideSaveButton:false, saveButtonLocation:'panel',
-  collapseDetails:false, hideCursorHighlight:false, interactivePreview:false, statusDisplay:'normal', contentWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans',
+  collapseDetails:false, hideCursorHighlight:false, interactivePreview:false, statusDisplay:'normal', contentWidth:'standard', zenPageWidth:'standard', theme:'default-light', accentColor:'', fontFamily:'system-sans',
   fontFamilyGoogle:false, fontSize:'1rem', editorFontFamily:'system-monospace', editorFontFamilyGoogle:false, editorFontSize:'1rem', previewFontFamily:'system-sans',
   previewFontFamilyGoogle:false, previewFontSize:'1rem', zenFontFamily:'system-monospace', zenFontFamilyGoogle:false, zenFontSize:'1rem', zenWordCount:false, zenShowTitle:true, zenShowControls:true, zenInteractivePreview:false,
   shortcutPrefix:{steps:[{key:'/', modifiers:['Mod']}]}, keyboardShortcuts:{}, shortcutConfirmationSkips:{}};
@@ -52,22 +113,33 @@ let renderedPreviewSource = null;
 let previewCheckFrame = null;
 let highlightFrame = null;
 let editorCaretFrame = null;
+let zenCaretFrame = null;
 let editorCaretMeasurementCache = null;
 let editorCaretMirror = null;
 let editorCaretMirrorText = null;
 let editorCaretMarker = null;
 let editorCaretRange = null;
-let editorCaretMirrorKey = '';
+let editorCaretMirrorSource = null;
+let editorCaretMirrorMetricsKey = '';
+let editorCaretDelayTimer = null;
+let editorDocumentLength = 0;
+let pendingEditorInputRange = null;
 let previewRenderWorker = null;
 let previewRenderGeneration = 0;
 let previewRenderRequest = null;
+let previewWorkerPostFrame = null;
 let previewApplyHandle = null;
 let previewDOMHandle = null;
 let previewCacheHandle = null;
 let previewCacheGeneration = 0;
 let previewWorkerUnavailable = false;
+let zenWordCountHandle = null;
+let zenWordCountSource = null;
+let zenWordCountValue = 0;
 let renderedPreviewMetadata = null;
 let previewDecorationObserver = null;
+let previewDecorationHandle = null;
+let previewDecorationGeneration = 0;
 let previewDecorationEntryByElement = new WeakMap();
 let previewObservedElements = new Set();
 let interactiveEntryByElement = new WeakMap();
@@ -1064,14 +1136,18 @@ async function cacheRemoteNote(note) {
   if (local?.pending || (currentNoteId === note.id && isDirty)) return;
   await putLocalNote({...local, ...note, pending: false, base_revision: null, base_content: null, base_title: null, base_tags: null});
   if (currentNoteId === note.id && !isDirty) {
+    const titleChanged = $('#note-title').value !== (note.title || '');
+    const tagsChanged = $('#note-tags').value !== (note.tags || '');
+    const markdownChanged = editorSourceValue() !== (note.content || '');
     currentRevision = note.revision || 0;
     currentBaseRevision = null;
     savedSnapshot = {title: note.title || '', tags: note.tags || '', content: note.content || ''};
-    $('#note-title').value = savedSnapshot.title;
-    $('#note-tags').value = savedSnapshot.tags;
-    $('#note-content').value = savedSnapshot.content;
+    if (titleChanged) $('#note-title').value = savedSnapshot.title;
+    if (tagsChanged) $('#note-tags').value = savedSnapshot.tags;
+    if (!markdownChanged) return;
+    setEditorSourceValue(savedSnapshot.content);
     renderedPreviewSource = null;
-    updatePreview();
+    requestPreviewRender({announceBusy:true});
   }
 }
 
@@ -1280,14 +1356,18 @@ async function reconcileLocalNotes() {
 
 function updateOpenNote(note) {
   if (currentNoteId !== note.id || isDirty) return;
+  const titleChanged = $('#note-title').value !== (note.title || '');
+  const tagsChanged = $('#note-tags').value !== (note.tags || '');
+  const markdownChanged = editorSourceValue() !== (note.content || '');
   currentRevision = note.revision || 0;
   currentBaseRevision = note.base_revision ?? null;
   savedSnapshot = {title: note.title || '', tags: note.tags || '', content: note.content || ''};
-  $('#note-title').value = savedSnapshot.title;
-  $('#note-tags').value = savedSnapshot.tags;
-  $('#note-content').value = savedSnapshot.content;
+  if (titleChanged) $('#note-title').value = savedSnapshot.title;
+  if (tagsChanged) $('#note-tags').value = savedSnapshot.tags;
+  if (!markdownChanged) return;
+  setEditorSourceValue(savedSnapshot.content);
   renderedPreviewSource = null;
-  updatePreview();
+  requestPreviewRender({announceBusy:true});
 }
 
 async function loadConflictRemoteNote(noteID) {
@@ -1881,7 +1961,6 @@ function outgoingSyncOperation(operation) {
     outgoing.title = operation.note.title;
     outgoing.tags = operation.note.tags;
     outgoing.content = operation.note.content;
-    outgoing.base_content = operation.note.base_content || '';
     outgoing.pinned = Boolean(operation.note.pinned);
   } else if (operation.type === 'note.pin') {
     outgoing.pinned = Boolean(operation.pinned);
@@ -2686,11 +2765,11 @@ function applyEditorPrefs() {
   }
   const interactiveModeChanged = syncInteractivePreviewMode();
   scheduleEditorCaretCue();
-  if (interactiveModeChanged && isPreviewVisible()) updatePreview();
+  if (interactiveModeChanged && isPreviewVisible()) requestPreviewRender({announceBusy:true});
 }
 
 function interactivePreviewEnabledForCurrentMode() {
-  return panelState === 'zen' ? prefs.zenInteractivePreview : prefs.interactivePreview;
+  return panelState !== 'zen' && prefs.interactivePreview;
 }
 
 function syncInteractivePreviewMode() {
@@ -2715,6 +2794,7 @@ function syncInteractivePreviewMode() {
 
 function applyContentWidth() {
   document.documentElement.dataset.contentWidth = prefs.contentWidth;
+  document.documentElement.dataset.zenPageWidth = prefs.zenPageWidth;
 }
 
 function startPanelState() {
@@ -2755,7 +2835,7 @@ function startNewNote(title = '') {
   savedSnapshot = { title: '', tags: '', content: '' };
   $('#note-title').value = title;
   $('#note-tags').value = '';
-  $('#note-content').value = '';
+  setEditorSourceValue('');
   $('#preview').innerHTML = '';
   renderedPreviewSource = null;
   setIdleSyncStatus();
@@ -2763,7 +2843,7 @@ function startNewNote(title = '') {
   applyEditorPrefs();
   show(screens.editor);
   scheduleEditorCaretCue();
-  if (initialPanelState === 'zen') $('#note-content').focus();
+  if (initialPanelState === 'zen') focusCurrentSourceEditor();
   else if (initialPanelState === 'preview') focusPreview();
   else $('#note-title').focus();
 }
@@ -2816,7 +2896,7 @@ function showNoteInEditor(data) {
   savedSnapshot = { title: data.title || '', tags: data.tags || '', content: data.content || '' };
   $('#note-title').value = data.title || '';
   $('#note-tags').value = data.tags || '';
-  $('#note-content').value = data.content || '';
+  setEditorSourceValue(data.content || '');
   $('#preview').replaceChildren();
   renderedPreviewSource = null;
   renderedPreviewMetadata = null;
@@ -2949,7 +3029,7 @@ function readEditorSnapshot() {
   return {
     title: $('#note-title').value.trim() || 'Untitled',
     tags: $('#note-tags').value.trim(),
-    content: $('#note-content').value,
+    content: editorSourceValue(),
   };
 }
 
@@ -3115,7 +3195,7 @@ function scheduleSave() {
 }
 
 $('#save-btn').addEventListener('click', () => executeShortcutCommand('note.save', {source:'button'}));
-$('#note-title').addEventListener('input', () => { markDirty(); scheduleSave(); updateZenOverlays(); });
+$('#note-title').addEventListener('input', () => { markDirty(); scheduleSave(); updateZenTitle(); });
 $('#note-tags').addEventListener('input', () => { markDirty(); scheduleSave(); });
 
 // --- Formatting toolbar ---
@@ -3170,6 +3250,11 @@ function showTablePicker(trigger) {
 
 function insertTable(rows, columns) {
   const ta = $('#note-content');
+  if (zenSourceIsActive()) {
+    const selection = zenSourceEditor.selection();
+    ta.value = zenSourceEditor.value;
+    ta.setSelectionRange(selection.start, selection.end, selection.direction);
+  }
   const start = ta.selectionStart;
   const end = ta.selectionEnd;
   const header = Array.from({length: columns}, (_, index) => `Column ${index + 1}`);
@@ -3185,9 +3270,10 @@ function insertTable(rows, columns) {
   const firstCell = start + prefix.length + markdownRows[0].length + 1 + markdownRows[1].length + 3;
 
   ta.setRangeText(insertion, start, end, 'end');
-  ta.focus();
   ta.selectionStart = ta.selectionEnd = firstCell;
+  if (zenSourceIsActive()) zenSourceEditor.setValue(ta.value, firstCell, firstCell);
   ta.dispatchEvent(new Event('input'));
+  focusCurrentSourceEditor();
 }
 
 tableGrid.addEventListener('pointerover', e => {
@@ -3220,6 +3306,11 @@ window.addEventListener('resize', hideTablePicker);
 function insertFmt(type) {
   if (interactiveSourceLocked) return;
   const ta = $('#note-content');
+  if (zenSourceIsActive()) {
+    const selection = zenSourceEditor.selection();
+    ta.value = zenSourceEditor.value;
+    ta.setSelectionRange(selection.start, selection.end, selection.direction);
+  }
   const start = ta.selectionStart;
   const end = ta.selectionEnd;
   const sel = ta.value.slice(start, end);
@@ -3307,14 +3398,15 @@ function insertFmt(type) {
     }
   }
 
-  ta.focus();
   ta.selectionStart = ta.selectionEnd = clean ? cursor : cursor;
+  if (zenSourceIsActive()) zenSourceEditor.setValue(ta.value, cursor, cursor);
   ta.dispatchEvent(new Event('input'));
+  focusCurrentSourceEditor();
   if (previewTimer) {
     clearTimeout(previewTimer);
     previewTimer = null;
   }
-  updatePreview();
+  requestPreviewRender({announceBusy:true});
 }
 
 document.querySelector('.fmt-bar')?.addEventListener('click', e => {
@@ -3350,11 +3442,14 @@ function setPanelState(state) {
   // Panel transitions must never preserve a half-finished drag. A hidden
   // source element or placeholder would otherwise leak into the next layout.
   if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
-  if (state === 'zen' && panelState !== 'zen') {
+  const wasZen = panelState === 'zen';
+  if (wasZen && state !== 'zen') deactivateZenSourceEditor();
+  if (state === 'zen' && !wasZen) {
     zenModeReturnState = panelState === 'preview' ? 'editor' : panelState;
     zenViewState = 'editor';
   }
   panelState = state;
+  if (state === 'zen' && !wasZen) activateZenSourceEditor();
   const visibleState = state === 'zen' ? zenViewState : state;
   const wrap = $('#editor-panels');
   const ed = $('.panel-editor');
@@ -3378,10 +3473,20 @@ function setPanelState(state) {
     const active = state === button.dataset.panel || (state === 'zen' && button.dataset.panel === 'zen');
     button.setAttribute('aria-pressed', String(active));
   });
+  document.querySelectorAll('.zen-controls [data-zen-action="editor"], .zen-controls [data-zen-action="preview"]').forEach(button => {
+    button.setAttribute('aria-pressed', String(state === 'zen' && button.dataset.zenAction === zenViewState));
+  });
+  if (state === 'zen') updateZenOverlays();
+  else {
+    cancelScheduledZenCaretCenter();
+    cancelScheduledZenWordCount();
+  }
   applyPanelRatio();
   scheduleEditorCaretCue();
   if (visibleState !== 'editor') {
-    if (interactiveModeChanged || state === 'zen') updatePreview();
+    if (state === 'zen' || interactiveModeChanged || editorSourceValue() !== renderedPreviewSource) {
+      requestPreviewRender({announceBusy:true});
+    }
     else schedulePreviewCheck();
   }
 }
@@ -3398,11 +3503,12 @@ $('.zen-controls').addEventListener('click', e => {
   if (!action) return;
   if (action === 'exit') {
     setPanelState(zenModeReturnState);
+    focusCurrentSourceEditor();
   } else {
     zenViewState = action;
     setPanelState('zen');
   }
-  if (action === 'editor') $('#note-content').focus({preventScroll:true});
+  if (action === 'editor') focusCurrentSourceEditor();
   else if (action === 'preview') focusPreview();
 });
 
@@ -3632,6 +3738,9 @@ function undecoratePreviewEntry(entry, options) {
 }
 
 function disconnectPreviewDecorationObserver() {
+  previewDecorationGeneration++;
+  if (previewDecorationHandle !== null) clearTimeout(previewDecorationHandle);
+  previewDecorationHandle = null;
   previewDecorationObserver?.disconnect();
   previewDecorationObserver = null;
   previewDecorationEntryByElement = new WeakMap();
@@ -3649,36 +3758,52 @@ function decorateInteractivePreview() {
   }
   const entries = [...interactiveBlockItems, ...interactiveListItems];
   if (typeof IntersectionObserver !== 'function') {
-    entries.forEach(decoratePreviewEntry);
+    if (entries.length <= 100) entries.forEach(decoratePreviewEntry);
+    else {
+      const generation = ++previewDecorationGeneration;
+      let index = 0;
+      const process = () => {
+        previewDecorationHandle = null;
+        if (generation !== previewDecorationGeneration || !interactivePreviewActive) return;
+        const started = performance.now();
+        while (index < entries.length && performance.now() - started < 5) decoratePreviewEntry(entries[index++]);
+        if (index < entries.length) previewDecorationHandle = setTimeout(process, 0);
+      };
+      process();
+    }
     return;
   }
-  if (!previewDecorationObserver) {
-    previewDecorationObserver = new IntersectionObserver(records => {
-      const entering = [];
-      const leaving = [];
-      for (const record of records) {
-        const entry = previewDecorationEntryByElement.get(record.target);
-        if (!entry) continue;
-        (record.isIntersecting ? entering : leaving).push(entry);
-      }
-      entering.sort((left, right) => left.start - right.start || left.indent - right.indent).forEach(decoratePreviewEntry);
-      leaving.sort((left, right) => right.indent - left.indent || right.start - left.start).forEach(undecoratePreviewEntry);
-    }, {root:$('#preview'), rootMargin:'600px 0px'});
-  }
+  disconnectPreviewDecorationObserver();
+  const generation = previewDecorationGeneration;
+  previewDecorationObserver = new IntersectionObserver(records => {
+    const entering = [];
+    const leaving = [];
+    for (const record of records) {
+      const entry = previewDecorationEntryByElement.get(record.target);
+      if (!entry) continue;
+      (record.isIntersecting ? entering : leaving).push(entry);
+    }
+    entering.sort((left, right) => left.start - right.start || left.indent - right.indent).forEach(decoratePreviewEntry);
+    leaving.sort((left, right) => right.indent - left.indent || right.start - left.start).forEach(undecoratePreviewEntry);
+  }, {root:$('#preview'), rootMargin:'600px 0px'});
   const nextObservedElements = new Set(entries.map(previewEntryObservationElement).filter(Boolean));
-  for (const element of previewObservedElements) {
-    if (nextObservedElements.has(element)) continue;
-    previewDecorationObserver.unobserve(element);
-    previewObservedElements.delete(element);
-  }
-  entries.forEach(entry => {
-    const element = previewEntryObservationElement(entry);
-    if (!element) return;
-    previewDecorationEntryByElement.set(element, entry);
-    if (previewObservedElements.has(element)) return;
-    previewObservedElements.add(element);
-    previewDecorationObserver.observe(element);
-  });
+  const pendingEntries = entries.filter(entry => nextObservedElements.has(previewEntryObservationElement(entry)));
+  let index = 0;
+  const observe = () => {
+    previewDecorationHandle = null;
+    if (generation !== previewDecorationGeneration || !previewDecorationObserver) return;
+    const started = performance.now();
+    while (index < pendingEntries.length && performance.now() - started < 5) {
+      const entry = pendingEntries[index++];
+      const element = previewEntryObservationElement(entry);
+      if (!element) continue;
+      previewDecorationEntryByElement.set(element, entry);
+      previewObservedElements.add(element);
+      previewDecorationObserver.observe(element);
+    }
+    if (index < pendingEntries.length) previewDecorationHandle = setTimeout(observe, 0);
+  };
+  observe();
 }
 
 function setInteractiveSourceLocked(locked) {
@@ -3690,7 +3815,7 @@ function updatePreviewPreservingViewport() {
   const preview = $('#preview');
   const scrollTop = preview?.scrollTop || 0;
   suppressNextPreviewAlignment = true;
-  updatePreview();
+  requestPreviewRender({announceBusy:true});
   if (preview) preview.scrollTop = scrollTop;
 }
 
@@ -3760,7 +3885,7 @@ function schedulePreviewCheck() {
   if (previewCheckFrame !== null) return;
   previewCheckFrame = requestAnimationFrame(() => {
     previewCheckFrame = null;
-    updatePreview();
+    requestPreviewRender({announceBusy:true});
   });
 }
 function scheduleHighlight() {
@@ -3819,6 +3944,17 @@ function measureEditorCaret() {
   const metricsKey = [ta.clientWidth, computed.font, computed.letterSpacing, computed.lineHeight, computed.padding, computed.border,
     computed.whiteSpace, computed.overflowWrap, computed.wordBreak, computed.tabSize, computed.textIndent,
     computed.direction, computed.unicodeBidi, computed.wordSpacing].join('\u0000');
+  const lineHeight = parseFloat(computed.lineHeight) || parseFloat(computed.fontSize) * 1.5 || 24;
+  if (source.length > 250_000) {
+    const paddingTop = parseFloat(computed.paddingTop) || 0;
+    const contentHeight = Math.max(lineHeight, ta.scrollHeight - paddingTop - (parseFloat(computed.paddingBottom) || 0));
+    const offsetTop = paddingTop + (source.length ? safePosition / source.length * Math.max(0, contentHeight - lineHeight) : 0);
+    return {
+      top:taRect.top + offsetTop - ta.scrollTop,
+      height:lineHeight,
+      lineHeight,
+    };
+  }
   if (editorCaretMeasurementCache?.source === source && editorCaretMeasurementCache.position === position && editorCaretMeasurementCache.metricsKey === metricsKey) {
     return {
       top: taRect.top + editorCaretMeasurementCache.offsetTop - ta.scrollTop,
@@ -3826,7 +3962,8 @@ function measureEditorCaret() {
       lineHeight: editorCaretMeasurementCache.lineHeight,
     };
   }
-  if (!editorCaretMirror || !editorCaretRange || !editorCaretMirrorText || editorCaretMirrorKey !== `${source}\u0000${metricsKey}`) {
+  if (!editorCaretMirror || !editorCaretRange || (!editorCaretMirrorText && !editorCaretMarker) ||
+      editorCaretMirrorSource !== source || editorCaretMirrorMetricsKey !== metricsKey) {
     if (!editorCaretMirror) {
       if (!editorSourceWrap) return null;
       editorCaretMirror = document.createElement('div');
@@ -3853,7 +3990,8 @@ function measureEditorCaret() {
     editorCaretMirror.textContent = source || '\u200b';
     editorCaretMirrorText = editorCaretMirror.firstChild;
     editorCaretMarker = null;
-    editorCaretMirrorKey = `${source}\u0000${metricsKey}`;
+    editorCaretMirrorSource = source;
+    editorCaretMirrorMetricsKey = metricsKey;
   }
   const lineStart = safePosition === 0 || source[safePosition - 1] === '\n';
   let caretRect;
@@ -3892,7 +4030,6 @@ function measureEditorCaret() {
     }
   }
   const mirrorRect = editorCaretMirror.getBoundingClientRect();
-  const lineHeight = parseFloat(computed.lineHeight) || parseFloat(computed.fontSize) * 1.5 || 24;
   const offsetTop = caretRect.top - mirrorRect.top;
   editorCaretMeasurementCache = {source, position, metricsKey, offsetTop, height:caretRect.height || lineHeight, lineHeight};
   return {
@@ -3908,7 +4045,7 @@ function updateEditorCaretCue() {
   const wrap = editorSourceWrap;
   const line = editorCurrentLine;
   if (!textarea || !wrap || !line) return;
-  const focused = document.activeElement === textarea && !textarea.readOnly;
+  const focused = panelState !== 'zen' && document.activeElement === textarea && !textarea.readOnly;
   wrap.classList.toggle('is-caret-visible', focused);
   if (!focused) return;
   const caret = measureEditorCaret();
@@ -3918,7 +4055,31 @@ function updateEditorCaretCue() {
   wrap.style.setProperty('--editor-caret-height', `${Math.max(1, caret.height)}px`);
 }
 
-function scheduleEditorCaretCue() {
+function cancelDelayedEditorCaretCue() {
+  if (editorCaretDelayTimer === null) return;
+  clearTimeout(editorCaretDelayTimer);
+  editorCaretDelayTimer = null;
+}
+
+function scheduleEditorCaretCue({afterTyping = false} = {}) {
+  if (panelState === 'zen') {
+    editorSourceWrap?.classList.remove('is-caret-visible');
+    if (editorCaretFrame !== null) cancelAnimationFrame(editorCaretFrame);
+    editorCaretFrame = null;
+    cancelDelayedEditorCaretCue();
+    return;
+  }
+  if (afterTyping && editorDocumentLength > 250_000) {
+    if (editorCaretFrame !== null) cancelAnimationFrame(editorCaretFrame);
+    editorCaretFrame = null;
+    cancelDelayedEditorCaretCue();
+    editorCaretDelayTimer = setTimeout(() => {
+      editorCaretDelayTimer = null;
+      scheduleEditorCaretCue();
+    }, 180);
+    return;
+  }
+  cancelDelayedEditorCaretCue();
   if (editorCaretFrame !== null) return;
   editorCaretFrame = requestAnimationFrame(updateEditorCaretCue);
 }
@@ -3940,13 +4101,76 @@ function centerEditorCaretInView(targetRatio = .38, {defer = true} = {}) {
   else center();
 }
 
-function centerZenCaretNow() {
-  if (panelState !== 'zen' || document.activeElement !== editorSourceTextarea) return;
-  centerEditorCaretInView(.48, {defer:false});
+function cancelScheduledZenCaretCenter() {
+  if (zenCaretFrame === null) return;
+  cancelAnimationFrame(zenCaretFrame);
+  zenCaretFrame = null;
 }
 
-function wordCount(source = editorSourceTextarea?.value || '') {
-  return source.trim().match(/\S+/g)?.length || 0;
+function centerZenCaretNow({defer = true} = {}) {
+  if (panelState !== 'zen' || document.activeElement !== editorSourceTextarea) return;
+  const center = () => {
+    zenCaretFrame = null;
+    if (panelState === 'zen' && document.activeElement === editorSourceTextarea) {
+      centerEditorCaretInView(.48, {defer:false});
+    }
+  };
+  if (!defer) {
+    cancelScheduledZenCaretCenter();
+    center();
+    return;
+  }
+  if (zenCaretFrame !== null) return;
+  zenCaretFrame = requestAnimationFrame(center);
+}
+
+function wordCount(source = editorSourceValue()) {
+  const matcher = /\S+/g;
+  let count = 0;
+  while (matcher.exec(source)) count++;
+  return count;
+}
+
+function cancelScheduledZenWordCount() {
+  if (!zenWordCountHandle) return;
+  if (zenWordCountHandle.idle) window.cancelIdleCallback(zenWordCountHandle.id);
+  else clearTimeout(zenWordCountHandle.id);
+  zenWordCountHandle = null;
+}
+
+function updateZenWordCount() {
+  zenWordCountHandle = null;
+  const count = $('#zen-word-count');
+  if (!count) return;
+  count.hidden = !prefs.zenWordCount;
+  if (!prefs.zenWordCount) return;
+  const source = editorSourceValue();
+  if (source !== zenWordCountSource) {
+    zenWordCountSource = source;
+    zenWordCountValue = wordCount(source);
+  }
+  const label = `${zenWordCountValue} ${zenWordCountValue === 1 ? 'word' : 'words'}`;
+  if (count.textContent !== label) count.textContent = label;
+}
+
+function scheduleZenWordCount() {
+  cancelScheduledZenWordCount();
+  if (!prefs.zenWordCount || panelState !== 'zen') return;
+  if (typeof window.requestIdleCallback === 'function') {
+    const id = window.requestIdleCallback(updateZenWordCount, {timeout:400});
+    zenWordCountHandle = {id, idle:true};
+  } else {
+    const id = setTimeout(updateZenWordCount, 120);
+    zenWordCountHandle = {id, idle:false};
+  }
+}
+
+function updateZenTitle() {
+  const title = $('#zen-note-title');
+  if (!title) return;
+  const label = $('#note-title')?.value.trim() || 'Untitled note';
+  if (title.textContent !== label) title.textContent = label;
+  title.hidden = !prefs.zenShowTitle;
 }
 
 function updateZenOverlays() {
@@ -3954,11 +4178,9 @@ function updateZenOverlays() {
   const count = $('#zen-word-count');
   const controls = $('.zen-controls');
   if (!title || !count || !controls) return;
-  title.textContent = $('#note-title')?.value.trim() || 'Untitled note';
-  title.hidden = !prefs.zenShowTitle;
-  const words = wordCount();
-  count.textContent = `${words} ${words === 1 ? 'word' : 'words'}`;
-  count.hidden = !prefs.zenWordCount;
+  updateZenTitle();
+  cancelScheduledZenWordCount();
+  updateZenWordCount();
   controls.classList.toggle('is-minimal', !prefs.zenShowControls);
   $('#zen-exit-icon')?.setAttribute('href', prefs.zenShowControls ? '#icon-minimize' : '#icon-x');
 }
@@ -4010,7 +4232,7 @@ function alignPreviewWithCaret(block, range) {
   const previewRect = preview.getBoundingClientRect();
   const blockRect = block.getBoundingClientRect();
   const sourceLength = Math.max(1, range.end - range.start);
-  const sourceProgress = Math.min(1, Math.max(0, ($('#note-content').selectionStart - range.start) / sourceLength));
+  const sourceProgress = Math.min(1, Math.max(0, (editorSourceSelection().start - range.start) / sourceLength));
   const anchorTop = blockRect.top + blockRect.height * sourceProgress;
   const caretTop = caret.top + caret.height / 2;
   const margin = Math.max(caret.lineHeight * 2, Math.min(96, preview.clientHeight * .18));
@@ -4076,7 +4298,7 @@ function createPreviewCacheState(renderMetadata, patchedBlocks) {
     previousListEntriesByBlock.set(entry.blockElement, entries);
   });
   const blocks = previewContentBlocks(pv, patchedBlocks);
-  const source = $('#note-content').value;
+  const source = editorSourceValue();
   if (!source || typeof marked === 'undefined' || typeof marked.lexer !== 'function') return null;
   const descriptors = previewBlockDescriptors(source, renderMetadata);
   if (!descriptors || descriptors.length !== blocks.length) return null;
@@ -4142,7 +4364,7 @@ function processPreviewCacheBlock(state) {
 }
 
 function commitPreviewCache(state, generation) {
-  if (generation !== previewCacheGeneration || state.source !== $('#note-content').value || state.blocks !== previewBlocks) return;
+  if (generation !== previewCacheGeneration || state.source !== editorSourceValue() || state.blocks !== previewBlocks) return;
   previewBlockRanges = state.ranges;
   previewRangeSource = state.source;
   interactiveBlockItems = state.blockItems;
@@ -4174,7 +4396,7 @@ function cachePreviewBlocks(renderMetadata = null, patchedBlocks = null, {defer 
   }
   const process = () => {
     previewCacheHandle = null;
-    if (generation !== previewCacheGeneration || state.source !== $('#note-content').value) return;
+    if (generation !== previewCacheGeneration || state.source !== editorSourceValue()) return;
     const started = performance.now();
     try {
       while (state.index < state.descriptors.length && (!defer || performance.now() - started < 5)) processPreviewCacheBlock(state);
@@ -4206,10 +4428,9 @@ function highlightBlock() {
     clearPreviewHighlight();
     return;
   }
-  const ta = $('#note-content');
-  const text = ta.value;
-  const pos = ta.selectionStart;
-  if (!text.trim() || !previewBlocks.length) {
+  const text = editorSourceValue();
+  const pos = editorSourceSelection().start;
+  if (!text || !/\S/.test(text) || !previewBlocks.length) {
     clearPreviewHighlight();
     previewHighlightPending = false;
     return;
@@ -4273,7 +4494,16 @@ $('#delete-btn').addEventListener('click', async () => {
 });
 
 // --- Live Preview ---
-$('#note-content').addEventListener('input', () => {
+$('#note-content').addEventListener('beforeinput', event => {
+  pendingEditorInputRange = {
+    length:editorDocumentLength,
+    start:event.target.selectionStart,
+    end:event.target.selectionEnd,
+  };
+});
+function handleEditorSourceInput({length}) {
+  editorDocumentLength = length;
+  cancelScheduledZenCaretCenter();
   if (!interactiveSourceMutation) interactiveHistory = [];
   if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
   markDirty();
@@ -4281,21 +4511,40 @@ $('#note-content').addEventListener('input', () => {
   previewHighlightPending = true;
   previewRangeSource = null;
   previewBlockRanges = [];
-  scheduleHighlight();
-  scheduleEditorCaretCue();
-  updateZenOverlays();
-  centerZenCaretNow();
+  if (isPreviewVisible()) scheduleHighlight();
+  scheduleEditorCaretCue({afterTyping:true});
+  scheduleZenWordCount();
   cancelPendingPreviewRender();
-  previewTimer = setTimeout(requestPreviewRender, 500);
+  if (isPreviewVisible()) previewTimer = setTimeout(requestPreviewRender, 500);
+}
+
+$('#note-content').addEventListener('input', event => {
+  const pending = pendingEditorInputRange;
+  pendingEditorInputRange = null;
+  const insertedLength = typeof event.data === 'string'
+    ? event.data.length
+    : ['insertLineBreak', 'insertParagraph'].includes(event.inputType) ? 1
+      : event.inputType?.startsWith('delete') ? 0 : null;
+  const length = pending && insertedLength !== null
+    ? pending.length - Math.max(0, pending.end - pending.start) + insertedLength
+    : event.target.value.length;
+  handleEditorSourceInput({length});
 });
-$('#note-content').addEventListener('click', () => { scheduleHighlight(); scheduleEditorCaretCue(); });
-$('#note-content').addEventListener('keyup', () => { scheduleHighlight(); scheduleEditorCaretCue(); centerZenCaretNow(); });
+$('#note-content').addEventListener('click', () => {
+  if (isPreviewVisible()) scheduleHighlight();
+  scheduleEditorCaretCue();
+});
+$('#note-content').addEventListener('keyup', event => {
+  if (isPreviewVisible()) scheduleHighlight();
+  const caretNavigationKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'];
+  if (caretNavigationKeys.includes(event.key)) scheduleEditorCaretCue();
+});
 $('#note-content').addEventListener('focus', () => { scheduleEditorCaretCue(); centerZenCaretNow(); });
 $('#note-content').addEventListener('blur', scheduleEditorCaretCue);
-$('#note-content').addEventListener('select', scheduleEditorCaretCue);
-$('#note-content').addEventListener('scroll', scheduleEditorCaretCue, {passive:true});
+$('#note-content').addEventListener('select', () => scheduleEditorCaretCue({afterTyping:true}));
+$('#note-content').addEventListener('scroll', () => scheduleEditorCaretCue({afterTyping:true}), {passive:true});
 document.addEventListener('selectionchange', () => {
-  if (document.activeElement === editorSourceTextarea) scheduleEditorCaretCue();
+  if (document.activeElement === editorSourceTextarea) scheduleEditorCaretCue({afterTyping:true});
 });
 window.addEventListener('resize', scheduleEditorCaretCue, {passive:true});
 if (typeof ResizeObserver === 'function' && editorSourceTextarea) {
@@ -4409,11 +4658,11 @@ function interactiveEntryForElement(element) {
 }
 
 function interactivePreviewSourceIsCurrent() {
-  const source = $('#note-content').value;
+  const source = editorSourceValue();
   return renderedPreviewSource === source && previewRangeSource === source;
 }
 
-function previewEditPosition(entry, source = $('#note-content').value) {
+function previewEditPosition(entry, source = editorSourceValue()) {
   if (!entry || typeof source !== 'string') return 0;
   const raw = source.slice(entry.start, entry.end);
   let prefix = '';
@@ -4439,8 +4688,8 @@ function editPreviewEntry(entry) {
   } else if (panelState === 'preview') {
     setPanelState('editor', {preservePanelWide:true});
   }
-  textarea.focus({preventScroll:true});
   textarea.setSelectionRange(position, position);
+  textarea.focus({preventScroll:true});
   centerEditorCaretInView();
   scheduleHighlight();
   return true;
@@ -4470,11 +4719,12 @@ $('#preview').addEventListener('click', event => {
   if (interactivePreviewActive && checkbox && !checkbox.disabled && interactivePreviewSourceIsCurrent()) {
     const item = checkbox.closest('li[data-interactive-start]');
     const entry = interactiveEntryByElement.get(item);
-    const change = window.VylkInteractive?.toggleTask($('#note-content').value, entry);
+    const source = editorSourceValue();
+    const change = window.VylkInteractive?.toggleTask(source, entry);
     if (!change) return;
     const applied = applyInteractiveSource(change.source, {
       start:change.start,
-      removed:$('#note-content').value.slice(change.start, change.end),
+      removed:source.slice(change.start, change.end),
       inserted:change.inserted,
     }, {preservePreview:true});
     if (applied) {
@@ -4578,6 +4828,7 @@ function renderPreviewDrag(frameTime = performance.now()) {
   drag.frame = null;
   if (!drag.armed) return;
   drag.ghost.style.transform = `translate3d(${drag.x - drag.startX}px,${drag.y - drag.startY}px,0)`;
+  if (!drag.hasMoved) return;
   const preview = $('#preview');
   const previewRect = preview.getBoundingClientRect();
   const outsidePreview = drag.x < previewRect.left || drag.x > previewRect.right || drag.y < previewRect.top || drag.y > previewRect.bottom;
@@ -4611,7 +4862,9 @@ function renderPreviewDrag(frameTime = performance.now()) {
 function cancelPreviewDrag({animateReturn = true} = {}) {
   const drag = activePreviewDrag;
   if (!drag) return;
+  if (drag.holdTimer !== null) clearTimeout(drag.holdTimer);
   if (drag.frame !== null) cancelAnimationFrame(drag.frame);
+  drag.pendingElement?.classList.remove('is-drag-pending');
   const returnLayout = drag.armed && animateReturn ? capturePreviewLayout(drag.placeholder?.parentNode, drag.sourceElement) : null;
   if (drag.armed) {
     drag.sourceElement?.classList.remove('preview-dragging');
@@ -4628,83 +4881,128 @@ function cancelPreviewDrag({animateReturn = true} = {}) {
   if (drag.armed) setInteractiveSourceLocked(false);
 }
 
+function armPreviewDrag(drag = activePreviewDrag) {
+  if (!drag || drag !== activePreviewDrag || drag.armed) return false;
+  if (!interactivePreviewSourceIsCurrent() || !drag.sourceElement?.isConnected || !drag.visualElement?.isConnected) {
+    cancelPreviewDrag({animateReturn:false});
+    return false;
+  }
+  if (drag.holdTimer !== null) clearTimeout(drag.holdTimer);
+  drag.holdTimer = null;
+  drag.pendingElement?.classList.remove('is-drag-pending');
+  drag.armed = true;
+  window.getSelection()?.removeAllRanges();
+  const preview = $('#preview');
+  try {
+    preview.setPointerCapture?.(drag.pointerID);
+  } catch {
+    // The pointer may have been cancelled between the hold timer and this frame.
+  }
+  const sourceRect = drag.sourceElement.getBoundingClientRect();
+  const visualRect = drag.visualElement.getBoundingClientRect();
+  const ghost = drag.visualElement.cloneNode(true);
+  ghost.removeAttribute('data-interactive-start');
+  ghost.removeAttribute('data-interactive-scope');
+  ghost.classList.add('preview-drag-ghost');
+  ghost.style.width = `${visualRect.width}px`;
+  ghost.style.height = `${visualRect.height}px`;
+  ghost.style.left = `${visualRect.left}px`;
+  ghost.style.top = `${visualRect.top}px`;
+  drag.sourceDisplay = drag.sourceElement.style.display;
+  drag.placeholderWidth = sourceRect.width;
+  drag.placeholderHeight = sourceRect.height;
+  drag.placeholder = null;
+  const placeholder = createPreviewPlaceholder(drag, drag.sourceElement.parentNode);
+  drag.sourceElement.style.display = 'none';
+  drag.sourceElement.before(placeholder);
+  setInteractiveSourceLocked(true);
+  drag.ghost = ghost;
+  const portal = document.createElement('div');
+  portal.className = 'preview preview-drag-portal interactive-preview-active';
+  portal.setAttribute('aria-hidden', 'true');
+  portal.append(ghost);
+  drag.portal = portal;
+  document.body.append(portal);
+  drag.sourceElement.classList.add('preview-dragging');
+  drag.visualElement.classList.add('preview-dragging');
+  document.documentElement.classList.add('preview-drag-active');
+  if (drag.frame === null) drag.frame = requestAnimationFrame(renderPreviewDrag);
+  return true;
+}
+
 $('#preview').addEventListener('pointerdown', event => {
   if (!interactivePreviewActive || !interactivePreviewSourceIsCurrent() || event.button !== 0 || event.isPrimary === false) return;
   const startedOnHandle = Boolean(event.target.closest('.preview-drag-handle'));
-  if (event.pointerType === 'touch' && !startedOnHandle) return;
+  if (!startedOnHandle) return;
   const item = event.target.closest('#preview > [data-interactive-start], #preview li[data-interactive-start]');
   if (!item || event.target.closest('a,input,button,select,textarea')) return;
   const entry = interactiveEntryByElement.get(item);
   if (!entry) return;
   if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
-  activePreviewDrag = {
+  const pointerType = event.pointerType || 'mouse';
+  const pendingElement = entry.card || entry.visualElement || entry.element;
+  const drag = {
     pointerID:event.pointerId,
+    pointerType,
     sourceStart:entry.start,
     scope:entry.scope,
     sourceElement:entry.element,
     visualElement:entry.visualElement || entry.element,
-    startedOnHandle,
-    startedAt:performance.now(),
+    pendingElement,
     startX:event.clientX,
     startY:event.clientY,
     x:event.clientX,
     y:event.clientY,
+    hasMoved:false,
     armed:false,
+    holdTimer:null,
     frame:null,
     lastFrameAt:null,
     target:null,
   };
+  activePreviewDrag = drag;
+  if (pointerType === 'touch') {
+    event.preventDefault();
+    pendingElement.classList.add('is-drag-pending');
+    try {
+      $('#preview').setPointerCapture?.(event.pointerId);
+    } catch {
+      // Synthetic and already-cancelled pointers cannot be captured.
+    }
+    drag.holdTimer = window.setTimeout(() => armPreviewDrag(drag), 220);
+  }
 });
 
-$('#preview').addEventListener('selectstart', () => {
-  if (activePreviewDrag && !activePreviewDrag.armed && !activePreviewDrag.startedOnHandle) activePreviewDrag = null;
+$('#preview').addEventListener('touchstart', event => {
+  if (event.target.closest('.preview-drag-handle')) event.preventDefault();
+}, {passive:false});
+
+$('#preview').addEventListener('selectstart', event => {
+  if (event.target.closest('.preview-drag-handle')) {
+    event.preventDefault();
+  }
 });
 
 $('#preview').addEventListener('contextmenu', event => {
   if (event.target.closest('.preview-drag-handle')) event.preventDefault();
 });
 
+$('#preview').addEventListener('dragstart', event => {
+  if (event.target.closest('.preview-drag-handle')) event.preventDefault();
+});
+
 document.addEventListener('pointermove', event => {
   const drag = activePreviewDrag;
   if (!drag || drag.pointerID !== event.pointerId) return;
+  if (drag.pointerType === 'touch') event.preventDefault();
   drag.x = event.clientX;
   drag.y = event.clientY;
-  if (!drag.armed && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) < 6) return;
-  if (!drag.armed && event.pointerType === 'touch' && performance.now() - drag.startedAt < 220) return;
+  const moved = Math.hypot(drag.x - drag.startX, drag.y - drag.startY) >= 6;
+  if (moved) drag.hasMoved = true;
   if (!drag.armed) {
+    if (drag.pointerType === 'touch' || !moved) return;
     event.preventDefault();
-    drag.armed = true;
-    window.getSelection()?.removeAllRanges();
-    const preview = $('#preview');
-    preview.setPointerCapture?.(event.pointerId);
-    const sourceRect = drag.sourceElement.getBoundingClientRect();
-    const visualRect = drag.visualElement.getBoundingClientRect();
-    const ghost = drag.visualElement.cloneNode(true);
-    ghost.removeAttribute('data-interactive-start');
-    ghost.removeAttribute('data-interactive-scope');
-    ghost.classList.add('preview-drag-ghost');
-    ghost.style.width = `${visualRect.width}px`;
-    ghost.style.height = `${visualRect.height}px`;
-    ghost.style.left = `${visualRect.left}px`;
-    ghost.style.top = `${visualRect.top}px`;
-    drag.sourceDisplay = drag.sourceElement.style.display;
-    drag.placeholderWidth = sourceRect.width;
-    drag.placeholderHeight = sourceRect.height;
-    drag.placeholder = null;
-    const placeholder = createPreviewPlaceholder(drag, drag.sourceElement.parentNode);
-    drag.sourceElement.style.display = 'none';
-    drag.sourceElement.before(placeholder);
-    setInteractiveSourceLocked(true);
-    drag.ghost = ghost;
-    const portal = document.createElement('div');
-    portal.className = 'preview preview-drag-portal interactive-preview-active';
-    portal.setAttribute('aria-hidden', 'true');
-    portal.append(ghost);
-    drag.portal = portal;
-    document.body.append(portal);
-    drag.sourceElement.classList.add('preview-dragging');
-    drag.visualElement.classList.add('preview-dragging');
-    document.documentElement.classList.add('preview-drag-active');
+    if (!armPreviewDrag(drag)) return;
   }
   if (drag.frame === null) drag.frame = requestAnimationFrame(renderPreviewDrag);
 });
@@ -4718,7 +5016,7 @@ function finishPreviewDrag(event) {
       if ($('#preview').hasPointerCapture?.(event.pointerId)) $('#preview').releasePointerCapture(event.pointerId);
       return;
     }
-    const source = $('#note-content').value;
+    const source = editorSourceValue();
     const entries = [...interactiveBlockItems, ...interactiveListItems];
     const change = window.VylkInteractive?.moveMarkdownUnit(source, entries, drag.sourceStart, drag.scope, drag.target.start, drag.target.scope, drag.target.placement);
     cancelPreviewDrag({animateReturn:false});
@@ -4771,9 +5069,15 @@ function cancelPreviewDOMRender() {
   $('#preview')?.removeAttribute('aria-busy');
 }
 
+function setPreviewBusy(busy) {
+  $('#preview')?.toggleAttribute('aria-busy', busy);
+}
+
 function cancelPendingPreviewRender() {
   previewRenderGeneration++;
   previewRenderRequest = null;
+  if (previewWorkerPostFrame !== null) cancelAnimationFrame(previewWorkerPostFrame);
+  previewWorkerPostFrame = null;
   cancelPreviewCache();
   cancelPreviewDOMRender();
   if (previewTimer) clearTimeout(previewTimer);
@@ -4878,7 +5182,7 @@ function renderPreviewBlocksProgressively(md, renderMetadata) {
 
   const process = () => {
     previewDOMHandle = null;
-    if (generation !== previewRenderGeneration || $('#note-content').value !== md || !isPreviewVisible()) {
+    if (generation !== previewRenderGeneration || editorSourceValue() !== md || !isPreviewVisible()) {
       preview.removeAttribute('aria-busy');
       return;
     }
@@ -4906,6 +5210,50 @@ function renderPreviewBlocksProgressively(md, renderMetadata) {
     renderedPreviewMetadata = renderMetadata;
     previewHighlightPending = false;
     cachePreviewBlocks(renderMetadata, elements, {defer:true});
+  };
+  process();
+}
+
+function renderPreviewHTMLChunksProgressively(md, renderMetadata) {
+  const preview = $('#preview');
+  const generation = previewRenderGeneration;
+  const chunks = renderMetadata.htmlChunks;
+  let index = 0;
+  disconnectPreviewDecorationObserver();
+  preview.replaceChildren();
+  preview.setAttribute('aria-busy', 'true');
+  previewBlocks = [];
+  previewBlockRanges = [];
+  previewRangeSource = null;
+  interactiveBlockItems = [];
+  interactiveListItems = [];
+
+  const process = () => {
+    previewDOMHandle = null;
+    if (generation !== previewRenderGeneration || editorSourceValue() !== md || !isPreviewVisible()) {
+      preview.removeAttribute('aria-busy');
+      return;
+    }
+    const fragment = document.createDocumentFragment();
+    const started = performance.now();
+    while (index < chunks.length && performance.now() - started < 5) {
+      const template = document.createElement('template');
+      template.innerHTML = chunks[index++];
+      sanitizePreview(template.content);
+      linkifyWikiLinks(template.content);
+      fragment.append(template.content);
+    }
+    preview.append(fragment);
+    if (index < chunks.length) {
+      previewDOMHandle = setTimeout(process, 0);
+      return;
+    }
+    preview.removeAttribute('aria-busy');
+    const cachedMetadata = {...renderMetadata, htmlChunks:null};
+    renderedPreviewSource = md;
+    renderedPreviewMetadata = cachedMetadata;
+    previewHighlightPending = false;
+    cachePreviewBlocks(cachedMetadata, null, {defer:true});
   };
   process();
 }
@@ -4956,8 +5304,12 @@ function patchPreviewBlocks(renderMetadata) {
 }
 
 function renderPreviewHTML(md, html, renderMetadata = null) {
-  if (!isPreviewVisible() || $('#note-content').value !== md) return;
+  if (!isPreviewVisible() || editorSourceValue() !== md) return;
   const patchedBlocks = patchPreviewBlocks(renderMetadata);
+  if (patchedBlocks === null && renderMetadata?.htmlChunks?.length) {
+    renderPreviewHTMLChunksProgressively(md, renderMetadata);
+    return;
+  }
   if (patchedBlocks === null && renderMetadata?.incrementalSafe && renderMetadata.blocks.length > 80) {
     renderPreviewBlocksProgressively(md, renderMetadata);
     return;
@@ -4985,20 +5337,27 @@ function ensurePreviewRenderWorker() {
     previewRenderWorker.addEventListener('message', event => {
       const result = event.data || {};
       const request = previewRenderRequest;
-      if (!request || result.id !== request.id || result.id !== previewRenderGeneration || request.source !== $('#note-content').value || !isPreviewVisible()) return;
+      if (!request || result.id !== request.id || result.id !== previewRenderGeneration) return;
+      if (request.source !== editorSourceValue() || !isPreviewVisible()) {
+        previewRenderRequest = null;
+        setPreviewBusy(false);
+        return;
+      }
       previewRenderRequest = null;
       const incrementalSafe = Boolean(result.incrementalSafe && Array.isArray(result.blocks));
       const html = incrementalSafe ? null : result.html;
-      if (result.error || !incrementalSafe && typeof html !== 'string') {
+      const htmlChunks = Array.isArray(result.htmlChunks) ? result.htmlChunks : null;
+      if (result.error || !incrementalSafe && typeof html !== 'string' && !htmlChunks) {
         previewWorkerUnavailable = true;
         previewRenderWorker?.terminate();
         previewRenderWorker = null;
         schedulePreviewApply(() => updatePreview());
         return;
       }
-      const metadata = {source:request.source, blocks:result.blocks, incrementalSafe};
+      const metadata = {source:request.source, blocks:result.blocks, incrementalSafe, htmlChunks};
       if (request.source === renderedPreviewSource && previewRangeSource === request.source) {
         renderedPreviewMetadata = metadata;
+        setPreviewBusy(false);
         return;
       }
       schedulePreviewApply(() => {
@@ -5030,11 +5389,12 @@ function primePreviewMetadata(md) {
   worker.postMessage({id, source:md});
 }
 
-function requestPreviewRender() {
+function requestPreviewRender({announceBusy = false} = {}) {
   previewTimer = null;
   if (!isPreviewVisible()) return;
-  const md = $('#note-content').value;
+  const md = editorSourceValue();
   if (md === renderedPreviewSource) {
+    setPreviewBusy(false);
     scheduleHighlight();
     return;
   }
@@ -5043,14 +5403,27 @@ function requestPreviewRender() {
     updatePreview();
     return;
   }
+  if (announceBusy) setPreviewBusy(true);
+  if (previewRenderRequest?.source === md) return;
   const id = ++previewRenderGeneration;
   previewRenderRequest = {id, source:md};
-  worker.postMessage({id, source:md});
+  const post = () => {
+    previewWorkerPostFrame = null;
+    if (previewRenderRequest?.id !== id) return;
+    if (editorSourceValue() !== md || !isPreviewVisible()) {
+      previewRenderRequest = null;
+      setPreviewBusy(false);
+      return;
+    }
+    worker.postMessage({id, source:md});
+  };
+  if (announceBusy) previewWorkerPostFrame = requestAnimationFrame(post);
+  else post();
 }
 
 function updatePreview() {
   if (!isPreviewVisible()) return;
-  const md = $('#note-content').value;
+  const md = editorSourceValue();
   if (md === renderedPreviewSource) {
     scheduleHighlight();
     return;
@@ -5145,6 +5518,7 @@ function normalizePrefs(value = {}, fallback = {}) {
   merged.revision = Number.isSafeInteger(Number(merged.revision)) && Number(merged.revision) > 0 ? Number(merged.revision) : 1;
   if (!['normal', 'compact', 'off'].includes(merged.statusDisplay)) merged.statusDisplay = DEFAULT_PREFS.statusDisplay;
   if (!CONTENT_WIDTH_VALUES.includes(merged.contentWidth)) merged.contentWidth = DEFAULT_PREFS.contentWidth;
+  if (!CONTENT_WIDTH_VALUES.includes(merged.zenPageWidth)) merged.zenPageWidth = DEFAULT_PREFS.zenPageWidth;
   const savedStartView = value.startView ?? fallback.startView;
   if (['editor', 'preview', 'split', 'zen'].includes(savedStartView)) merged.startView = savedStartView;
   else merged.startView = (value.hidePreview ?? fallback.hidePreview) ? 'editor' : DEFAULT_PREFS.startView;
@@ -5341,6 +5715,7 @@ function openPreferences({route = 'push'} = {}) {
   $('#pref-interactive-preview').checked = prefs.interactivePreview;
   $('#pref-status').value = prefs.statusDisplay;
   $('#pref-content-width').value = prefs.contentWidth;
+  $('#pref-zen-page-width').value = prefs.zenPageWidth;
   $('#pref-theme').value = prefs.theme;
   $('#pref-accent').value = prefs.accentColor || themeByID.get(prefs.theme)?.vars.accent || '#ae2448';
   $('#pref-accent-mode').value = prefs.accentColor ? 'custom' : 'theme';
@@ -5348,7 +5723,6 @@ function openPreferences({route = 'push'} = {}) {
   $('#pref-zen-word-count').checked = prefs.zenWordCount;
   $('#pref-zen-show-title').checked = prefs.zenShowTitle;
   $('#pref-zen-show-controls').checked = prefs.zenShowControls;
-  $('#pref-zen-interactive-preview').checked = prefs.zenInteractivePreview;
   renderFontOptions();
   renderShortcutPreferences();
   if (route === 'push') setPreferencesRoute();
@@ -5420,7 +5794,6 @@ $('#pref-interactive-preview').addEventListener('change', function () {
 $('#pref-zen-word-count').addEventListener('change', function () { void savePref('zenWordCount', this.checked); });
 $('#pref-zen-show-title').addEventListener('change', function () { void savePref('zenShowTitle', this.checked); });
 $('#pref-zen-show-controls').addEventListener('change', function () { void savePref('zenShowControls', this.checked); });
-$('#pref-zen-interactive-preview').addEventListener('change', function () { void savePref('zenInteractivePreview', this.checked); });
 $('#pref-theme').addEventListener('change', function () { void savePref('theme', this.value); });
 $('#pref-accent').addEventListener('change', function () { void savePref('accentColor', this.value); });
 $('#pref-accent-mode').addEventListener('change', function () {
@@ -5458,6 +5831,7 @@ FONT_SLOTS.forEach(slot => {
 });
 $('#pref-status').addEventListener('change', function () { void savePref('statusDisplay', this.value); });
 $('#pref-content-width').addEventListener('change', function () { void savePref('contentWidth', this.value); });
+$('#pref-zen-page-width').addEventListener('change', function () { void savePref('zenPageWidth', this.value); });
 
 $$('.prefs-nav').forEach(button => button.addEventListener('click', () => {
   const section = button.dataset.prefSection;
@@ -5538,7 +5912,7 @@ function focusSourceEditor() {
     zenViewState = 'editor';
     setPanelState('zen');
   } else if (panelState === 'preview') setPanelState('editor');
-  $('#note-content').focus({preventScroll:true});
+  focusCurrentSourceEditor();
 }
 
 function setWritingView(view) {
@@ -5546,12 +5920,12 @@ function setWritingView(view) {
     zenViewState = view;
     setPanelState('zen');
     if (view === 'preview') focusPreview();
-    else $('#note-content').focus({preventScroll:true});
+    else focusCurrentSourceEditor();
     return;
   }
   setPanelState(view);
   if (view === 'preview') focusPreview();
-  else $('#note-content').focus({preventScroll:true});
+  else focusCurrentSourceEditor();
 }
 
 function switchEditorPreview() {
@@ -5559,7 +5933,7 @@ function switchEditorPreview() {
     zenViewState = zenViewState === 'preview' ? 'editor' : 'preview';
     setPanelState('zen');
     if (zenViewState === 'preview') focusPreview();
-    else $('#note-content').focus({preventScroll:true});
+    else focusCurrentSourceEditor();
     return;
   }
   if (panelState === 'editor') {
@@ -5569,10 +5943,10 @@ function switchEditorPreview() {
   }
   if (panelState === 'preview') {
     setPanelState('editor');
-    $('#note-content').focus({preventScroll:true});
+    focusCurrentSourceEditor();
     return;
   }
-  if (document.activeElement?.closest?.('#preview-panel')) $('#note-content').focus({preventScroll:true});
+  if (document.activeElement?.closest?.('#preview-panel')) focusCurrentSourceEditor();
   else focusPreview();
 }
 
@@ -5599,8 +5973,8 @@ registerShortcutCommand({id:'editor.tags', group:'Editor', label:'Edit tags', de
 registerShortcutCommand({id:'editor.focus', group:'Editor', label:'Focus editor', description:'Move focus to the Markdown editor.', defaultBinding:sequenceShortcut('e'), scope:'editor', run:focusSourceEditor});
 registerShortcutCommand({id:'view.write', group:'View', label:'Write view', description:'Show only the Markdown editor.', defaultBinding:sequenceShortcut('1'), scope:'editor', run:() => setWritingView('editor')});
 registerShortcutCommand({id:'view.preview', group:'View', label:'Preview view', description:'Show only the rendered preview.', defaultBinding:sequenceShortcut('2'), scope:'editor', run:() => setWritingView('preview')});
-registerShortcutCommand({id:'view.split', group:'View', label:'Split view', description:'Show editor and preview together.', defaultBinding:sequenceShortcut('3'), scope:'editor', run:() => { setPanelState('both'); $('#note-content').focus({preventScroll:true}); }});
-registerShortcutCommand({id:'view.zen', group:'View', label:'Zen mode', description:'Write without app chrome. Press Escape to return.', scope:'editor', run:() => { setPanelState('zen'); $('#note-content').focus({preventScroll:true}); }});
+registerShortcutCommand({id:'view.split', group:'View', label:'Split view', description:'Show editor and preview together.', defaultBinding:sequenceShortcut('3'), scope:'editor', run:() => { setPanelState('both'); focusCurrentSourceEditor(); }});
+registerShortcutCommand({id:'view.zen', group:'View', label:'Zen mode', description:'Write without app chrome. Press Escape to return.', scope:'editor', run:() => { setPanelState('zen'); focusCurrentSourceEditor(); }});
 registerShortcutCommand({id:'view.switch', group:'View', label:'Switch editor and preview', description:'Move to the other pane.', defaultBinding:sequenceShortcut('4'), scope:'editor', run:switchEditorPreview});
 [
   ['format.bold', 'Bold', 'Make selected text bold.', 'bold', directShortcut('b')],
@@ -5897,7 +6271,7 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && panelState === 'zen') {
     event.preventDefault();
     setPanelState(zenModeReturnState);
-    $('#note-content').focus({preventScroll:true});
+    focusCurrentSourceEditor();
     return;
   }
   if (event.defaultPrevented || event.isComposing || event.repeat || hasOpenModal()) return;

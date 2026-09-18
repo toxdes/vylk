@@ -9,6 +9,7 @@ const serviceWorkerSource = fs.readFileSync(path.join(testDirectory, '..', 'stat
 
 test('pre-caches the interactive preview helper with the app shell', () => {
   expect(serviceWorkerSource).toContain("'/interactive-preview.js'");
+  expect(serviceWorkerSource).toContain("'/zen-editor.js'");
   expect(serviceWorkerSource).toContain("'/preview-worker.js'");
 });
 

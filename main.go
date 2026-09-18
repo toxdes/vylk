@@ -42,6 +42,7 @@ var frontendRevisionFiles = []string{
 	"static/app.js",
 	"static/shortcuts.js",
 	"static/interactive-preview.js",
+	"static/zen-editor.js",
 	"static/preview-worker.js",
 	"static/themes.js",
 	"static/merge.js",
@@ -136,7 +137,7 @@ func artificialRTTDelayMiddleware(delay time.Duration, next http.Handler) http.H
 func staticCacheMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/", "/index.html", "/sw.js", "/manifest.json", "/app.js", "/shortcuts.js", "/interactive-preview.js", "/preview-worker.js", "/style.css", "/themes.js", "/merge.js", "/marked.min.js":
+		case "/", "/index.html", "/sw.js", "/manifest.json", "/app.js", "/shortcuts.js", "/interactive-preview.js", "/zen-editor.js", "/preview-worker.js", "/style.css", "/themes.js", "/merge.js", "/marked.min.js":
 			// Cloudflare respects no-transform and therefore cannot inject its
 			// Web Analytics script into our strictly CSP-protected app shell.
 			w.Header().Set("Cache-Control", "no-cache, no-transform")

@@ -138,7 +138,8 @@ describe('keyboard shortcuts', () => {
     expect(app.window.document.querySelector('#prefs-title').textContent).toBe('Zen mode');
     expect(app.window.document.querySelector('#prefs-panel-zen').hidden).toBe(false);
     expect(app.window.document.querySelector('#prefs-panel-editor').hidden).toBe(true);
-    expect(app.window.document.querySelector('#pref-zen-interactive-preview')).not.toBeNull();
+    expect(app.window.document.querySelector('#pref-zen-interactive-preview')).toBeNull();
+    expect([...app.window.document.querySelectorAll('#pref-zen-page-width option')].map(option => option.value)).toEqual(['compact', 'standard', 'wide', 'full']);
   });
 
   test('clears a shortcut from its recorder with Delete and keeps Escape as cancel', async () => {
@@ -511,6 +512,25 @@ describe('editor display preferences', () => {
     expect(pending).toHaveLength(1);
     expect(pending[0].prefs._sync_patch).toEqual({contentWidth: 'wide'});
   });
+
+  test('applies and syncs Zen page width independently from the app content width', async () => {
+    const app = track(await createApp());
+    const root = app.window.document.documentElement;
+
+    expect(root.dataset.contentWidth).toBe('standard');
+    expect(root.dataset.zenPageWidth).toBe('standard');
+    await app.hooks.savePref('contentWidth', 'full');
+    await app.hooks.savePref('zenPageWidth', 'compact');
+    expect(root.dataset.contentWidth).toBe('full');
+    expect(root.dataset.zenPageWidth).toBe('compact');
+    expect(styleSource).toContain(':root[data-zen-page-width="compact"]{--zen-content-max-width:54rem}');
+    expect(styleSource).toContain('--zen-page-width:min(100%,var(--zen-content-max-width));');
+
+    app.hooks.cancelScheduledSync();
+    const pending = await app.hooks.pendingOperations();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].prefs._sync_patch).toEqual({contentWidth:'full', zenPageWidth:'compact'});
+  });
 });
 
 describe('markdown preview policy', () => {
@@ -548,11 +568,11 @@ describe('markdown preview policy', () => {
     expect(app.window.document.querySelectorAll('#preview [data-preview-drag-indicator]')).toHaveLength(0);
   });
 
-  test('keeps interactive preview usable inside Zen mode', async () => {
+  test('keeps Zen preview read-only while preserving standard interactive preview', async () => {
     const app = track(await createApp({realMarked: true}));
     const source = '# Heading\n\n- [ ] ship this\n- Keep writing';
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Tasks', content: source});
-    await app.hooks.savePref('zenInteractivePreview', true);
+    await app.hooks.savePref('interactivePreview', true);
     app.hooks.setPanelState('zen');
     app.window.document.querySelector('[data-zen-action="preview"]').click();
 
@@ -563,21 +583,11 @@ describe('markdown preview policy', () => {
     expect(editor.classList.contains('zen-mode')).toBe(true);
     expect(previewPanel.classList.contains('panel-hidden')).toBe(false);
     expect(editorPanel.classList.contains('panel-hidden')).toBe(true);
-    expect(preview.querySelectorAll('[data-preview-drag-indicator]')).toHaveLength(3);
-
-    const checkbox = preview.querySelector('input[type="checkbox"]');
-    checkbox.click();
-    expect(app.window.document.querySelector('#note-content').value).toContain('- [x] ship this');
-
-    preview.querySelector('.preview-edit-button').click();
-    expect(editor.classList.contains('zen-mode')).toBe(true);
-    expect(previewPanel.classList.contains('panel-hidden')).toBe(true);
-    expect(editorPanel.classList.contains('panel-hidden')).toBe(false);
-    expect(app.window.document.activeElement).toBe(app.window.document.querySelector('#note-content'));
+    expect(preview.classList.contains('interactive-preview-active')).toBe(false);
+    expect(preview.querySelectorAll('[data-preview-drag-indicator]')).toHaveLength(0);
+    expect(preview.querySelector('input[type="checkbox"]').disabled).toBe(true);
 
     app.hooks.setPanelState('both');
-    expect(preview.classList.contains('interactive-preview-active')).toBe(false);
-    await app.hooks.savePref('interactivePreview', true);
     expect(preview.classList.contains('interactive-preview-active')).toBe(true);
   });
 
@@ -699,7 +709,7 @@ describe('markdown preview policy', () => {
     const card = app.window.document.querySelector('.interactive-preview-block-card');
     const content = card.querySelector('.preview-drag-content');
     content.dispatchEvent(pointerEvent(app.window, 'pointerdown', {button:0, clientX:120, clientY:100}));
-    expect(app.hooks.getInteractivePreviewState().pending).toBe(true);
+    expect(app.hooks.getInteractivePreviewState().pending).toBe(false);
     content.dispatchEvent(new app.window.Event('selectstart', {bubbles:true, cancelable:true}));
     expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:false, dragging:false, sourceLocked:false});
 
@@ -732,7 +742,7 @@ describe('markdown preview policy', () => {
     expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:false, dragging:false, sourceLocked:false});
   });
 
-  test('requires a short touch hold on the drag handle before moving', async () => {
+  test('claims only the touch handle and arms a stationary hold', async () => {
     const app = track(await createApp({realMarked: true}));
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '# Heading\n\nParagraph'});
     await app.hooks.savePref('interactivePreview', true);
@@ -745,14 +755,38 @@ describe('markdown preview policy', () => {
     preview.getBoundingClientRect = () => ({left:80, top:60, right:420, bottom:300, width:340, height:240, x:80, y:60, toJSON() { return this; }});
     app.window.document.elementFromPoint = () => card;
 
-    handle.dispatchEvent(pointerEvent(app.window, 'pointerdown', {pointerId:3, pointerType:'touch', button:0, clientX:120, clientY:100}));
-    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointermove', {pointerId:3, pointerType:'touch', buttons:1, clientX:170, clientY:130}));
+    const pointerDown = pointerEvent(app.window, 'pointerdown', {pointerId:3, pointerType:'touch', button:0, clientX:120, clientY:100});
+    handle.dispatchEvent(pointerDown);
+    expect(pointerDown.defaultPrevented).toBe(true);
+    expect(card.classList.contains('is-drag-pending')).toBe(true);
     expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:true, dragging:false, sourceLocked:false});
 
     await new Promise(resolve => setTimeout(resolve, 240));
-    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointermove', {pointerId:3, pointerType:'touch', buttons:1, clientX:170, clientY:130}));
     await vi.waitFor(() => expect(app.hooks.getInteractivePreviewState()).toMatchObject({pending:true, dragging:true, sourceLocked:true}));
+    expect(card.classList.contains('is-drag-pending')).toBe(false);
+
+    app.window.document.dispatchEvent(pointerEvent(app.window, 'pointermove', {pointerId:3, pointerType:'touch', buttons:1, clientX:170, clientY:130}));
+    await vi.waitFor(() => expect(app.hooks.getInteractivePreviewState().ghostTransform).toBe('translate3d(50px,30px,0)'));
     app.window.document.dispatchEvent(pointerEvent(app.window, 'pointercancel', {pointerId:3, pointerType:'touch', clientX:170, clientY:130}));
+  });
+
+  test('suppresses native long-press behavior only on preview drag handles', async () => {
+    const app = track(await createApp({realMarked: true}));
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', content: '# Heading'});
+    await app.hooks.savePref('interactivePreview', true);
+
+    const card = app.window.document.querySelector('.interactive-preview-block-card');
+    const handle = card.querySelector('.preview-drag-handle');
+    const content = card.querySelector('.preview-drag-content');
+    for (const type of ['touchstart', 'contextmenu', 'selectstart', 'dragstart']) {
+      const handleEvent = new app.window.Event(type, {bubbles:true, cancelable:true});
+      handle.dispatchEvent(handleEvent);
+      expect(handleEvent.defaultPrevented, `${type} on handle`).toBe(true);
+
+      const contentEvent = new app.window.Event(type, {bubbles:true, cancelable:true});
+      content.dispatchEvent(contentEvent);
+      expect(contentEvent.defaultPrevented, `${type} on content`).toBe(false);
+    }
   });
 
   test('auto-scrolls only near reachable preview edges', async () => {
@@ -2085,6 +2119,41 @@ describe('permanent queue rejection recovery', () => {
 });
 
 describe('batched queue flushing', () => {
+  test('keeps the conflict base local when syncing a large edited note', async () => {
+    let pushBody = '';
+    const app = track(await createApp({
+      fetchImpl: async (path, options) => {
+        if (String(path) !== '/api/sync/push') throw new Error(`unexpected request: ${path}`);
+        pushBody = options.body;
+        const request = JSON.parse(pushBody);
+        const operation = request.operations[0];
+        return response(200, JSON.stringify({
+          acknowledged: [{client_sequence: operation.client_sequence, op_id: operation.op_id, status: 'applied', revision: 2}],
+          expected_sequence: operation.client_sequence + 1,
+        }));
+      },
+    }));
+    const baseContent = 'a'.repeat(3_310_106);
+    const content = `${baseContent.slice(0, -1)}b`;
+    await app.hooks.putLocalNote({
+      id: 'large-note', title: 'Large note', tags: '', content,
+      revision: 1, pending: true, base_revision: 1, base_content: baseContent,
+    });
+    await app.hooks.queueOperation({
+      type: 'note.save', note_id: 'large-note', base_revision: 1,
+      note: {id: 'large-note', title: 'Large note', tags: '', content, base_revision: 1, base_content: baseContent},
+    });
+
+    const queued = (await app.hooks.pendingOperations())[0];
+    expect(queued.note.base_content).toBe(baseContent);
+    await app.hooks.flushPendingChanges();
+
+    const sent = JSON.parse(pushBody).operations[0];
+    expect(new TextEncoder().encode(pushBody).byteLength).toBeLessThan(4 * 1024 * 1024);
+    expect(sent.content).toBe(content);
+    expect(sent).not.toHaveProperty('base_content');
+  });
+
   test('sends ordered pending operations in one bounded push', async () => {
     const requests = [];
     const app = track(await createApp({
@@ -2208,13 +2277,14 @@ describe('preference sync coordination', () => {
     expect(fetchFonts.checked).toBe(true);
   });
 
-  test('restores and normalizes the global content width preference', async () => {
+  test('restores and normalizes global and Zen width preferences independently', async () => {
     const app = track(await createApp({
       fetchImpl: async path => {
         if (String(path) === '/api/prefs') return response(200, JSON.stringify({
           revision: 2,
           autoSave: true,
           contentWidth: 'full',
+          zenPageWidth: 'compact',
         }));
         throw new Error(`unexpected request: ${path}`);
       },
@@ -2222,17 +2292,20 @@ describe('preference sync coordination', () => {
 
     await app.hooks.loadPrefs();
     expect(app.window.document.documentElement.dataset.contentWidth).toBe('full');
+    expect(app.window.document.documentElement.dataset.zenPageWidth).toBe('compact');
 
     app.window.fetch = async path => {
       if (String(path) === '/api/prefs') return response(200, JSON.stringify({
         revision: 3,
         autoSave: true,
         contentWidth: 'not-a-width',
+        zenPageWidth: 'also-not-a-width',
       }));
       throw new Error(`unexpected request: ${path}`);
     };
     await app.hooks.loadPrefs();
     expect(app.window.document.documentElement.dataset.contentWidth).toBe('standard');
+    expect(app.window.document.documentElement.dataset.zenPageWidth).toBe('standard');
   });
 
   test('restores font sizes from remote preferences and defaults missing sizes', async () => {
