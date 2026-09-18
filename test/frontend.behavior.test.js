@@ -138,7 +138,7 @@ describe('keyboard shortcuts', () => {
     expect(app.window.document.querySelector('#prefs-title').textContent).toBe('Zen mode');
     expect(app.window.document.querySelector('#prefs-panel-zen').hidden).toBe(false);
     expect(app.window.document.querySelector('#prefs-panel-editor').hidden).toBe(true);
-    expect(app.window.document.querySelector('#pref-zen-interactive-preview')).not.toBeNull();
+    expect(app.window.document.querySelector('#pref-zen-interactive-preview')).toBeNull();
   });
 
   test('clears a shortcut from its recorder with Delete and keeps Escape as cancel', async () => {
@@ -548,11 +548,11 @@ describe('markdown preview policy', () => {
     expect(app.window.document.querySelectorAll('#preview [data-preview-drag-indicator]')).toHaveLength(0);
   });
 
-  test('keeps interactive preview usable inside Zen mode', async () => {
+  test('keeps Zen preview read-only while preserving standard interactive preview', async () => {
     const app = track(await createApp({realMarked: true}));
     const source = '# Heading\n\n- [ ] ship this\n- Keep writing';
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Tasks', content: source});
-    await app.hooks.savePref('zenInteractivePreview', true);
+    await app.hooks.savePref('interactivePreview', true);
     app.hooks.setPanelState('zen');
     app.window.document.querySelector('[data-zen-action="preview"]').click();
 
@@ -563,21 +563,11 @@ describe('markdown preview policy', () => {
     expect(editor.classList.contains('zen-mode')).toBe(true);
     expect(previewPanel.classList.contains('panel-hidden')).toBe(false);
     expect(editorPanel.classList.contains('panel-hidden')).toBe(true);
-    expect(preview.querySelectorAll('[data-preview-drag-indicator]')).toHaveLength(3);
-
-    const checkbox = preview.querySelector('input[type="checkbox"]');
-    checkbox.click();
-    expect(app.window.document.querySelector('#note-content').value).toContain('- [x] ship this');
-
-    preview.querySelector('.preview-edit-button').click();
-    expect(editor.classList.contains('zen-mode')).toBe(true);
-    expect(previewPanel.classList.contains('panel-hidden')).toBe(true);
-    expect(editorPanel.classList.contains('panel-hidden')).toBe(false);
-    expect(app.window.document.activeElement).toBe(app.window.document.querySelector('#note-content'));
+    expect(preview.classList.contains('interactive-preview-active')).toBe(false);
+    expect(preview.querySelectorAll('[data-preview-drag-indicator]')).toHaveLength(0);
+    expect(preview.querySelector('input[type="checkbox"]').disabled).toBe(true);
 
     app.hooks.setPanelState('both');
-    expect(preview.classList.contains('interactive-preview-active')).toBe(false);
-    await app.hooks.savePref('interactivePreview', true);
     expect(preview.classList.contains('interactive-preview-active')).toBe(true);
   });
 

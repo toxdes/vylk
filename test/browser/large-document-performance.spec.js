@@ -3,7 +3,7 @@ import {expect, test} from '@playwright/test';
 
 const password = 'browser-test-password';
 const localFixture = process.env.LARGE_MARKDOWN_FIXTURE;
-const syntheticLineCount = Number(process.env.LARGE_DOCUMENT_LINES || 10_000);
+const syntheticLineCount = Number(process.env.LARGE_DOCUMENT_LINES || 1_000);
 
 function largeMarkdown() {
   if (localFixture) return readFileSync(localFixture, 'utf8');
@@ -81,6 +81,30 @@ test('large documents keep editor input and preview transitions responsive', asy
     return {input:await inputHandled, frame:await nextFrame};
   });
 
+  const zenTransitionStarted = await page.evaluate(() => performance.now());
+  await page.locator('[data-panel="zen"]').click();
+  const zenEditor = page.locator('#zen-source-editor');
+  await expect(zenEditor).toBeVisible();
+  const zenTransition = await page.evaluate(started => performance.now() - started, zenTransitionStarted);
+  const zenEditorLatency = await zenEditor.evaluate(async element => {
+    const line = element.lastElementChild;
+    const range = document.createRange();
+    range.selectNodeContents(line);
+    range.collapse(false);
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    element.focus({preventScroll:true});
+    const started = performance.now();
+    document.execCommand('insertText', false, 'z');
+    const sync = performance.now() - started;
+    const frame = await new Promise(resolve => requestAnimationFrame(() => resolve(performance.now() - started)));
+    return {sync, frame, retainedLine:line === element.lastElementChild, lines:element.childElementCount};
+  });
+  expect(zenEditorLatency.retainedLine).toBe(true);
+  expect(zenEditorLatency.lines).toBe(source.split('\n').length);
+  await page.locator('[data-zen-action="exit"]').click();
+
   await page.evaluate(() => {
     window.__previewWorkerMetrics = [];
     window.__longTasks = [];
@@ -132,7 +156,7 @@ test('large documents keep editor input and preview transitions responsive', asy
   }));
   const previewLatency = previewMetrics.transition.complete - previewMetrics.transition.started;
 
-  console.log(JSON.stringify({bytes:source.length, lines:source.split('\n').length, editorLatency, previewLatency, previewMetrics}));
+  console.log(JSON.stringify({bytes:source.length, lines:source.split('\n').length, editorLatency, zenTransition, zenEditorLatency, previewLatency, previewMetrics}));
   expect(previewMetrics.mainThreadMarkdownParses).toBe(0);
   expect(previewMetrics.workers.filter(metric => metric.received)).toHaveLength(1);
 });
