@@ -270,7 +270,11 @@ header h1{font-size:1.125em}
   background:var(--surface)
 }
 #editor.zen-mode .editor-body{gap:0;padding:clamp(.75rem,2vh,1.5rem) 0;background:var(--card-bg)}
-#editor.zen-mode .meta-pane,#editor.zen-mode .panel-header,#editor.zen-mode .panel-resizer,#editor.zen-mode .fmt-bar,#editor.zen-mode .offline-notice{display:none}
+#editor.zen-mode .meta-pane,#editor.zen-mode .panel-header,#editor.zen-mode .panel-resizer,#editor.zen-mode .fmt-bar{display:none}
+#editor.zen-mode>.offline-notice{position:fixed;z-index:110;top:max(1rem,env(safe-area-inset-top));left:50%;width:auto;max-width:min(34rem,calc(100vw - 2rem));padding:.55rem .75rem .55rem 1rem;transform:translateX(-50%);border:1px solid color-mix(in srgb,var(--danger) 35%,var(--border));border-radius:999px;background:var(--card-bg);box-shadow:0 8px 20px rgb(15 23 42 / .16);color:var(--fg)}
+#editor.zen-mode>.offline-notice .offline-retry{color:var(--accent);text-decoration-color:currentColor}
+#editor.zen-mode>.offline-notice .offline-retry:hover{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--accent)}
+#editor.zen-mode>.offline-notice .offline-retry:focus-visible{outline-color:var(--accent)}
 #editor.zen-mode .editor-panels{justify-content:stretch}
 #editor.zen-mode .panels-single .panel-editor{position:relative;flex:1 1 auto;width:100%;border:0;border-radius:0;background:var(--card-bg);box-shadow:none}
 #editor.zen-mode .editor-source-wrap{width:var(--zen-page-width);margin:0 auto;padding:var(--zen-writing-top) var(--zen-writing-gutter) var(--zen-writing-bottom);background:transparent}
@@ -282,15 +286,16 @@ header h1{font-size:1.125em}
 .zen-controls{position:absolute;top:var(--zen-overlay-block);right:var(--zen-overlay-inline);display:flex;gap:.125rem;pointer-events:auto}
 .zen-controls button{display:grid;width:1.5rem;height:1.5rem;padding:0;place-items:center;border-radius:var(--radius-micro);background:transparent;color:var(--muted)}
 .zen-controls button:hover{background:color-mix(in srgb,var(--accent) 10%,var(--surface));color:var(--fg)}
+.zen-controls button[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 16%,var(--surface));color:var(--accent)}
 .zen-controls button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .zen-controls .icon{width:.9rem;height:.9rem;stroke-width:2}
 .zen-note-title,.zen-word-count{position:absolute;bottom:var(--zen-overlay-block);max-width:calc(50% - 1.5rem);overflow:hidden;color:var(--muted);font-size:.8125rem;font-weight:600;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
 .zen-note-title{left:var(--zen-overlay-inline)}
 .zen-word-count{right:var(--zen-overlay-inline);font-variant-numeric:tabular-nums}
-#editor.zen-mode~#toast-region{display:none}
 @media(max-width:640px){
   #editor.zen-mode .editor-body{padding:0}
   #editor.zen-mode .editor-source-wrap{--zen-writing-gutter:1rem;--zen-writing-top:4rem;--zen-writing-bottom:2rem}
+  #editor.zen-mode>.offline-notice{top:calc(max(.5rem,env(safe-area-inset-top)) + 3.25rem);width:calc(100vw - 1.5rem);max-width:none;border-radius:var(--radius)}
   .zen-controls{top:max(.5rem,env(safe-area-inset-top));right:max(1rem,env(safe-area-inset-right));gap:0}
   .zen-controls button{width:2.75rem;height:2.75rem}
   .zen-note-title,.zen-word-count{bottom:max(1rem,env(safe-area-inset-bottom));font-size:.75rem}
@@ -307,7 +312,11 @@ header h1{font-size:1.125em}
 .shortcut-sequence-hint{position:fixed;z-index:95;top:4.25rem;left:50%;display:flex;gap:.65rem;max-width:calc(100vw - 2rem);padding:.55rem .75rem;overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius);background:var(--card-bg);box-shadow:var(--shadow);color:var(--fg);font-size:.8125rem;line-height:1.35;transform:translate3d(-50%,0,0)}.shortcut-sequence-hint kbd{padding:.08rem .3rem;border:1px solid var(--border);border-radius:4px;background:var(--surface);font:inherit;font-weight:700}.shortcut-sequence-hint span{white-space:nowrap}
 .shortcut-sequence-hint{display:block;box-sizing:border-box;top:50%;width:min(34rem,calc(100vw - 2rem));max-width:none;padding:1.25rem;transform:translate3d(-50%,-50%,0);overflow:visible;box-shadow:none}.shortcut-sequence-title{display:block;font-size:1rem;line-height:1.3}.shortcut-sequence-subtitle{display:block;margin-top:.2rem;color:var(--muted);font-size:.8125rem;line-height:1.4;white-space:normal}.shortcut-sequence-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem .75rem;margin-top:1rem}.shortcut-sequence-option{display:flex;align-items:center;gap:.6rem;min-width:0;padding:.5rem .6rem;border:1px solid var(--border);border-radius:var(--radius-action);background:var(--surface);font-size:.875rem;font-weight:600;line-height:1.25}.shortcut-sequence-hint kbd{display:inline-grid;min-width:2rem;min-height:1.8rem;padding:.25rem .45rem;place-items:center;border-radius:var(--radius-micro);background:var(--card-bg);font:inherit;font-size:.8125rem;font-weight:700;line-height:1;text-align:center}.shortcut-sequence-option>span{min-width:0;white-space:normal}@media(max-width:640px){.shortcut-sequence-hint{padding:1rem}.shortcut-sequence-options{grid-template-columns:1fr;gap:.45rem}}
 .pref-subsection{margin:1.75rem 0 0;padding:1.3rem 0 0;border-top:1px solid var(--border)}.pref-subsection:first-of-type{margin-top:0;padding-top:0;border-top:0}.pref-subsection h3{margin:0;color:var(--fg);font-size:1rem;font-weight:700;line-height:1.3}.pref-subsection>p{max-width:60ch;margin:.25rem 0 .7rem;color:var(--muted);font-size:.8125rem;line-height:1.45}.pref-subsection .pref-control:first-of-type{border-top:0;padding-top:.5rem}.pref-subsection .pref-row:last-child{border-bottom:0}.pref-row input:disabled{cursor:not-allowed;opacity:.5}
-body:has(#editor.zen-mode) #toast-region,body:has(#editor.zen-mode) .offline-snackbar{display:none!important}
+body:has(#editor.zen-mode) .offline-snackbar{display:none!important}
+body:has(#editor.zen-mode) #toast-region{bottom:calc(max(1rem,env(safe-area-inset-bottom)) + 2.25rem)}
+body:has(#editor.zen-mode) #toast-region .toast{display:none}
+body:has(#editor.zen-mode) #toast-region .toast.warning{display:block}
+body:has(#editor.zen-mode) #toast-region .toast.update{display:flex}
 .zen-controls.is-minimal [data-zen-action="editor"],.zen-controls.is-minimal [data-zen-action="preview"]{display:none}
 #editor.zen-mode{position:relative}
 #editor.zen-mode .panels-single .panel-preview{position:relative;flex:1 1 auto;width:100%;border:0;border-radius:0;background:var(--card-bg);box-shadow:none}

@@ -61,6 +61,155 @@ test('Zen mode presents a page, overlays its controls, and keeps a long document
   await page.screenshot({path:'/tmp/vylk-zen-desktop.png'});
 });
 
+test('Zen mode does not force a scroll recenter while typing', async ({page}) => {
+  await page.setViewportSize({width:1440, height:960});
+  await signIn(page);
+  await openZenMode(page);
+
+  const textarea = page.locator('#note-content');
+  await textarea.fill(Array.from({length:400}, (_, index) => `Line ${index}`).join('\n'));
+  const before = await textarea.evaluate(element => {
+    const line = 240;
+    const position = element.value.indexOf(`Line ${line}`) + `Line ${line}`.length;
+    const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+    element.focus({preventScroll:true});
+    element.setSelectionRange(position, position);
+    element.scrollTop = Math.max(0, line * lineHeight - element.clientHeight * .4);
+    element.dataset.scrollEvents = '0';
+    element.addEventListener('scroll', () => {
+      element.dataset.scrollEvents = String(Number(element.dataset.scrollEvents || 0) + 1);
+    });
+    return element.scrollTop;
+  });
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await textarea.evaluate((element, scrollTop) => {
+    element.scrollTop = scrollTop;
+    element.dataset.scrollEvents = '0';
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+    window.__zenScrollWrites = [];
+    Object.defineProperty(element, 'scrollTop', {
+      configurable:true,
+      get() { return descriptor.get.call(this); },
+      set(value) {
+        window.__zenScrollWrites.push({value, stack:new Error().stack});
+        descriptor.set.call(this, value);
+      },
+    });
+  }, before);
+
+  await page.keyboard.type('x');
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+  const after = await textarea.evaluate(element => ({
+    scrollTop: element.scrollTop,
+    scrollEvents: Number(element.dataset.scrollEvents || 0),
+    writes: window.__zenScrollWrites,
+  }));
+  expect(after.writes).toEqual([]);
+  expect(after.scrollEvents).toBeLessThanOrEqual(1);
+});
+
+test('Zen mode defers word counting until the browser is idle', async ({page}) => {
+  await signIn(page);
+  await openZenMode(page);
+
+  const count = page.locator('#zen-word-count');
+  const before = await count.textContent();
+  await page.evaluate(() => {
+    window.__pendingZenWordCount = null;
+    window.requestIdleCallback = callback => {
+      window.__pendingZenWordCount = callback;
+      return 1;
+    };
+    window.cancelIdleCallback = () => {
+      window.__pendingZenWordCount = null;
+    };
+  });
+
+  await page.locator('#note-content').press('End');
+  await page.keyboard.type(' extra');
+  await expect(count).toHaveText(before);
+  await page.evaluate(() => {
+    const callback = window.__pendingZenWordCount;
+    window.__pendingZenWordCount = null;
+    callback?.({didTimeout:false, timeRemaining:() => 16});
+  });
+
+  const previousWords = Number.parseInt(before, 10);
+  await expect(count).toHaveText(`${previousWords + 1} words`);
+});
+
+test('Zen mode exposes which writing view is active', async ({page}) => {
+  await signIn(page);
+  await openZenMode(page);
+
+  const editorControl = page.locator('[data-zen-action="editor"]');
+  const previewControl = page.locator('[data-zen-action="preview"]');
+  await expect(editorControl).toHaveAttribute('aria-pressed', 'true');
+  await expect(previewControl).toHaveAttribute('aria-pressed', 'false');
+
+  await previewControl.click();
+  await expect(editorControl).toHaveAttribute('aria-pressed', 'false');
+  await expect(previewControl).toHaveAttribute('aria-pressed', 'true');
+
+  await page.locator('[data-zen-action="exit"]').click();
+  await expect(page.locator('#editor')).not.toHaveClass(/zen-mode/);
+  await expect(page.locator('#note-content')).toBeFocused();
+});
+
+test('Zen mode keeps actionable connection feedback visible without showing routine toasts', async ({page}) => {
+  await signIn(page);
+  await openZenMode(page);
+  await page.waitForTimeout(1200);
+
+  await page.evaluate(() => {
+    document.querySelector('#editor > .offline-notice').classList.remove('hidden');
+    const routine = document.createElement('div');
+    routine.className = 'toast visible';
+    routine.dataset.testToast = 'routine';
+    routine.textContent = 'Routine status';
+    const warning = document.createElement('div');
+    warning.className = 'toast warning visible';
+    warning.dataset.testToast = 'warning';
+    warning.textContent = 'Sync needs attention';
+    document.querySelector('#toast-region').append(routine, warning);
+  });
+
+  await expect(page.locator('#editor > .offline-notice')).toBeVisible();
+  await expect(page.locator('[data-test-toast="warning"]')).toBeVisible();
+  await expect(page.locator('[data-test-toast="routine"]')).toBeHidden();
+});
+
+test('Zen preview renders stale Markdown away from the main UI thread', async ({page}) => {
+  await signIn(page);
+  await openZenMode(page);
+
+  await page.evaluate(() => {
+    window.__mainThreadMarkdownParses = 0;
+    const originalMarked = window.marked;
+    const parse = originalMarked.parse.bind(originalMarked);
+    const wrappedParse = (...args) => {
+      window.__mainThreadMarkdownParses++;
+      return parse(...args);
+    };
+    window.marked = new Proxy(originalMarked, {
+      get(target, property, receiver) {
+        if (property === 'parse') return wrappedParse;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    window.__markdownParseProbeInstalled = window.marked.parse === wrappedParse;
+  });
+  expect(await page.evaluate(() => window.__markdownParseProbeInstalled)).toBe(true);
+  await page.locator('#note-content').press('End');
+  await page.keyboard.type('\n\nRendered away from the typing thread');
+  await page.locator('[data-zen-action="preview"]').click();
+
+  await expect(page.locator('#preview')).toContainText('Rendered away from the typing thread');
+  await expect(page.locator('#preview')).not.toHaveAttribute('aria-busy', 'true');
+  expect(await page.evaluate(() => window.__mainThreadMarkdownParses)).toBe(0);
+});
+
 test('Zen mode preserves its writing page on a narrow screen', async ({page}) => {
   await page.setViewportSize({width:390, height:844});
   await signIn(page);

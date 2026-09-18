@@ -52,6 +52,9 @@ let renderedPreviewSource = null;
 let previewCheckFrame = null;
 let highlightFrame = null;
 let editorCaretFrame = null;
+let zenCaretFrame = null;
+let zenCaretNavigationPending = false;
+let zenCaretNavigationResetTimer = null;
 let editorCaretMeasurementCache = null;
 let editorCaretMirror = null;
 let editorCaretMirrorText = null;
@@ -66,6 +69,9 @@ let previewDOMHandle = null;
 let previewCacheHandle = null;
 let previewCacheGeneration = 0;
 let previewWorkerUnavailable = false;
+let zenWordCountHandle = null;
+let zenWordCountSource = null;
+let zenWordCountValue = 0;
 let renderedPreviewMetadata = null;
 let previewDecorationObserver = null;
 let previewDecorationEntryByElement = new WeakMap();
@@ -3115,7 +3121,7 @@ function scheduleSave() {
 }
 
 $('#save-btn').addEventListener('click', () => executeShortcutCommand('note.save', {source:'button'}));
-$('#note-title').addEventListener('input', () => { markDirty(); scheduleSave(); updateZenOverlays(); });
+$('#note-title').addEventListener('input', () => { markDirty(); scheduleSave(); updateZenTitle(); });
 $('#note-tags').addEventListener('input', () => { markDirty(); scheduleSave(); });
 
 // --- Formatting toolbar ---
@@ -3378,10 +3384,22 @@ function setPanelState(state) {
     const active = state === button.dataset.panel || (state === 'zen' && button.dataset.panel === 'zen');
     button.setAttribute('aria-pressed', String(active));
   });
+  document.querySelectorAll('.zen-controls [data-zen-action="editor"], .zen-controls [data-zen-action="preview"]').forEach(button => {
+    button.setAttribute('aria-pressed', String(state === 'zen' && button.dataset.zenAction === zenViewState));
+  });
+  if (state === 'zen') updateZenOverlays();
+  else {
+    cancelScheduledZenCaretCenter();
+    zenCaretNavigationPending = false;
+    if (zenCaretNavigationResetTimer !== null) clearTimeout(zenCaretNavigationResetTimer);
+    zenCaretNavigationResetTimer = null;
+    cancelScheduledZenWordCount();
+  }
   applyPanelRatio();
   scheduleEditorCaretCue();
   if (visibleState !== 'editor') {
-    if (interactiveModeChanged || state === 'zen') updatePreview();
+    if (state === 'zen') requestPreviewRender({announceBusy:true});
+    else if (interactiveModeChanged) updatePreview();
     else schedulePreviewCheck();
   }
 }
@@ -3398,6 +3416,7 @@ $('.zen-controls').addEventListener('click', e => {
   if (!action) return;
   if (action === 'exit') {
     setPanelState(zenModeReturnState);
+    $('#note-content').focus({preventScroll:true});
   } else {
     zenViewState = action;
     setPanelState('zen');
@@ -3908,7 +3927,7 @@ function updateEditorCaretCue() {
   const wrap = editorSourceWrap;
   const line = editorCurrentLine;
   if (!textarea || !wrap || !line) return;
-  const focused = document.activeElement === textarea && !textarea.readOnly;
+  const focused = panelState !== 'zen' && document.activeElement === textarea && !textarea.readOnly;
   wrap.classList.toggle('is-caret-visible', focused);
   if (!focused) return;
   const caret = measureEditorCaret();
@@ -3919,6 +3938,12 @@ function updateEditorCaretCue() {
 }
 
 function scheduleEditorCaretCue() {
+  if (panelState === 'zen') {
+    editorSourceWrap?.classList.remove('is-caret-visible');
+    if (editorCaretFrame !== null) cancelAnimationFrame(editorCaretFrame);
+    editorCaretFrame = null;
+    return;
+  }
   if (editorCaretFrame !== null) return;
   editorCaretFrame = requestAnimationFrame(updateEditorCaretCue);
 }
@@ -3940,13 +3965,84 @@ function centerEditorCaretInView(targetRatio = .38, {defer = true} = {}) {
   else center();
 }
 
-function centerZenCaretNow() {
+function cancelScheduledZenCaretCenter() {
+  if (zenCaretFrame === null) return;
+  cancelAnimationFrame(zenCaretFrame);
+  zenCaretFrame = null;
+}
+
+function centerZenCaretNow({defer = true, navigation = false} = {}) {
   if (panelState !== 'zen' || document.activeElement !== editorSourceTextarea) return;
-  centerEditorCaretInView(.48, {defer:false});
+  if (navigation) {
+    zenCaretNavigationPending = true;
+    if (zenCaretNavigationResetTimer !== null) clearTimeout(zenCaretNavigationResetTimer);
+    zenCaretNavigationResetTimer = setTimeout(() => {
+      zenCaretNavigationPending = false;
+      zenCaretNavigationResetTimer = null;
+    }, 500);
+  }
+  const center = () => {
+    zenCaretFrame = null;
+    if (panelState === 'zen' && document.activeElement === editorSourceTextarea) {
+      centerEditorCaretInView(.48, {defer:false});
+    }
+  };
+  if (!defer) {
+    cancelScheduledZenCaretCenter();
+    center();
+    return;
+  }
+  if (zenCaretFrame !== null) return;
+  zenCaretFrame = requestAnimationFrame(center);
 }
 
 function wordCount(source = editorSourceTextarea?.value || '') {
-  return source.trim().match(/\S+/g)?.length || 0;
+  const matcher = /\S+/g;
+  let count = 0;
+  while (matcher.exec(source)) count++;
+  return count;
+}
+
+function cancelScheduledZenWordCount() {
+  if (!zenWordCountHandle) return;
+  if (zenWordCountHandle.idle) window.cancelIdleCallback(zenWordCountHandle.id);
+  else clearTimeout(zenWordCountHandle.id);
+  zenWordCountHandle = null;
+}
+
+function updateZenWordCount() {
+  zenWordCountHandle = null;
+  const count = $('#zen-word-count');
+  if (!count) return;
+  count.hidden = !prefs.zenWordCount;
+  if (!prefs.zenWordCount) return;
+  const source = editorSourceTextarea?.value || '';
+  if (source !== zenWordCountSource) {
+    zenWordCountSource = source;
+    zenWordCountValue = wordCount(source);
+  }
+  const label = `${zenWordCountValue} ${zenWordCountValue === 1 ? 'word' : 'words'}`;
+  if (count.textContent !== label) count.textContent = label;
+}
+
+function scheduleZenWordCount() {
+  cancelScheduledZenWordCount();
+  if (!prefs.zenWordCount || panelState !== 'zen') return;
+  if (typeof window.requestIdleCallback === 'function') {
+    const id = window.requestIdleCallback(updateZenWordCount, {timeout:400});
+    zenWordCountHandle = {id, idle:true};
+  } else {
+    const id = setTimeout(updateZenWordCount, 120);
+    zenWordCountHandle = {id, idle:false};
+  }
+}
+
+function updateZenTitle() {
+  const title = $('#zen-note-title');
+  if (!title) return;
+  const label = $('#note-title')?.value.trim() || 'Untitled note';
+  if (title.textContent !== label) title.textContent = label;
+  title.hidden = !prefs.zenShowTitle;
 }
 
 function updateZenOverlays() {
@@ -3954,11 +4050,9 @@ function updateZenOverlays() {
   const count = $('#zen-word-count');
   const controls = $('.zen-controls');
   if (!title || !count || !controls) return;
-  title.textContent = $('#note-title')?.value.trim() || 'Untitled note';
-  title.hidden = !prefs.zenShowTitle;
-  const words = wordCount();
-  count.textContent = `${words} ${words === 1 ? 'word' : 'words'}`;
-  count.hidden = !prefs.zenWordCount;
+  updateZenTitle();
+  cancelScheduledZenWordCount();
+  updateZenWordCount();
   controls.classList.toggle('is-minimal', !prefs.zenShowControls);
   $('#zen-exit-icon')?.setAttribute('href', prefs.zenShowControls ? '#icon-minimize' : '#icon-x');
 }
@@ -4274,6 +4368,7 @@ $('#delete-btn').addEventListener('click', async () => {
 
 // --- Live Preview ---
 $('#note-content').addEventListener('input', () => {
+  cancelScheduledZenCaretCenter();
   if (!interactiveSourceMutation) interactiveHistory = [];
   if (activePreviewDrag) cancelPreviewDrag({animateReturn:false});
   markDirty();
@@ -4281,15 +4376,28 @@ $('#note-content').addEventListener('input', () => {
   previewHighlightPending = true;
   previewRangeSource = null;
   previewBlockRanges = [];
-  scheduleHighlight();
+  if (isPreviewVisible()) scheduleHighlight();
   scheduleEditorCaretCue();
-  updateZenOverlays();
-  centerZenCaretNow();
+  scheduleZenWordCount();
   cancelPendingPreviewRender();
-  previewTimer = setTimeout(requestPreviewRender, 500);
+  if (isPreviewVisible()) previewTimer = setTimeout(requestPreviewRender, 500);
 });
-$('#note-content').addEventListener('click', () => { scheduleHighlight(); scheduleEditorCaretCue(); });
-$('#note-content').addEventListener('keyup', () => { scheduleHighlight(); scheduleEditorCaretCue(); centerZenCaretNow(); });
+$('#note-content').addEventListener('click', () => {
+  if (isPreviewVisible()) scheduleHighlight();
+  scheduleEditorCaretCue();
+});
+$('#note-content').addEventListener('keyup', event => {
+  if (isPreviewVisible()) scheduleHighlight();
+  scheduleEditorCaretCue();
+  if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) {
+    centerZenCaretNow({navigation:true});
+  } else if (zenCaretNavigationPending) {
+    if (zenCaretNavigationResetTimer !== null) clearTimeout(zenCaretNavigationResetTimer);
+    zenCaretNavigationResetTimer = null;
+    zenCaretNavigationPending = false;
+    centerZenCaretNow({defer:false});
+  }
+});
 $('#note-content').addEventListener('focus', () => { scheduleEditorCaretCue(); centerZenCaretNow(); });
 $('#note-content').addEventListener('blur', scheduleEditorCaretCue);
 $('#note-content').addEventListener('select', scheduleEditorCaretCue);
@@ -4771,6 +4879,10 @@ function cancelPreviewDOMRender() {
   $('#preview')?.removeAttribute('aria-busy');
 }
 
+function setPreviewBusy(busy) {
+  $('#preview')?.toggleAttribute('aria-busy', busy);
+}
+
 function cancelPendingPreviewRender() {
   previewRenderGeneration++;
   previewRenderRequest = null;
@@ -4985,7 +5097,12 @@ function ensurePreviewRenderWorker() {
     previewRenderWorker.addEventListener('message', event => {
       const result = event.data || {};
       const request = previewRenderRequest;
-      if (!request || result.id !== request.id || result.id !== previewRenderGeneration || request.source !== $('#note-content').value || !isPreviewVisible()) return;
+      if (!request || result.id !== request.id || result.id !== previewRenderGeneration) return;
+      if (request.source !== $('#note-content').value || !isPreviewVisible()) {
+        previewRenderRequest = null;
+        setPreviewBusy(false);
+        return;
+      }
       previewRenderRequest = null;
       const incrementalSafe = Boolean(result.incrementalSafe && Array.isArray(result.blocks));
       const html = incrementalSafe ? null : result.html;
@@ -4999,6 +5116,7 @@ function ensurePreviewRenderWorker() {
       const metadata = {source:request.source, blocks:result.blocks, incrementalSafe};
       if (request.source === renderedPreviewSource && previewRangeSource === request.source) {
         renderedPreviewMetadata = metadata;
+        setPreviewBusy(false);
         return;
       }
       schedulePreviewApply(() => {
@@ -5030,11 +5148,12 @@ function primePreviewMetadata(md) {
   worker.postMessage({id, source:md});
 }
 
-function requestPreviewRender() {
+function requestPreviewRender({announceBusy = false} = {}) {
   previewTimer = null;
   if (!isPreviewVisible()) return;
   const md = $('#note-content').value;
   if (md === renderedPreviewSource) {
+    setPreviewBusy(false);
     scheduleHighlight();
     return;
   }
@@ -5043,6 +5162,8 @@ function requestPreviewRender() {
     updatePreview();
     return;
   }
+  if (announceBusy) setPreviewBusy(true);
+  if (previewRenderRequest?.source === md) return;
   const id = ++previewRenderGeneration;
   previewRenderRequest = {id, source:md};
   worker.postMessage({id, source:md});
