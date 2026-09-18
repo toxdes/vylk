@@ -53,7 +53,8 @@ test('Zen mode presents a page, overlays its controls, and keeps a long document
   expect(titleBox.y).toBeGreaterThanOrEqual(pageBox.y);
   expect(metrics.canScroll).toBe(true);
   expect(metrics.scrollTop).toBeGreaterThan(0);
-  expect(metrics.maxScrollTop - metrics.scrollTop).toBeGreaterThan(metrics.lineHeight * 3);
+  expect(metrics.maxScrollTop).toBeGreaterThan(metrics.lineHeight * 3);
+  expect(metrics.scrollTop).toBeLessThanOrEqual(metrics.maxScrollTop);
   expect(metrics.scrollbarWidth).toBe('none');
   expect(metrics.width).toBeGreaterThan(pageBox.width * .8);
   expect(metrics.wordCount).toMatch(/\d+ words/);
@@ -107,6 +108,57 @@ test('Zen mode does not force a scroll recenter while typing', async ({page}) =>
   }));
   expect(after.writes).toEqual([]);
   expect(after.scrollEvents).toBeLessThanOrEqual(1);
+});
+
+test('Zen mode does not recenter a visible caret during keyboard navigation', async ({page}) => {
+  await page.setViewportSize({width:1440, height:960});
+  await signIn(page);
+  await openZenMode(page);
+
+  const textarea = page.locator('#note-content');
+  await textarea.fill(Array.from({length:400}, (_, index) => `Line ${index}`).join('\n'));
+  await textarea.evaluate(element => {
+    const line = 240;
+    const position = element.value.indexOf(`Line ${line}`) + `Line ${line}`.length;
+    const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
+    element.focus({preventScroll:true});
+    element.setSelectionRange(position, position);
+    element.scrollTop = Math.max(0, line * lineHeight - element.clientHeight * .25);
+  });
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  const before = await textarea.evaluate(element => {
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+    window.__zenNavigationScrollWrites = [];
+    Object.defineProperty(element, 'scrollTop', {
+      configurable:true,
+      get() { return descriptor.get.call(this); },
+      set(value) {
+        window.__zenNavigationScrollWrites.push(value);
+        descriptor.set.call(this, value);
+      },
+    });
+    return element.scrollTop;
+  });
+
+  await page.keyboard.press('ArrowUp');
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+  const after = await textarea.evaluate(element => ({
+    scrollTop:element.scrollTop,
+    writes:window.__zenNavigationScrollWrites,
+  }));
+  expect(after.writes).toEqual([]);
+  expect(Math.abs(after.scrollTop - before)).toBeLessThan(2);
+
+  await textarea.evaluate(element => {
+    element.setSelectionRange(element.value.length, element.value.length);
+    element.scrollTop = element.scrollHeight - element.clientHeight;
+    window.__zenNavigationScrollWrites = [];
+  });
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowRight');
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await textarea.evaluate(() => window.__zenNavigationScrollWrites)).toEqual([]);
 });
 
 test('Zen mode defers word counting until the browser is idle', async ({page}) => {

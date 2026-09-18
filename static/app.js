@@ -53,8 +53,6 @@ let previewCheckFrame = null;
 let highlightFrame = null;
 let editorCaretFrame = null;
 let zenCaretFrame = null;
-let zenCaretNavigationPending = false;
-let zenCaretNavigationResetTimer = null;
 let editorCaretMeasurementCache = null;
 let editorCaretMirror = null;
 let editorCaretMirrorText = null;
@@ -3390,9 +3388,6 @@ function setPanelState(state) {
   if (state === 'zen') updateZenOverlays();
   else {
     cancelScheduledZenCaretCenter();
-    zenCaretNavigationPending = false;
-    if (zenCaretNavigationResetTimer !== null) clearTimeout(zenCaretNavigationResetTimer);
-    zenCaretNavigationResetTimer = null;
     cancelScheduledZenWordCount();
   }
   applyPanelRatio();
@@ -3971,16 +3966,8 @@ function cancelScheduledZenCaretCenter() {
   zenCaretFrame = null;
 }
 
-function centerZenCaretNow({defer = true, navigation = false} = {}) {
+function centerZenCaretNow({defer = true} = {}) {
   if (panelState !== 'zen' || document.activeElement !== editorSourceTextarea) return;
-  if (navigation) {
-    zenCaretNavigationPending = true;
-    if (zenCaretNavigationResetTimer !== null) clearTimeout(zenCaretNavigationResetTimer);
-    zenCaretNavigationResetTimer = setTimeout(() => {
-      zenCaretNavigationPending = false;
-      zenCaretNavigationResetTimer = null;
-    }, 500);
-  }
   const center = () => {
     zenCaretFrame = null;
     if (panelState === 'zen' && document.activeElement === editorSourceTextarea) {
@@ -4388,15 +4375,8 @@ $('#note-content').addEventListener('click', () => {
 });
 $('#note-content').addEventListener('keyup', event => {
   if (isPreviewVisible()) scheduleHighlight();
-  scheduleEditorCaretCue();
-  if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) {
-    centerZenCaretNow({navigation:true});
-  } else if (zenCaretNavigationPending) {
-    if (zenCaretNavigationResetTimer !== null) clearTimeout(zenCaretNavigationResetTimer);
-    zenCaretNavigationResetTimer = null;
-    zenCaretNavigationPending = false;
-    centerZenCaretNow({defer:false});
-  }
+  const caretNavigationKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'];
+  if (caretNavigationKeys.includes(event.key)) scheduleEditorCaretCue();
 });
 $('#note-content').addEventListener('focus', () => { scheduleEditorCaretCue(); centerZenCaretNow(); });
 $('#note-content').addEventListener('blur', scheduleEditorCaretCue);
