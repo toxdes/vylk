@@ -15,10 +15,12 @@ test('in-app Back does not leave a stale note in browser history', async ({page}
   await page.locator('#note-title').fill('History test note');
   await page.locator('#note-content').fill('History test content');
   await page.locator('#save-btn').click();
+  await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
+  const noteID = new URL(page.url()).pathname.slice(1);
   await page.locator('#back-btn').click();
   await expect(page.locator('#dashboard')).toBeVisible();
 
-  await page.locator('.note-item').filter({hasText: 'History test note'}).click();
+  await page.locator(`.note-item[data-id="${noteID}"]`).click();
   await expect(page.locator('#editor')).toBeVisible();
   const noteURL = page.url();
   await page.locator('#back-btn').evaluate(button => {
@@ -47,7 +49,7 @@ test('browser Back saves the current note before returning to the dashboard', as
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('#dashboard')).toBeVisible();
 
-  await page.locator('.note-item').filter({hasText: 'Browser Back save test'}).click();
+  await page.locator(`.note-item[data-id="${noteURL.slice(noteURL.lastIndexOf('/') + 1)}"]`).click();
   await expect(page).toHaveURL(noteURL);
   await expect(page.locator('#note-content')).toHaveValue('Saved before browser navigation and Back');
 });
