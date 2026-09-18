@@ -66,6 +66,7 @@ globalThis.__vylkTestHooks = {
     $('#note-title').value = state.title ?? savedSnapshot.title ?? '';
     $('#note-tags').value = state.tags ?? savedSnapshot.tags ?? '';
     $('#note-content').value = state.content ?? savedSnapshot.content ?? '';
+    editorDocumentLength = $('#note-content').value.length;
   },
   markDirty,
   showNoteInEditor,
