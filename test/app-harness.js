@@ -97,6 +97,14 @@ globalThis.__vylkTestHooks = {
     syncScheduleOptions = {};
     syncPendingWhileInFlight = false;
   },
+  waitForSyncIdle: async () => {
+    for (;;) {
+      const lifecycle = syncLifecyclePromise;
+      if (!lifecycle) return;
+      await lifecycle.catch(() => {});
+      if (syncLifecyclePromise === lifecycle) return;
+    }
+  },
   getSyncScheduleState: () => ({
     scheduled: Boolean(syncScheduleTimer),
     options: {...syncScheduleOptions},
@@ -226,7 +234,7 @@ export async function createApp({deferredSave = false, deferredSyncCompletion = 
     close: async () => {
       window.__vylkTestHooks.cancelScheduledSync();
       window.__vylkTestHooks.cancelActiveSyncRequests();
-      await new Promise(resolve => window.setTimeout(resolve, 0));
+      await window.__vylkTestHooks.waitForSyncIdle();
       await window.__vylkTestHooks.closeDatabase();
       window.close();
     },
