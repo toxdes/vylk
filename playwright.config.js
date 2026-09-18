@@ -23,7 +23,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'bash -lc "source /home/bets/env/go.sh && exec go run ."',
+    command: 'go run .',
     cwd: process.cwd(),
     url: `http://127.0.0.1:${port}/`,
     timeout: 120000,

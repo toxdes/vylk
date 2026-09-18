@@ -129,6 +129,12 @@ def main():
         "--output",
         help="Output path for single-target mode.",
     )
+    parser.add_argument(
+        "--upx",
+        choices=("auto", "never", "required"),
+        default="auto",
+        help="UPX policy for Linux binaries (default: auto).",
+    )
     args = parser.parse_args()
 
     if bool(args.target_os) != bool(args.target_arch):
@@ -139,7 +145,9 @@ def main():
         parser.error("--output requires single-target options")
 
     version = project_version()
-    upx = shutil.which("upx")
+    upx = None if args.upx == "never" else shutil.which("upx")
+    if args.upx == "required" and not upx:
+        parser.error("--upx required but UPX was not found")
     if args.target_os:
         if (args.target_os, args.target_arch) not in {
             (target[0], target[1]) for target in TARGETS

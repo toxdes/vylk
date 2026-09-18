@@ -1,0 +1,106 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: '47 20 * * *' # 02:17 Asia/Kolkata (UTC+05:30)
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: checks
+    if: github.event_name == 'workflow_dispatch' || vars.NIGHTLY_ENABLED != 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@b7a1c7ccf290d58743029c4f6903da283811b979 # v2.1.0
+        with:
+          bun-version: 1.4.2
+
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+
+      - name: Verify Go modules
+        run: go mod verify
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run Staticcheck
+        run: go tool staticcheck ./...
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Build Go packages
+        run: go build ./...
+
+      - name: Install frontend dependencies
+        run: bun ci
+
+      - name: Lint frontend
+        run: bun run lint
+
+      - name: Run frontend behavior tests
+        run: bun run test:frontend
+
+      - name: Run browser tests
+        run: bun run test:browser
+
+  publish:
+    name: publish
+    needs: checks
+    if: needs.checks.result == 'success' && (github.event_name == 'workflow_dispatch' || vars.NIGHTLY_ENABLED != 'false')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Linux nightly binaries
+        run: |
+          nightly_version="nightly-$(date -u +%Y%m%d)-g${GITHUB_SHA::7}"
+          mkdir -p dist/nightly
+          VERSION="$nightly_version" python3 build.py --target-os linux --target-arch amd64 --output dist/nightly/vylk-nightly-linux-amd64 --upx never
+          VERSION="$nightly_version" python3 build.py --target-os linux --target-arch arm64 --output dist/nightly/vylk-nightly-linux-arm64 --upx never
+          tar -C dist/nightly -czf dist/vylk-nightly-linux-amd64.tar.gz vylk-nightly-linux-amd64
+          tar -C dist/nightly -czf dist/vylk-nightly-linux-arm64.tar.gz vylk-nightly-linux-arm64
+          (cd dist && sha256sum vylk-nightly-linux-amd64.tar.gz vylk-nightly-linux-arm64.tar.gz > SHA256SUMS)
+
+      - name: Create or update Nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          nightly_version="nightly-$(date -u +%Y%m%d)-g${GITHUB_SHA::7}"
+          release_notes="Automated build of main at $GITHUB_SHA ($nightly_version)."
+          gh release view nightly >/dev/null 2>&1 || gh release create nightly --target "$GITHUB_SHA" --title Nightly --notes "$release_notes" --prerelease --latest=false
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/nightly" --jq .id)"
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/$release_id" \
+            -f target_commitish="$GITHUB_SHA" \
+            -f name=Nightly \
+            -f body="$release_notes" \
+            -F prerelease=true \
+            -f make_latest=false >/dev/null
+          gh release upload nightly dist/vylk-nightly-linux-amd64.tar.gz dist/vylk-nightly-linux-arm64.tar.gz dist/SHA256SUMS --clobber

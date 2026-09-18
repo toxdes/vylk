@@ -98,7 +98,15 @@ The published package repositories are available at:
 
 ## Tests
 
-Run the default frontend behavior suite with `npm run test:frontend`. The opt-in browser reliability suite uses the installed Chrome binary and a temporary Go server; run it with `npm run test:browser`. It covers offline cached startup, unchanged navigation request counts, a warm dashboard performance budget, keyboard navigation, and serious accessibility violations.
+Install frontend dependencies with `bun ci`, run linting with `bun run lint`, and run the default frontend behavior suite with `bun run test:frontend`. The browser reliability suite uses the installed Chrome binary and a temporary Go server; run it with `bun run test:browser`. It covers offline cached startup, unchanged navigation request counts, a warm dashboard performance budget, keyboard navigation, and serious accessibility violations.
+
+## Continuous integration
+
+GitHub Actions runs the full Go and frontend checks for pull requests. Before enabling branch protection, create a required-reviewer environment named `ci-approval` in the repository settings and add the repository owner as its required reviewer. Leave "Prevent self-review" disabled if the PR author should be able to approve this CI gate; this environment approval is separate from a pull-request code review and does not count as one.
+
+Protect `main` by requiring pull requests, requiring the `CI / checks` status check, requiring the check to pass for the latest commit, and disabling force pushes and deletions. Direct pushes should remain disabled so changes arrive through pull requests.
+
+The nightly workflow runs at 02:17 Asia/Kolkata and can also be started manually. It updates one moving `Nightly` pre-release containing Linux amd64 and arm64 tarballs plus `SHA256SUMS`. Set the repository variable `NIGHTLY_ENABLED` to `false` to disable scheduled publication; manual runs remain available. The release assets are deliberately separate from normal Yesb releases.
 
 ## Docker
 

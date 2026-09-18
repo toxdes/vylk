@@ -101,6 +101,7 @@ const syncLeaseKey = 'syncLease';
 const syncLeaseDurationMs = 60000;
 let syncCoordinationChannel = null;
 let syncLeaseRenewTimer = null;
+let syncLifecyclePromise = null;
 let panelRatio = Math.min(.8, Math.max(.2, Number(localStorage.getItem('vylk-panel-ratio')) || .5));
 let appVersionAtLoad = localStorage.getItem('vylk-version') || null;
 let appRevisionAtLoad = localStorage.getItem('vylk-revision') || null;
@@ -1002,7 +1003,6 @@ function apiErrorFromTransport(error) {
 async function api(path, opts) {
   const method = opts?.method || 'GET';
   const syncRequest = opts?.syncRequest === true;
-  const throwOnError = opts?.throwOnError === true;
   const requestOpts = {...opts};
   delete requestOpts.syncRequest;
   delete requestOpts.throwOnError;
@@ -2401,7 +2401,13 @@ async function syncNow(options = {}) {
     syncPendingWhileInFlight = true;
     return false;
   }
-  return withSyncLeadership(() => performSync(options));
+  const lifecycle = withSyncLeadership(() => performSync(options));
+  syncLifecyclePromise = lifecycle;
+  try {
+    return await lifecycle;
+  } finally {
+    if (syncLifecyclePromise === lifecycle) syncLifecyclePromise = null;
+  }
 }
 
 const sseStaleAfterMs = 70000;
@@ -5516,10 +5522,6 @@ function registerShortcutCommand(command) {
 
 function editorIsVisible() {
   return !screens.editor.classList.contains('hidden');
-}
-
-function detailsExpanded() {
-  return !$('.meta-pane').classList.contains('collapsed');
 }
 
 function setDetailsExpanded(expanded) {

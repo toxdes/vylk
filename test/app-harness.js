@@ -95,6 +95,15 @@ globalThis.__vylkTestHooks = {
     if (syncScheduleTimer) clearTimeout(syncScheduleTimer);
     syncScheduleTimer = null;
     syncScheduleOptions = {};
+    syncPendingWhileInFlight = false;
+  },
+  waitForSyncIdle: async () => {
+    for (;;) {
+      const lifecycle = syncLifecyclePromise;
+      if (!lifecycle) return;
+      await lifecycle.catch(() => {});
+      if (syncLifecyclePromise === lifecycle) return;
+    }
   },
   getSyncScheduleState: () => ({
     scheduled: Boolean(syncScheduleTimer),
@@ -118,6 +127,25 @@ function response(status, body = '') {
   };
 }
 
+async function defaultFetch(path, options = {}) {
+  const value = String(path);
+  if (value.startsWith('/api/sync?')) return response(200, {changes: [], nextSequence: 0, hasMore: false});
+  if (value === '/api/sync/push') {
+    const request = JSON.parse(options.body || '{}');
+    const operations = Array.isArray(request.operations) ? request.operations : [];
+    return response(200, {
+      acknowledged: operations.map(operation => ({
+        client_sequence: operation.client_sequence,
+        op_id: operation.op_id,
+        status: 'applied',
+        revision: Number(operation.base_revision || 0) + 1,
+      })),
+      expected_sequence: operations.at(-1)?.client_sequence + 1 || 1,
+    });
+  }
+  return response(200, '{}');
+}
+
 export async function deleteOfflineDatabase() {
   await new Promise((resolve, reject) => {
     const request = indexedDB.deleteDatabase('vylk-offline');
@@ -127,7 +155,7 @@ export async function deleteOfflineDatabase() {
   });
 }
 
-export async function createApp({deferredSave = false, deferredSyncCompletion = false, fetchImpl = async () => response(200, '{}'), serviceWorker = null, realMarked = false, realMerge = false} = {}) {
+export async function createApp({deferredSave = false, deferredSyncCompletion = false, fetchImpl = defaultFetch, serviceWorker = null, realMarked = false, realMerge = false} = {}) {
   const dom = new JSDOM(fs.readFileSync(path.join(testDirectory, '..', 'static', 'index.html'), 'utf8'), {
     url: 'http://localhost:8080/',
     pretendToBeVisual: true,
@@ -204,6 +232,9 @@ export async function createApp({deferredSave = false, deferredSyncCompletion = 
     syncCompletionStarted,
     releaseSyncCompletion,
     close: async () => {
+      window.__vylkTestHooks.cancelScheduledSync();
+      window.__vylkTestHooks.cancelActiveSyncRequests();
+      await window.__vylkTestHooks.waitForSyncIdle();
       await window.__vylkTestHooks.closeDatabase();
       window.close();
     },

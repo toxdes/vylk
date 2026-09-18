@@ -853,10 +853,3 @@ func getNoteTx(tx *sql.Tx, id string) (*note, error) {
 	}
 	return &n, nil
 }
-
-func removeNoteFile(path string) error {
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
-}

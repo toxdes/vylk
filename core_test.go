@@ -1823,10 +1823,6 @@ func TestDirectPreferencePatchUsesRevisionAndPublishesChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload preferences: %v", err)
 	}
-	body, err = json.Marshal(current)
-	if err != nil {
-		t.Fatalf("marshal current preferences: %v", err)
-	}
 	current.Theme = "default-dark"
 	body, err = json.Marshal(current)
 	if err != nil {
