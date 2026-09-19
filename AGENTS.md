@@ -3,6 +3,7 @@
 - Preserve observable behavior. Add characterization tests before changing untested behavior.
 - Prefer the simplest cohesive design that meets the current requirement (YAGNI).
 - Remove meaningful duplication, but do not abstract code merely because it looks similar.
+- Aim to keep maintained files near 1,000 lines; split only at cohesive responsibility boundaries.
 - Keep responsibilities narrow and dependencies explicit. Apply SOLID principles and design patterns only when they improve changeability or testability.
 - Write comments for constraints, implicit assumptions, compatibility workarounds, and non-obvious decisions. Do not narrate self-explanatory code.
 - Treat performance as behavior: avoid extra I/O, database queries, allocations, DOM work, and unbounded collections in hot paths.
