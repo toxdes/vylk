@@ -27,7 +27,11 @@ test('merges independent insertions at different locations', () => {
 
 test('merges a deletion with a distant edit', () => {
   assert.equal(
-    mergeText('Alpha\nBeta\nGamma\nDelta', 'Alpha\nGamma\nDelta', 'Alpha\nBeta\nGamma\nDelta updated'),
+    mergeText(
+      'Alpha\nBeta\nGamma\nDelta',
+      'Alpha\nGamma\nDelta',
+      'Alpha\nBeta\nGamma\nDelta updated',
+    ),
     'Alpha\nGamma\nDelta updated',
   );
 });
@@ -66,8 +70,14 @@ test('refuses distinct insertions at the same location', () => {
 
 test('refuses divergent title or tag changes', () => {
   const base = {title: 'Plan', tags: 'work', content: 'Keep'};
-  assert.equal(mergeNoteVersions(base, {...base, title: 'Local plan'}, {...base, title: 'Remote plan'}), null);
-  assert.equal(mergeNoteVersions(base, {...base, tags: 'work, local'}, {...base, tags: 'work, remote'}), null);
+  assert.equal(
+    mergeNoteVersions(base, {...base, title: 'Local plan'}, {...base, title: 'Remote plan'}),
+    null,
+  );
+  assert.equal(
+    mergeNoteVersions(base, {...base, tags: 'work, local'}, {...base, tags: 'work, remote'}),
+    null,
+  );
 });
 
 test('preserves a final newline', () => {

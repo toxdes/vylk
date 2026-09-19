@@ -1,6 +1,6 @@
 'use strict';
 
-importScripts('/marked.min.js', '/interactive-preview.js');
+importScripts('/vendor/marked.min.js', '/js/editor/interactive-preview.js');
 
 function escapeHTML(value) {
   return String(value || '')
@@ -12,10 +12,10 @@ function escapeHTML(value) {
 }
 
 function markdownOptions() {
-  const options = {breaks:true, gfm:true};
+  const options = {breaks: true, gfm: true};
   if (typeof marked.Renderer === 'function') {
     const renderer = new marked.Renderer();
-    renderer.html = token => escapeHTML(token.text ?? token.raw ?? '');
+    renderer.html = (token) => escapeHTML(token.text ?? token.raw ?? '');
     options.renderer = renderer;
   }
   return options;
@@ -23,24 +23,33 @@ function markdownOptions() {
 
 function tokenTag(token) {
   switch (token.type) {
-    case 'blockquote': return 'BLOCKQUOTE';
-    case 'code': return 'PRE';
+    case 'blockquote':
+      return 'BLOCKQUOTE';
+    case 'code':
+      return 'PRE';
     case 'heading': {
       const match = (token.raw || '').match(/^\s*(#+)/);
       if (match) return `H${match[1].length}`;
-      return Number.isInteger(token.depth) && token.depth >= 1 && token.depth <= 6 ? `H${token.depth}` : null;
+      return Number.isInteger(token.depth) && token.depth >= 1 && token.depth <= 6
+        ? `H${token.depth}`
+        : null;
     }
-    case 'hr': return 'HR';
-    case 'list': return token.ordered ? 'OL' : 'UL';
-    case 'paragraph': return 'P';
-    case 'table': return 'TABLE';
-    default: return null;
+    case 'hr':
+      return 'HR';
+    case 'list':
+      return token.ordered ? 'OL' : 'UL';
+    case 'paragraph':
+      return 'P';
+    case 'table':
+      return 'TABLE';
+    default:
+      return null;
   }
 }
 
 function gapDoesNotRender(source, options) {
   if (!source) return true;
-  return marked.lexer(source, options).every(token => token.type === 'space');
+  return marked.lexer(source, options).every((token) => token.type === 'space');
 }
 
 function describeBlocks(source, options, tokens) {
@@ -65,23 +74,24 @@ function describeBlocks(source, options, tokens) {
     }
     blocks.push({
       start,
-      end:Math.max(start, start + raw.replace(/[\s\r\n]+$/, '').length),
+      end: Math.max(start, start + raw.replace(/[\s\r\n]+$/, '').length),
       tagName,
-      type:token.type,
-      html:blockHTML,
-      listItems:token.type === 'list'
-        ? globalThis.VylkInteractive.listItemRanges(raw, start, `list:${start}`)
-        : [],
+      type: token.type,
+      html: blockHTML,
+      listItems:
+        token.type === 'list'
+          ? globalThis.VylkInteractive.listItemRanges(raw, start, `list:${start}`)
+          : [],
     });
   }
   return {
-    blocks:gapDoesNotRender(source.slice(offset), options) ? blocks : [],
+    blocks: gapDoesNotRender(source.slice(offset), options) ? blocks : [],
     htmlChunks,
     incrementalSafe,
   };
 }
 
-self.addEventListener('message', event => {
+self.addEventListener('message', (event) => {
   const id = event.data?.id;
   const source = typeof event.data?.source === 'string' ? event.data.source : '';
   try {
@@ -108,6 +118,6 @@ self.addEventListener('message', event => {
     }
     self.postMessage(result);
   } catch (error) {
-    self.postMessage({id, error:error?.message || 'preview rendering failed'});
+    self.postMessage({id, error: error?.message || 'preview rendering failed'});
   }
 });

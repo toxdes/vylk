@@ -7,8 +7,12 @@ const syntheticLineCount = Number(process.env.LARGE_DOCUMENT_LINES || 1_000);
 
 function largeMarkdown() {
   if (localFixture) return readFileSync(localFixture, 'utf8');
-  const body = 'A substantial Markdown line with **formatting**, a [link](https://example.com), and enough text to wrap on a narrow screen.';
-  return Array.from({length:syntheticLineCount}, (_, index) => `${index % 12 === 0 ? '## ' : ''}Line ${index}: ${body}`).join('\n');
+  const body =
+    'A substantial Markdown line with **formatting**, a [link](https://example.com), and enough text to wrap on a narrow screen.';
+  return Array.from(
+    {length: syntheticLineCount},
+    (_, index) => `${index % 12 === 0 ? '## ' : ''}Line ${index}: ${body}`,
+  ).join('\n');
 }
 
 async function signIn(page) {
@@ -18,11 +22,14 @@ async function signIn(page) {
   await expect(page.locator('#dashboard')).toBeVisible();
 }
 
-test('large documents keep editor input and preview transitions responsive', async ({page, context}) => {
+test('large documents keep editor input and preview transitions responsive', async ({
+  page,
+  context,
+}) => {
   test.setTimeout(120_000);
   if (process.env.CPU_THROTTLE) {
     const session = await context.newCDPSession(page);
-    await session.send('Emulation.setCPUThrottlingRate', {rate:Number(process.env.CPU_THROTTLE)});
+    await session.send('Emulation.setCPUThrottlingRate', {rate: Number(process.env.CPU_THROTTLE)});
   }
   await page.addInitScript(() => {
     const NativeWorker = window.Worker;
@@ -33,29 +40,43 @@ test('large documents keep editor input and preview transitions responsive', asy
         super(url, options);
         this.__isPreviewWorker = String(url).includes('preview-worker');
         if (this.__isPreviewWorker) {
-          this.addEventListener('message', event => {
-            const metric = window.__previewWorkerMetrics.find(entry => entry.id === event.data?.id);
+          this.addEventListener('message', (event) => {
+            const metric = window.__previewWorkerMetrics.find(
+              (entry) => entry.id === event.data?.id,
+            );
             if (metric) {
               metric.received = performance.now();
               metric.incrementalSafe = event.data?.incrementalSafe;
               metric.blocks = event.data?.blocks?.length || 0;
               metric.htmlBytes = event.data?.html?.length || 0;
               metric.htmlChunks = event.data?.htmlChunks?.length || 0;
-              metric.chunkBytes = event.data?.htmlChunks?.reduce((total, chunk) => total + chunk.length, 0) || 0;
-              metric.maxChunkBytes = event.data?.htmlChunks?.reduce((maximum, chunk) => Math.max(maximum, chunk.length), 0) || 0;
+              metric.chunkBytes =
+                event.data?.htmlChunks?.reduce((total, chunk) => total + chunk.length, 0) || 0;
+              metric.maxChunkBytes =
+                event.data?.htmlChunks?.reduce(
+                  (maximum, chunk) => Math.max(maximum, chunk.length),
+                  0,
+                ) || 0;
             }
           });
         }
       }
       postMessage(message, transfer) {
-        if (this.__isPreviewWorker) window.__previewWorkerMetrics.push({id:message?.id, sent:performance.now()});
-        return transfer === undefined ? super.postMessage(message) : super.postMessage(message, transfer);
+        if (this.__isPreviewWorker)
+          window.__previewWorkerMetrics.push({id: message?.id, sent: performance.now()});
+        return transfer === undefined
+          ? super.postMessage(message)
+          : super.postMessage(message, transfer);
       }
     };
     if (typeof PerformanceObserver === 'function') {
-      new PerformanceObserver(list => {
-        list.getEntries().forEach(entry => window.__longTasks.push({start:entry.startTime, duration:entry.duration}));
-      }).observe({type:'longtask', buffered:true});
+      new PerformanceObserver((list) => {
+        list
+          .getEntries()
+          .forEach((entry) =>
+            window.__longTasks.push({start: entry.startTime, duration: entry.duration}),
+          );
+      }).observe({type: 'longtask', buffered: true});
     }
   });
   await signIn(page);
@@ -67,26 +88,35 @@ test('large documents keep editor input and preview transitions responsive', asy
   await editor.evaluate((textarea, value) => {
     textarea.value = value;
     textarea.setSelectionRange(value.length, value.length);
-    textarea.dispatchEvent(new InputEvent('input', {bubbles:true, data:null, inputType:'insertText'}));
+    textarea.dispatchEvent(
+      new InputEvent('input', {bubbles: true, data: null, inputType: 'insertText'}),
+    );
   }, source);
   await page.waitForTimeout(800);
 
-  const editorLatency = await editor.evaluate(async textarea => {
-    textarea.focus({preventScroll:true});
+  const editorLatency = await editor.evaluate(async (textarea) => {
+    textarea.focus({preventScroll: true});
     textarea.setSelectionRange(textarea.value.length, textarea.value.length);
     const started = performance.now();
-    const inputHandled = new Promise(resolve => textarea.addEventListener('input', () => resolve(performance.now() - started), {once:true}));
-    const nextFrame = new Promise(resolve => requestAnimationFrame(() => resolve(performance.now() - started)));
+    const inputHandled = new Promise((resolve) =>
+      textarea.addEventListener('input', () => resolve(performance.now() - started), {once: true}),
+    );
+    const nextFrame = new Promise((resolve) =>
+      requestAnimationFrame(() => resolve(performance.now() - started)),
+    );
     document.execCommand('insertText', false, 'x');
-    return {input:await inputHandled, frame:await nextFrame};
+    return {input: await inputHandled, frame: await nextFrame};
   });
 
   const zenTransitionStarted = await page.evaluate(() => performance.now());
   await page.locator('[data-panel="zen"]').click();
   const zenEditor = page.locator('#zen-source-editor');
   await expect(zenEditor).toBeVisible();
-  const zenTransition = await page.evaluate(started => performance.now() - started, zenTransitionStarted);
-  const zenEditorLatency = await zenEditor.evaluate(async element => {
+  const zenTransition = await page.evaluate(
+    (started) => performance.now() - started,
+    zenTransitionStarted,
+  );
+  const zenEditorLatency = await zenEditor.evaluate(async (element) => {
     const line = element.lastElementChild;
     const range = document.createRange();
     range.selectNodeContents(line);
@@ -94,12 +124,19 @@ test('large documents keep editor input and preview transitions responsive', asy
     const selection = getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
-    element.focus({preventScroll:true});
+    element.focus({preventScroll: true});
     const started = performance.now();
     document.execCommand('insertText', false, 'z');
     const sync = performance.now() - started;
-    const frame = await new Promise(resolve => requestAnimationFrame(() => resolve(performance.now() - started)));
-    return {sync, frame, retainedLine:line === element.lastElementChild, lines:element.childElementCount};
+    const frame = await new Promise((resolve) =>
+      requestAnimationFrame(() => resolve(performance.now() - started)),
+    );
+    return {
+      sync,
+      frame,
+      retainedLine: line === element.lastElementChild,
+      lines: element.childElementCount,
+    };
   });
   expect(zenEditorLatency.retainedLine).toBe(true);
   expect(zenEditorLatency.lines).toBe(source.split('\n').length);
@@ -120,13 +157,20 @@ test('large documents keep editor input and preview transitions responsive', asy
         };
       },
     });
-    window.__previewTransition = {started:null, handlerComplete:null, firstMutation:null, complete:null};
+    window.__previewTransition = {
+      started: null,
+      handlerComplete: null,
+      firstMutation: null,
+      complete: null,
+    };
     const preview = document.querySelector('#preview');
     const observer = new MutationObserver(() => {
       const transition = window.__previewTransition;
       if (transition.started === null) return;
-      if (transition.firstMutation === null && preview.childElementCount) transition.firstMutation = performance.now();
-      const finalBlockReady = preview.lastElementChild?.textContent.includes('benchmark-final-marker');
+      if (transition.firstMutation === null && preview.childElementCount)
+        transition.firstMutation = performance.now();
+      const finalBlockReady =
+        preview.lastElementChild?.textContent.includes('benchmark-final-marker');
       if (!preview.hasAttribute('aria-busy') && finalBlockReady) {
         requestAnimationFrame(() => {
           transition.complete = performance.now();
@@ -134,29 +178,52 @@ test('large documents keep editor input and preview transitions responsive', asy
         });
       }
     });
-    observer.observe(preview, {attributes:true, childList:true, subtree:true});
-    document.querySelector('[data-panel="preview"]').addEventListener('click', () => {
-      window.__previewTransition.started = performance.now();
-    }, {capture:true, once:true});
-    document.addEventListener('click', event => {
-      if (event.target.closest('[data-panel="preview"]')) window.__previewTransition.handlerComplete = performance.now();
-    }, {once:true});
+    observer.observe(preview, {attributes: true, childList: true, subtree: true});
+    document.querySelector('[data-panel="preview"]').addEventListener(
+      'click',
+      () => {
+        window.__previewTransition.started = performance.now();
+      },
+      {capture: true, once: true},
+    );
+    document.addEventListener(
+      'click',
+      (event) => {
+        if (event.target.closest('[data-panel="preview"]'))
+          window.__previewTransition.handlerComplete = performance.now();
+      },
+      {once: true},
+    );
   });
   await page.locator('[data-panel="preview"]').click();
-  await expect(page.locator('#preview')).not.toHaveAttribute('aria-busy', 'true', {timeout:90_000});
-  await expect(page.locator('#preview')).toContainText('benchmark-final-marker', {timeout:90_000});
-  await expect.poll(() => page.evaluate(() => window.__previewTransition.complete), {timeout:90_000}).not.toBeNull();
+  await expect(page.locator('#preview')).not.toHaveAttribute('aria-busy', 'true', {
+    timeout: 90_000,
+  });
+  await expect(page.locator('#preview')).toContainText('benchmark-final-marker', {timeout: 90_000});
+  await expect
+    .poll(() => page.evaluate(() => window.__previewTransition.complete), {timeout: 90_000})
+    .not.toBeNull();
   const previewMetrics = await page.evaluate(() => ({
-    worker:window.__previewWorkerMetrics.at(-1) || null,
-    workers:window.__previewWorkerMetrics,
-    longTasks:window.__longTasks,
-    blocks:document.querySelector('#preview').childElementCount,
-    transition:window.__previewTransition,
-    mainThreadMarkdownParses:window.__mainThreadMarkdownParses,
+    worker: window.__previewWorkerMetrics.at(-1) || null,
+    workers: window.__previewWorkerMetrics,
+    longTasks: window.__longTasks,
+    blocks: document.querySelector('#preview').childElementCount,
+    transition: window.__previewTransition,
+    mainThreadMarkdownParses: window.__mainThreadMarkdownParses,
   }));
   const previewLatency = previewMetrics.transition.complete - previewMetrics.transition.started;
 
-  console.log(JSON.stringify({bytes:source.length, lines:source.split('\n').length, editorLatency, zenTransition, zenEditorLatency, previewLatency, previewMetrics}));
+  console.log(
+    JSON.stringify({
+      bytes: source.length,
+      lines: source.split('\n').length,
+      editorLatency,
+      zenTransition,
+      zenEditorLatency,
+      previewLatency,
+      previewMetrics,
+    }),
+  );
   expect(previewMetrics.mainThreadMarkdownParses).toBe(0);
-  expect(previewMetrics.workers.filter(metric => metric.received)).toHaveLength(1);
+  expect(previewMetrics.workers.filter((metric) => metric.received)).toHaveLength(1);
 });

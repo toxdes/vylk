@@ -1,0 +1,15 @@
+/* Preserve this order: later layers intentionally refine earlier component rules. */
+@use 'settings/tokens';
+@use 'generic/base';
+@use 'components/controls';
+@use 'features/auth';
+@use 'features/dashboard';
+@use 'features/editor-shell';
+@use 'features/editor-content';
+@use 'components/table-picker';
+@use 'features/preferences-dialog';
+@use 'features/preferences-page';
+@use 'components/feedback';
+@use 'settings/refinements';
+@use 'features/editor-overlay';
+@use 'features/shortcuts';

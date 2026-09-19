@@ -1,0 +1,85 @@
+/* Login */
+#login-screen {
+  display: grid;
+  min-height: 100dvh;
+  padding: 1.5rem;
+  place-items: center;
+}
+
+#login-form {
+  width: min(100%, 24rem);
+  padding: 2.25rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+#login-form h1 {
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+#login-form h1 {
+  margin: 0 0 1.5rem;
+}
+
+#login-form .app-brand {
+  justify-content: center;
+}
+
+#login-form input {
+  width: 100%;
+  margin-bottom: 0.875rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card-bg);
+  color: var(--fg);
+  font-size: 1rem;
+  line-height: 1.4;
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+#login-form input:focus,
+#note-title:focus,
+#note-tags:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+#login-form input:-webkit-autofill {
+  box-shadow: 0 0 0 30px var(--card-bg) inset;
+  -webkit-text-fill-color: var(--fg);
+}
+
+#login-form button {
+  width: 100%;
+  padding: 0.72rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.35;
+  transition: background 0.15s;
+}
+
+#login-form button:hover {
+  background: var(--accent-hover);
+}
+
+.error {
+  min-height: 1.25rem;
+  margin: 0.5rem 0 0;
+  color: var(--danger);
+  font-size: 0.875rem;
+  text-align: center;
+}

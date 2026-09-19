@@ -12,7 +12,15 @@ async function signIn(page) {
 async function openZenMode(page) {
   await page.locator('#new-note-btn').click();
   await page.locator('#note-title').fill('A calm page');
-  await page.locator('#note-content').fill(Array.from({length:120}, (_, index) => `A deliberately long paragraph ${index} keeps the writing surface scrollable without changing its shape.`).join('\n\n'));
+  await page
+    .locator('#note-content')
+    .fill(
+      Array.from(
+        {length: 120},
+        (_, index) =>
+          `A deliberately long paragraph ${index} keeps the writing surface scrollable without changing its shape.`,
+      ).join('\n\n'),
+    );
   await page.locator('#editor-prefs-btn').click();
   await page.locator('#prefs-tab-zen').click();
   await page.locator('#pref-zen-page-width').selectOption('standard');
@@ -38,14 +46,16 @@ async function replaceZenSource(page, source, lineIndex = 0) {
     const selection = getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
-    element.focus({preventScroll:true});
-    element.scrollTop = Math.max(0, line.offsetTop - element.clientHeight * .4);
+    element.focus({preventScroll: true});
+    element.scrollTop = Math.max(0, line.offsetTop - element.clientHeight * 0.4);
   }, lineIndex);
   return editor;
 }
 
-test('Zen mode presents a page, overlays its controls, and keeps a long document scrollable', async ({page}) => {
-  await page.setViewportSize({width:1440, height:960});
+test('Zen mode presents a page, overlays its controls, and keeps a long document scrollable', async ({
+  page,
+}) => {
+  await page.setViewportSize({width: 1440, height: 960});
   await signIn(page);
   await openZenMode(page);
 
@@ -54,7 +64,7 @@ test('Zen mode presents a page, overlays its controls, and keeps a long document
     page.locator('.editor-source-wrap').boundingBox(),
     page.locator('.zen-controls').boundingBox(),
     page.locator('#zen-note-title').boundingBox(),
-    page.locator('#zen-source-editor').evaluate(editor => ({
+    page.locator('#zen-source-editor').evaluate((editor) => ({
       canScroll: editor.scrollHeight > editor.clientHeight,
       scrollTop: editor.scrollTop,
       maxScrollTop: editor.scrollHeight - editor.clientHeight,
@@ -78,15 +88,15 @@ test('Zen mode presents a page, overlays its controls, and keeps a long document
   expect(metrics.maxScrollTop).toBeGreaterThan(metrics.lineHeight * 3);
   expect(metrics.scrollTop).toBeLessThanOrEqual(metrics.maxScrollTop);
   expect(metrics.scrollbarWidth).toBe('none');
-  expect(writingPageBox.width).toBeGreaterThan(pageBox.width * .8);
-  expect(metrics.width).toBeGreaterThan(writingPageBox.width * .8);
+  expect(writingPageBox.width).toBeGreaterThan(pageBox.width * 0.8);
+  expect(metrics.width).toBeGreaterThan(writingPageBox.width * 0.8);
   expect(metrics.wordCount).toMatch(/\d+ words/);
 
-  await page.screenshot({path:'/tmp/vylk-zen-desktop.png'});
+  await page.screenshot({path: '/tmp/vylk-zen-desktop.png'});
 });
 
 test('Zen page width is independent from the app content width', async ({page}) => {
-  await page.setViewportSize({width:1440, height:960});
+  await page.setViewportSize({width: 1440, height: 960});
   await signIn(page);
   await page.locator('#new-note-btn').click();
   await page.locator('#note-content').fill('Independent Zen page width');
@@ -98,12 +108,12 @@ test('Zen page width is independent from the app content width', async ({page}) 
   await page.locator('[data-panel="zen"]').click();
 
   const layout = await page.evaluate(() => ({
-    contentWidth:document.documentElement.dataset.contentWidth,
-    zenPageWidth:document.documentElement.dataset.zenPageWidth,
-    bodyWidth:document.querySelector('#editor .editor-body').getBoundingClientRect().width,
-    pageWidth:document.querySelector('#editor .editor-source-wrap').getBoundingClientRect().width,
+    contentWidth: document.documentElement.dataset.contentWidth,
+    zenPageWidth: document.documentElement.dataset.zenPageWidth,
+    bodyWidth: document.querySelector('#editor .editor-body').getBoundingClientRect().width,
+    pageWidth: document.querySelector('#editor .editor-source-wrap').getBoundingClientRect().width,
   }));
-  expect(layout).toMatchObject({contentWidth:'full', zenPageWidth:'compact'});
+  expect(layout).toMatchObject({contentWidth: 'full', zenPageWidth: 'compact'});
   expect(layout.bodyWidth).toBeGreaterThan(1300);
   expect(layout.pageWidth).toBeGreaterThanOrEqual(860);
   expect(layout.pageWidth).toBeLessThanOrEqual(865);
@@ -125,11 +135,11 @@ test('Zen mode styles Markdown without replacing its editable source', async ({p
   await expect(editor.locator('.zen-md-strike')).toHaveText('removed');
   await expect(editor.locator('.zen-md-code')).toHaveText('code');
 
-  const styles = await editor.evaluate(element => ({
-    headingWeight:getComputedStyle(element.querySelector('.zen-md-h1')).fontWeight,
-    italic:getComputedStyle(element.querySelector('.zen-md-em')).fontStyle,
-    strike:getComputedStyle(element.querySelector('.zen-md-strike')).textDecorationLine,
-    quoteBorder:getComputedStyle(element.querySelector('.zen-md-quote')).borderInlineStartWidth,
+  const styles = await editor.evaluate((element) => ({
+    headingWeight: getComputedStyle(element.querySelector('.zen-md-h1')).fontWeight,
+    italic: getComputedStyle(element.querySelector('.zen-md-em')).fontStyle,
+    strike: getComputedStyle(element.querySelector('.zen-md-strike')).textDecorationLine,
+    quoteBorder: getComputedStyle(element.querySelector('.zen-md-quote')).borderInlineStartWidth,
   }));
   expect(Number(styles.headingWeight)).toBeGreaterThanOrEqual(700);
   expect(styles.italic).toBe('italic');
@@ -177,21 +187,23 @@ test('Zen mode styles a heading as soon as its separating space is typed', async
   await expect(editor.locator('.zen-md-h2')).toHaveText('## Heading');
 });
 
-test('Zen mode styles supported inline tokens as soon as their first character is typed', async ({page}) => {
+test('Zen mode styles supported inline tokens as soon as their first character is typed', async ({
+  page,
+}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
   await page.locator('[data-panel="zen"]').click();
 
   const editor = page.locator('#zen-source-editor');
   const cases = [
-    {source:'*i', selector:'.zen-md-em', text:'i'},
-    {source:'_i', selector:'.zen-md-em', text:'i'},
-    {source:'**b', selector:'.zen-md-strong', text:'b'},
-    {source:'__b', selector:'.zen-md-strong', text:'b'},
-    {source:'***x', selector:'.zen-md-strong.zen-md-em', text:'x'},
-    {source:'___x', selector:'.zen-md-strong.zen-md-em', text:'x'},
-    {source:'~~s', selector:'.zen-md-strike', text:'s'},
-    {source:'`c', selector:'.zen-md-code', text:'c'},
+    {source: '*i', selector: '.zen-md-em', text: 'i'},
+    {source: '_i', selector: '.zen-md-em', text: 'i'},
+    {source: '**b', selector: '.zen-md-strong', text: 'b'},
+    {source: '__b', selector: '.zen-md-strong', text: 'b'},
+    {source: '***x', selector: '.zen-md-strong.zen-md-em', text: 'x'},
+    {source: '___x', selector: '.zen-md-strong.zen-md-em', text: 'x'},
+    {source: '~~s', selector: '.zen-md-strike', text: 's'},
+    {source: '`c', selector: '.zen-md-code', text: 'c'},
   ];
   for (const entry of cases) {
     await editor.press('Control+A');
@@ -208,7 +220,7 @@ test('Zen mode reconciles composed mobile input without duplicating text', async
   await page.locator('[data-panel="zen"]').click();
 
   const editor = page.locator('#zen-source-editor');
-  await editor.evaluate(element => {
+  await editor.evaluate((element) => {
     const node = element.firstElementChild.firstChild;
     const selection = getSelection();
     const initial = document.createRange();
@@ -216,11 +228,11 @@ test('Zen mode reconciles composed mobile input without duplicating text', async
     initial.collapse(true);
     selection.removeAllRanges();
     selection.addRange(initial);
-    element.focus({preventScroll:true});
-    element.dispatchEvent(new CompositionEvent('compositionstart', {bubbles:true, data:''}));
+    element.focus({preventScroll: true});
+    element.dispatchEvent(new CompositionEvent('compositionstart', {bubbles: true, data: ''}));
     node.data = 'Al語pha';
     selection.collapse(node, 3);
-    element.dispatchEvent(new CompositionEvent('compositionend', {bubbles:true, data:'語'}));
+    element.dispatchEvent(new CompositionEvent('compositionend', {bubbles: true, data: '語'}));
   });
 
   await expect(editor).toHaveText('Al語pha');
@@ -229,12 +241,16 @@ test('Zen mode reconciles composed mobile input without duplicating text', async
 });
 
 test('Zen mode does not force a scroll recenter while typing', async ({page}) => {
-  await page.setViewportSize({width:1440, height:960});
+  await page.setViewportSize({width: 1440, height: 960});
   await signIn(page);
   await openZenMode(page);
 
-  const editor = await replaceZenSource(page, Array.from({length:400}, (_, index) => `Line ${index}`).join('\n'), 240);
-  const before = await editor.evaluate(element => {
+  const editor = await replaceZenSource(
+    page,
+    Array.from({length: 400}, (_, index) => `Line ${index}`).join('\n'),
+    240,
+  );
+  const before = await editor.evaluate((element) => {
     element.dataset.scrollEvents = '0';
     element.addEventListener('scroll', () => {
       element.dataset.scrollEvents = String(Number(element.dataset.scrollEvents || 0) + 1);
@@ -248,19 +264,23 @@ test('Zen mode does not force a scroll recenter while typing', async ({page}) =>
     const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
     window.__zenScrollWrites = [];
     Object.defineProperty(element, 'scrollTop', {
-      configurable:true,
-      get() { return descriptor.get.call(this); },
+      configurable: true,
+      get() {
+        return descriptor.get.call(this);
+      },
       set(value) {
-        window.__zenScrollWrites.push({value, stack:new Error().stack});
+        window.__zenScrollWrites.push({value, stack: new Error().stack});
         descriptor.set.call(this, value);
       },
     });
   }, before);
 
   await page.keyboard.type('x');
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
 
-  const after = await editor.evaluate(element => ({
+  const after = await editor.evaluate((element) => ({
     scrollTop: element.scrollTop,
     scrollEvents: Number(element.dataset.scrollEvents || 0),
     writes: window.__zenScrollWrites,
@@ -270,18 +290,24 @@ test('Zen mode does not force a scroll recenter while typing', async ({page}) =>
 });
 
 test('Zen mode does not recenter a visible caret during keyboard navigation', async ({page}) => {
-  await page.setViewportSize({width:1440, height:960});
+  await page.setViewportSize({width: 1440, height: 960});
   await signIn(page);
   await openZenMode(page);
 
-  const editor = await replaceZenSource(page, Array.from({length:400}, (_, index) => `Line ${index}`).join('\n'), 240);
+  const editor = await replaceZenSource(
+    page,
+    Array.from({length: 400}, (_, index) => `Line ${index}`).join('\n'),
+    240,
+  );
   await page.evaluate(() => new Promise(requestAnimationFrame));
-  const before = await editor.evaluate(element => {
+  const before = await editor.evaluate((element) => {
     const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
     window.__zenNavigationScrollWrites = [];
     Object.defineProperty(element, 'scrollTop', {
-      configurable:true,
-      get() { return descriptor.get.call(this); },
+      configurable: true,
+      get() {
+        return descriptor.get.call(this);
+      },
       set(value) {
         window.__zenNavigationScrollWrites.push(value);
         descriptor.set.call(this, value);
@@ -291,17 +317,19 @@ test('Zen mode does not recenter a visible caret during keyboard navigation', as
   });
 
   await page.keyboard.press('ArrowUp');
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
 
-  const after = await editor.evaluate(element => ({
-    scrollTop:element.scrollTop,
-    lineHeight:Number.parseFloat(getComputedStyle(element).lineHeight),
-    writes:window.__zenNavigationScrollWrites,
+  const after = await editor.evaluate((element) => ({
+    scrollTop: element.scrollTop,
+    lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+    writes: window.__zenNavigationScrollWrites,
   }));
   expect(after.writes).toEqual([]);
   expect(Math.abs(after.scrollTop - before)).toBeLessThanOrEqual(after.lineHeight);
 
-  await editor.evaluate(element => {
+  await editor.evaluate((element) => {
     const lastLine = element.lastElementChild;
     const range = document.createRange();
     range.selectNodeContents(lastLine);
@@ -314,7 +342,9 @@ test('Zen mode does not recenter a visible caret during keyboard navigation', as
   });
   await page.keyboard.press('ArrowLeft');
   await page.keyboard.press('ArrowRight');
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
   expect(await editor.evaluate(() => window.__zenNavigationScrollWrites)).toEqual([]);
 });
 
@@ -326,7 +356,7 @@ test('Zen mode defers word counting until the browser is idle', async ({page}) =
   const before = await count.textContent();
   await page.evaluate(() => {
     window.__pendingZenWordCount = null;
-    window.requestIdleCallback = callback => {
+    window.requestIdleCallback = (callback) => {
       window.__pendingZenWordCount = callback;
       return 1;
     };
@@ -341,7 +371,7 @@ test('Zen mode defers word counting until the browser is idle', async ({page}) =
   await page.evaluate(() => {
     const callback = window.__pendingZenWordCount;
     window.__pendingZenWordCount = null;
-    callback?.({didTimeout:false, timeRemaining:() => 16});
+    callback?.({didTimeout: false, timeRemaining: () => 16});
   });
 
   const previousWords = Number.parseInt(before, 10);
@@ -366,7 +396,9 @@ test('Zen mode exposes which writing view is active', async ({page}) => {
   await expect(page.locator('#note-content')).toBeFocused();
 });
 
-test('Zen mode keeps actionable connection feedback visible without showing routine toasts', async ({page}) => {
+test('Zen mode keeps actionable connection feedback visible without showing routine toasts', async ({
+  page,
+}) => {
   await signIn(page);
   await openZenMode(page);
   await page.waitForTimeout(1200);
@@ -420,7 +452,7 @@ test('Zen preview renders stale Markdown away from the main UI thread', async ({
 });
 
 test('Zen mode preserves its writing page on a narrow screen', async ({page}) => {
-  await page.setViewportSize({width:390, height:844});
+  await page.setViewportSize({width: 390, height: 844});
   await signIn(page);
   await openZenMode(page);
   await expect(page.locator('#zen-source-editor')).toBeVisible();
@@ -443,11 +475,11 @@ test('Zen mode preserves its writing page on a narrow screen', async ({page}) =>
   expect(controlsBox.y).toBeLessThanOrEqual(12);
   expect(titleBox.x).toBeLessThanOrEqual(20);
   expect(390 - wordCountBox.x - wordCountBox.width).toBeLessThanOrEqual(20);
-  await page.screenshot({path:'/tmp/vylk-zen-mobile.png'});
+  await page.screenshot({path: '/tmp/vylk-zen-mobile.png'});
 });
 
 test.describe('touch editing', () => {
-  test.use({hasTouch:true, isMobile:true, viewport:{width:390, height:844}});
+  test.use({hasTouch: true, isMobile: true, viewport: {width: 390, height: 844}});
 
   test('Zen mode accepts touch-focused input without horizontal overflow', async ({page}) => {
     await signIn(page);
@@ -458,9 +490,9 @@ test.describe('touch editing', () => {
     await editor.tap();
     await page.keyboard.insertText('## Mobile heading');
     await expect(editor.locator('.zen-md-h2')).toHaveText('## Mobile heading');
-    const metrics = await editor.evaluate(element => ({
-      fontSize:Number.parseFloat(getComputedStyle(element).fontSize),
-      overflows:element.scrollWidth > element.clientWidth,
+    const metrics = await editor.evaluate((element) => ({
+      fontSize: Number.parseFloat(getComputedStyle(element).fontSize),
+      overflows: element.scrollWidth > element.clientWidth,
     }));
     expect(metrics.fontSize).toBeGreaterThanOrEqual(16);
     expect(metrics.overflows).toBe(false);

@@ -23,13 +23,15 @@ test('in-app Back does not leave a stale note in browser history', async ({page}
   await page.locator(`.note-item[data-id="${noteID}"]`).click();
   await expect(page.locator('#editor')).toBeVisible();
   const noteURL = page.url();
-  await page.locator('#back-btn').evaluate(button => {
+  await page.locator('#back-btn').evaluate((button) => {
     button.click();
     button.click();
   });
   await expect(page.locator('#dashboard')).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
-  await expect.poll(() => page.evaluate(() => history.state)).toMatchObject({app: 'vylk', screen: 'dashboard'});
+  await expect
+    .poll(() => page.evaluate(() => history.state))
+    .toMatchObject({app: 'vylk', screen: 'dashboard'});
 
   await page.goBack();
   expect(page.url()).not.toBe(noteURL);
@@ -49,9 +51,13 @@ test('browser Back saves the current note before returning to the dashboard', as
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('#dashboard')).toBeVisible();
 
-  await page.locator(`.note-item[data-id="${noteURL.slice(noteURL.lastIndexOf('/') + 1)}"]`).click();
+  await page
+    .locator(`.note-item[data-id="${noteURL.slice(noteURL.lastIndexOf('/') + 1)}"]`)
+    .click();
   await expect(page).toHaveURL(noteURL);
-  await expect(page.locator('#note-content')).toHaveValue('Saved before browser navigation and Back');
+  await expect(page.locator('#note-content')).toHaveValue(
+    'Saved before browser navigation and Back',
+  );
 });
 
 test('direct note URLs get one dashboard history parent', async ({page}) => {

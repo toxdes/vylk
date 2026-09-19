@@ -16,7 +16,7 @@ export default [
       'dist/**',
       'node_modules/**',
       'playwright-report/**',
-      'static/marked.min.js',
+      'static/vendor/marked.min.js',
       'test-results/**',
       'yesb/**',
     ],
@@ -33,11 +33,15 @@ export default [
     rules: {
       // These helpers are exposed through the test hook bridge rather than
       // referenced statically by the browser script.
-      'no-unused-vars': ['error', {
-        args: 'none',
-        caughtErrors: 'none',
-        varsIgnorePattern: '^(applyRemoteDeletion|cacheRemoteNote|claimQueueOperation|getOfflineDatabaseInfo)$',
-      }],
+      'no-unused-vars': [
+        'error',
+        {
+          args: 'none',
+          caughtErrors: 'none',
+          varsIgnorePattern:
+            '^(applyRemoteDeletion|cacheRemoteNote|claimQueueOperation|getOfflineDatabaseInfo)$',
+        },
+      ],
       // Best-effort cleanup and optional browser APIs intentionally ignore
       // failures in this client-side code.
       'no-empty': ['error', {allowEmptyCatch: true}],

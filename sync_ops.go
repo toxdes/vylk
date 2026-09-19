@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"vylk/internal/httpx"
 )
 
 const (
@@ -61,16 +63,16 @@ type syncPushResponse struct {
 
 func (a *app) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 	var request syncPushRequest
-	if !decodeJSON(w, r, &request, maxSyncPushBytes) {
+	if !httpx.DecodeJSON(w, r, &request, maxSyncPushBytes) {
 		return
 	}
 	if !syncIdentifierPattern.MatchString(request.DeviceID) || len(request.Operations) > 100 {
-		writeAPIError(w, http.StatusBadRequest, "invalid_sync_request", "invalid sync request")
+		httpx.WriteAPIError(w, http.StatusBadRequest, "invalid_sync_request", "invalid sync request")
 		return
 	}
 	for index, operation := range request.Operations {
 		if err := validateSyncOperation(operation); err != nil {
-			writeJSONStatus(w, http.StatusBadRequest, map[string]any{
+			httpx.WriteJSONStatus(w, http.StatusBadRequest, map[string]any{
 				"error":           err.Error(),
 				"code":            "invalid_sync_operation",
 				"permanent":       true,
@@ -85,7 +87,7 @@ func (a *app) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 	a.noteMu.Lock()
 	defer a.noteMu.Unlock()
 	if err := a.recoverFileOperations(); err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "recover_file_operations_failed", "could not recover pending file operations")
+		httpx.WriteAPIError(w, http.StatusInternalServerError, "recover_file_operations_failed", "could not recover pending file operations")
 		return
 	}
 	for _, operation := range request.Operations {
@@ -93,10 +95,10 @@ func (a *app) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if blocked, err := a.fileOperationBlocked(operation.NoteID); err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "inspect_file_operations_failed", "could not inspect pending file operations")
+			httpx.WriteAPIError(w, http.StatusInternalServerError, "inspect_file_operations_failed", "could not inspect pending file operations")
 			return
 		} else if blocked {
-			writeJSONStatus(w, http.StatusServiceUnavailable, map[string]any{
+			httpx.WriteJSONStatus(w, http.StatusServiceUnavailable, map[string]any{
 				"error":   "note file recovery requires attention",
 				"code":    "note_file_recovery_blocked",
 				"note_id": operation.NoteID,
@@ -107,7 +109,7 @@ func (a *app) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 
 	lastSequence, err := syncDeviceSequence(a.db, request.DeviceID)
 	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "read_sync_state_failed", "could not read sync state")
+		httpx.WriteAPIError(w, http.StatusInternalServerError, "read_sync_state_failed", "could not read sync state")
 		return
 	}
 	response := syncPushResponse{Acknowledged: make([]syncOperationResult, 0, len(request.Operations)), ExpectedSequence: lastSequence + 1}
@@ -128,19 +130,19 @@ func (a *app) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if err != nil {
-				writeAPIError(w, http.StatusConflict, "invalid_replayed_operation", "invalid replayed operation")
+				httpx.WriteAPIError(w, http.StatusConflict, "invalid_replayed_operation", "invalid replayed operation")
 				return
 			}
 			response.Acknowledged = append(response.Acknowledged, stored)
 			continue
 		}
 		if operation.ClientSequence != lastSequence+1 {
-			writeJSONStatus(w, http.StatusConflict, response)
+			httpx.WriteJSONStatus(w, http.StatusConflict, response)
 			return
 		}
 		result, err := a.applySyncOperation(request.DeviceID, operation)
 		if err != nil {
-			writeAPIError(w, http.StatusInternalServerError, "apply_sync_operation_failed", "could not apply sync operation")
+			httpx.WriteAPIError(w, http.StatusInternalServerError, "apply_sync_operation_failed", "could not apply sync operation")
 			return
 		}
 		if result.Status == "applied" {
@@ -154,7 +156,7 @@ func (a *app) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 		lastSequence = operation.ClientSequence
 		response.ExpectedSequence = lastSequence + 1
 	}
-	writeJSON(w, response)
+	httpx.WriteJSON(w, response)
 }
 
 func validateSyncOperation(operation syncOperationRequest) error {

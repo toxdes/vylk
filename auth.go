@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"vylk/internal/httpx"
 )
 
 const sessionLifetime = 180 * 24 * time.Hour
@@ -111,12 +113,12 @@ func (a *app) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c, err := r.Cookie("session")
 		if err != nil {
-			writeAPIError(w, http.StatusUnauthorized, "authentication_required", "unauthorized")
+			httpx.WriteAPIError(w, http.StatusUnauthorized, "authentication_required", "unauthorized")
 			return
 		}
 		valid, renewed := a.sessions.validAndRenew(c.Value)
 		if !valid {
-			writeAPIError(w, http.StatusUnauthorized, "authentication_required", "unauthorized")
+			httpx.WriteAPIError(w, http.StatusUnauthorized, "authentication_required", "unauthorized")
 			return
 		}
 		if renewed {
@@ -139,7 +141,7 @@ func (a *app) setSessionCookie(w http.ResponseWriter, r *http.Request, token str
 }
 
 func (a *app) handleCheck(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, map[string]any{"ok": true, "version": version, "revision": appRevision})
+	httpx.WriteJSON(w, map[string]any{"ok": true, "version": version, "revision": appRevision})
 }
 
 func (a *app) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -163,12 +165,12 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ip := a.rl.realIP(r)
 	retryAfter, err := a.rl.loginRetryAfter(ip)
 	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "login_rate_limit_failed", "could not check login rate limit")
+		httpx.WriteAPIError(w, http.StatusInternalServerError, "login_rate_limit_failed", "could not check login rate limit")
 		return
 	}
 	if retryAfter > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
-		writeJSONStatus(w, http.StatusTooManyRequests, map[string]any{
+		httpx.WriteJSONStatus(w, http.StatusTooManyRequests, map[string]any{
 			"error":       "too many login attempts",
 			"code":        "login_rate_limited",
 			"retry_after": retryAfter,
@@ -178,20 +180,20 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Password string `json:"password"`
 	}
-	if !decodeJSON(w, r, &body, 16<<10) {
+	if !httpx.DecodeJSON(w, r, &body, 16<<10) {
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(body.Password), []byte(a.password)) != 1 {
 		a.rl.recordLoginAttempt(ip, false)
-		writeAPIError(w, http.StatusUnauthorized, "invalid_credentials", "wrong password")
+		httpx.WriteAPIError(w, http.StatusUnauthorized, "invalid_credentials", "wrong password")
 		return
 	}
 	a.rl.recordLoginAttempt(ip, true)
 	token, err := a.sessions.create()
 	if err != nil {
-		writeAPIError(w, http.StatusInternalServerError, "create_session_failed", "could not create session")
+		httpx.WriteAPIError(w, http.StatusInternalServerError, "create_session_failed", "could not create session")
 		return
 	}
 	a.setSessionCookie(w, r, token)
-	writeJSON(w, map[string]any{"ok": true, "version": version, "revision": appRevision})
+	httpx.WriteJSON(w, map[string]any{"ok": true, "version": version, "revision": appRevision})
 }

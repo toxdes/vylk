@@ -1,0 +1,457 @@
+/* Shortcut settings use the same quiet, two-part rows as the rest of Preferences. */
+.shortcut-prefix-row,
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  min-height: 4.25rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcut-prefix-row {
+  margin-bottom: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.shortcut-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.shortcut-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.shortcut-group + .shortcut-group {
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.shortcut-group-title {
+  margin: 0 0 0.45rem;
+  color: var(--fg);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  line-height: 1.3;
+}
+
+.shortcut-row:last-child {
+  border-bottom: 0;
+}
+
+.shortcut-copy {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.shortcut-copy strong {
+  font-size: 0.9375rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.shortcut-copy small {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.shortcut-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+}
+
+.shortcut-binding {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 8.75rem;
+  min-height: 2.25rem;
+  padding: 0.38rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-action);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s,
+    color 0.15s;
+}
+
+.shortcut-binding:hover {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  color: var(--accent);
+}
+
+.shortcut-binding:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  color: var(--accent);
+}
+
+.shortcut-binding.is-recording {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+}
+
+.shortcut-clear {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  place-items: center;
+  border-radius: var(--radius-action);
+  background: transparent;
+  color: var(--muted);
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+
+.shortcut-clear .icon {
+  width: 1rem;
+  height: 1rem;
+  stroke-width: 2;
+}
+
+.shortcut-clear:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  color: var(--accent);
+}
+
+.shortcut-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.shortcut-recorder-status {
+  min-height: 1.25rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.shortcut-recorder-status.is-error {
+  color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .shortcut-prefix-row,
+  .shortcut-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.65rem;
+    min-height: 0;
+    padding: 0.85rem 0;
+  }
+
+  .shortcut-prefix-row {
+    margin-bottom: 1.25rem;
+  }
+
+  .shortcut-groups {
+    gap: 1.25rem;
+  }
+
+  .shortcut-group + .shortcut-group {
+    padding-top: 1rem;
+  }
+
+  .shortcut-row-actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .shortcut-binding {
+    min-width: 8rem;
+  }
+
+  .shortcut-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.shortcut-binding {
+  min-width: 11.25rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.85rem;
+}
+
+.shortcut-clear {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+@media (max-width: 640px) {
+  .shortcut-binding {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.font-control input[type='text'],
+.font-control select,
+.shortcut-binding {
+  font-family: var(--mono);
+  font-variant-ligatures: none;
+}
+
+.shortcut-binding {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+#prefs-panel-shortcuts .shortcut-footer {
+  margin: 0 0 1rem;
+  padding: 0 0 0.9rem;
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcut-confirm-copy {
+  margin: -0.25rem 0 1rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.shortcut-confirm-skip {
+  margin-top: 0.25rem;
+}
+
+.shortcut-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.shortcut-confirm-actions button {
+  min-height: 2.25rem;
+}
+
+.shortcut-sequence-hint {
+  position: fixed;
+  z-index: 95;
+  top: 4.25rem;
+  left: 50%;
+  display: flex;
+  gap: 0.65rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.55rem 0.75rem;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  transform: translate3d(-50%, 0, 0);
+}
+
+.shortcut-sequence-hint kbd {
+  padding: 0.08rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  font: inherit;
+  font-weight: 700;
+}
+
+.shortcut-sequence-hint span {
+  white-space: nowrap;
+}
+
+.shortcut-sequence-hint {
+  display: block;
+  box-sizing: border-box;
+  top: 50%;
+  width: min(34rem, calc(100vw - 2rem));
+  max-width: none;
+  padding: 1.25rem;
+  transform: translate3d(-50%, -50%, 0);
+  overflow: visible;
+  box-shadow: none;
+}
+
+.shortcut-sequence-title {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.shortcut-sequence-subtitle {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.shortcut-sequence-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 0.75rem;
+  margin-top: 1rem;
+}
+
+.shortcut-sequence-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-action);
+  background: var(--surface);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.shortcut-sequence-hint kbd {
+  display: inline-grid;
+  min-width: 2rem;
+  min-height: 1.8rem;
+  padding: 0.25rem 0.45rem;
+  place-items: center;
+  border-radius: var(--radius-micro);
+  background: var(--card-bg);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.shortcut-sequence-option > span {
+  min-width: 0;
+  white-space: normal;
+}
+
+@media (max-width: 640px) {
+  .shortcut-sequence-hint {
+    padding: 1rem;
+  }
+
+  .shortcut-sequence-options {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+}
+
+.pref-subsection {
+  margin: 1.75rem 0 0;
+  padding: 1.3rem 0 0;
+  border-top: 1px solid var(--border);
+}
+
+.pref-subsection:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.pref-subsection h3 {
+  margin: 0;
+  color: var(--fg);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.pref-subsection > p {
+  max-width: 60ch;
+  margin: 0.25rem 0 0.7rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.pref-subsection .pref-control:first-of-type {
+  border-top: 0;
+  padding-top: 0.5rem;
+}
+
+.pref-subsection .pref-row:last-child {
+  border-bottom: 0;
+}
+
+.pref-row input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+body:has(#editor.zen-mode) .offline-snackbar {
+  display: none !important;
+}
+
+body:has(#editor.zen-mode) #toast-region {
+  bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 2.25rem);
+}
+
+body:has(#editor.zen-mode) #toast-region .toast {
+  display: none;
+}
+
+body:has(#editor.zen-mode) #toast-region .toast.warning {
+  display: block;
+}
+
+body:has(#editor.zen-mode) #toast-region .toast.update {
+  display: flex;
+}
+
+.zen-controls.is-minimal [data-zen-action='editor'],
+.zen-controls.is-minimal [data-zen-action='preview'] {
+  display: none;
+}
+
+#editor.zen-mode {
+  position: relative;
+}
+
+#editor.zen-mode .panels-single .panel-preview {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: var(--card-bg);
+  box-shadow: none;
+}
+
+#editor.zen-mode .panel-preview .preview {
+  width: var(--zen-page-width);
+  margin: 0 auto;
+  padding: var(--zen-writing-top) var(--zen-writing-gutter) max(var(--zen-writing-bottom), 50dvh);
+  background: transparent;
+  scroll-padding-block: 0 50dvh;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}

@@ -1,8 +1,8 @@
-(function(root, factory) {
+(function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.VylkMerge = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function() {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
   // A quadratic line diff is a deliberately conservative trade-off here. Large
@@ -24,9 +24,10 @@
     const table = Array.from({length: rows + 1}, () => new Uint16Array(columns + 1));
     for (let row = rows - 1; row >= 0; row--) {
       for (let column = columns - 1; column >= 0; column--) {
-        table[row][column] = baseLines[row] === changedLines[column]
-          ? table[row + 1][column + 1] + 1
-          : Math.max(table[row + 1][column], table[row][column + 1]);
+        table[row][column] =
+          baseLines[row] === changedLines[column]
+            ? table[row + 1][column + 1] + 1
+            : Math.max(table[row + 1][column], table[row][column + 1]);
       }
     }
 
@@ -55,7 +56,11 @@
   }
 
   function equalHunks(left, right) {
-    return left.start === right.start && left.end === right.end && equalArrays(left.replacement, right.replacement);
+    return (
+      left.start === right.start &&
+      left.end === right.end &&
+      equalArrays(left.replacement, right.replacement)
+    );
   }
 
   function hunksOverlap(left, right) {

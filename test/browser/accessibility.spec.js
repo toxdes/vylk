@@ -14,14 +14,24 @@ test('dashboard and preferences have no serious accessibility violations', async
   await signIn(page);
 
   const dashboardResults = await new AxeBuilder({page}).include('#dashboard').analyze();
-  expect(dashboardResults.violations.filter(violation => ['critical', 'serious'].includes(violation.impact))).toEqual([]);
+  expect(
+    dashboardResults.violations.filter((violation) =>
+      ['critical', 'serious'].includes(violation.impact),
+    ),
+  ).toEqual([]);
 
   await page.locator('#prefs-btn').click();
   const preferencesResults = await new AxeBuilder({page}).include('#prefs-modal').analyze();
-  expect(preferencesResults.violations.filter(violation => ['critical', 'serious'].includes(violation.impact))).toEqual([]);
+  expect(
+    preferencesResults.violations.filter((violation) =>
+      ['critical', 'serious'].includes(violation.impact),
+    ),
+  ).toEqual([]);
 });
 
-test('preferences can be opened, navigated, trapped, and closed from the keyboard', async ({page}) => {
+test('preferences can be opened, navigated, trapped, and closed from the keyboard', async ({
+  page,
+}) => {
   await signIn(page);
 
   await page.locator('#prefs-btn').focus();
@@ -56,7 +66,10 @@ test('dashboard note actions are reachable as native controls', async ({page}) =
   await expect(note).toHaveAttribute('type', 'button');
   await note.focus();
   await expect(note).toBeFocused();
-  await page.locator('#tag-bar .tag').first().evaluate(button => button.click());
+  await page
+    .locator('#tag-bar .tag')
+    .first()
+    .evaluate((button) => button.click());
   await expect(note).toBeFocused();
   await note.press('Enter');
   await expect(page.locator('#editor')).toBeVisible();

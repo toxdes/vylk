@@ -5,13 +5,51 @@ import {JSDOM} from 'jsdom';
 import {indexedDB, IDBKeyRange} from 'fake-indexeddb';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
-const appSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'app.js'), 'utf8');
-const themesSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'themes.js'), 'utf8');
-const markedSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'marked.min.js'), 'utf8');
-const mergeSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'merge.js'), 'utf8');
-const interactivePreviewSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'interactive-preview.js'), 'utf8');
-const shortcutsSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'shortcuts.js'), 'utf8');
-const zenEditorSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'zen-editor.js'), 'utf8');
+const appSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'js', 'app.js'), 'utf8');
+const themesSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'js', 'ui', 'themes.js'),
+  'utf8',
+);
+const markedSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'vendor', 'marked.min.js'),
+  'utf8',
+);
+const mergeSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'js', 'editor', 'merge.js'),
+  'utf8',
+);
+const httpSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'js', 'core', 'http.js'),
+  'utf8',
+);
+const routesSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'js', 'core', 'routes.js'),
+  'utf8',
+);
+const indexedDBSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'js', 'core', 'indexeddb.js'),
+  'utf8',
+);
+const offlineStoreSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'js', 'core', 'offline-store.js'),
+  'utf8',
+);
+const interactivePreviewSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'js', 'editor', 'interactive-preview.js'),
+  'utf8',
+);
+const markdownFormattingSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'js', 'editor', 'markdown-formatting.js'),
+  'utf8',
+);
+const shortcutsSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'js', 'editor', 'shortcuts.js'),
+  'utf8',
+);
+const zenEditorSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'static', 'js', 'editor', 'zen-editor.js'),
+  'utf8',
+);
 
 const testHookSource = `
 globalThis.__vylkTestHooks = {
@@ -88,10 +126,7 @@ globalThis.__vylkTestHooks = {
   previewAutoScrollDelta,
   highlightBlock,
   calculatePreviewScrollAdjustment,
-  closeDatabase: async () => {
-    const db = offlineDBPromise && await offlineDBPromise;
-    db?.close();
-  },
+  closeDatabase: closeOfflineDatabaseConnection,
   cancelScheduledSync: () => {
     if (syncScheduleTimer) clearTimeout(syncScheduleTimer);
     syncScheduleTimer = null;
@@ -106,6 +141,12 @@ globalThis.__vylkTestHooks = {
       if (syncLifecyclePromise === lifecycle) return;
     }
   },
+  waitForPreferenceIdle: async () => {
+    while (preferenceSaveTasks.size) {
+      await Promise.allSettled([...preferenceSaveTasks]);
+    }
+    await fontApplyQueue;
+  },
   getSyncScheduleState: () => ({
     scheduled: Boolean(syncScheduleTimer),
     options: {...syncScheduleOptions},
@@ -113,10 +154,7 @@ globalThis.__vylkTestHooks = {
 };
 `;
 
-const deferredSaveCall = "await saveLocalNoteAndQueue(local, {type: 'note.save', note_id: snapshot.noteID, base_revision: baseRevision, note: local});";
-const deferredSaveReplacement = "await globalThis.__testSaveLocalNoteAndQueue(local, {type: 'note.save', note_id: snapshot.noteID, base_revision: baseRevision, note: local});";
-const syncCompletionCall = "    localStorage.setItem('vylk-offline-ready', '1');";
-const syncCompletionReplacement = "    await globalThis.__testBeforeSyncCompletion();\n    localStorage.setItem('vylk-offline-ready', '1');";
+const testHookMarker = '/* __VYLK_TEST_HOOKS__ */';
 
 function response(status, body = '') {
   return {
@@ -124,18 +162,19 @@ function response(status, body = '') {
     ok: status >= 200 && status < 300,
     statusText: status === 404 ? 'Not Found' : status === 503 ? 'Service Unavailable' : 'OK',
     text: async () => body,
-    json: async () => typeof body === 'string' ? JSON.parse(body || '{}') : body,
+    json: async () => (typeof body === 'string' ? JSON.parse(body || '{}') : body),
   };
 }
 
 async function defaultFetch(path, options = {}) {
   const value = String(path);
-  if (value.startsWith('/api/sync?')) return response(200, {changes: [], nextSequence: 0, hasMore: false});
+  if (value.startsWith('/api/sync?'))
+    return response(200, {changes: [], nextSequence: 0, hasMore: false});
   if (value === '/api/sync/push') {
     const request = JSON.parse(options.body || '{}');
     const operations = Array.isArray(request.operations) ? request.operations : [];
     return response(200, {
-      acknowledged: operations.map(operation => ({
+      acknowledged: operations.map((operation) => ({
         client_sequence: operation.client_sequence,
         op_id: operation.op_id,
         status: 'applied',
@@ -156,19 +195,40 @@ export async function deleteOfflineDatabase() {
   });
 }
 
-export async function createApp({deferredSave = false, deferredSyncCompletion = false, fetchImpl = defaultFetch, serviceWorker = null, realMarked = false, realMerge = false} = {}) {
-  const dom = new JSDOM(fs.readFileSync(path.join(testDirectory, '..', 'static', 'index.html'), 'utf8'), {
-    url: 'http://localhost:8080/',
-    pretendToBeVisual: true,
-    runScripts: 'outside-only',
-  });
+export async function createApp({
+  deferredSave = false,
+  deferredSyncCompletion = false,
+  fetchImpl = defaultFetch,
+  serviceWorker = null,
+  realMarked = false,
+  realMerge = false,
+} = {}) {
+  const dom = new JSDOM(
+    fs.readFileSync(path.join(testDirectory, '..', 'static', 'index.html'), 'utf8'),
+    {
+      url: 'http://localhost:8080/',
+      pretendToBeVisual: true,
+      runScripts: 'outside-only',
+    },
+  );
   const {window} = dom;
+  window.__vylkDisableAutoInit = true;
+  window.__vylkDependencies = {};
   window.indexedDB = indexedDB;
   window.IDBKeyRange = IDBKeyRange;
   window.fetch = fetchImpl;
-  if (serviceWorker) Object.defineProperty(window.navigator, 'serviceWorker', {value: serviceWorker, configurable: true});
+  if (serviceWorker)
+    Object.defineProperty(window.navigator, 'serviceWorker', {
+      value: serviceWorker,
+      configurable: true,
+    });
   window.eval(themesSource);
+  window.eval(httpSource);
+  window.eval(routesSource);
+  window.eval(indexedDBSource);
+  window.eval(offlineStoreSource);
   window.eval(interactivePreviewSource);
+  window.eval(markdownFormattingSource);
   window.eval(shortcutsSource);
   window.eval(zenEditorSource);
   if (realMerge) window.eval(mergeSource);
@@ -178,18 +238,25 @@ export async function createApp({deferredSave = false, deferredSyncCompletion = 
     window.marked = {parse: () => ''};
   }
   window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
-  window.requestAnimationFrame = callback => window.setTimeout(callback, 0);
-  window.cancelAnimationFrame = id => window.clearTimeout(id);
+  window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
+  window.cancelAnimationFrame = (id) => window.clearTimeout(id);
   window.scrollTo = () => {};
-  Object.defineProperty(window.document, 'fonts', {value: {load: async () => {}}, configurable: true});
+  Object.defineProperty(window.document, 'fonts', {
+    value: {load: async () => {}},
+    configurable: true,
+  });
 
   let resolveFirstSaveStarted;
   let releaseFirstSave;
-  const firstSaveStarted = new Promise(resolve => { resolveFirstSaveStarted = resolve; });
-  const firstSaveGate = new Promise(resolve => { releaseFirstSave = resolve; });
+  const firstSaveStarted = new Promise((resolve) => {
+    resolveFirstSaveStarted = resolve;
+  });
+  const firstSaveGate = new Promise((resolve) => {
+    releaseFirstSave = resolve;
+  });
   const saveCalls = [];
   if (deferredSave) {
-    window.__testSaveLocalNoteAndQueue = async (note, operation) => {
+    window.__vylkDependencies.saveLocalNoteAndQueue = async (note, operation) => {
       saveCalls.push({note: structuredClone(note), operation: structuredClone(operation)});
       if (saveCalls.length === 1) {
         resolveFirstSaveStarted();
@@ -200,11 +267,15 @@ export async function createApp({deferredSave = false, deferredSyncCompletion = 
 
   let resolveSyncCompletionStarted;
   let releaseSyncCompletion;
-  const syncCompletionStarted = new Promise(resolve => { resolveSyncCompletionStarted = resolve; });
-  const syncCompletionGate = new Promise(resolve => { releaseSyncCompletion = resolve; });
+  const syncCompletionStarted = new Promise((resolve) => {
+    resolveSyncCompletionStarted = resolve;
+  });
+  const syncCompletionGate = new Promise((resolve) => {
+    releaseSyncCompletion = resolve;
+  });
   let syncCompletionCalls = 0;
   if (deferredSyncCompletion) {
-    window.__testBeforeSyncCompletion = async () => {
+    window.__vylkDependencies.beforeSyncCompletion = async () => {
       syncCompletionCalls++;
       if (syncCompletionCalls !== 1) return;
       resolveSyncCompletionStarted();
@@ -212,17 +283,8 @@ export async function createApp({deferredSave = false, deferredSyncCompletion = 
     };
   }
 
-  let source = appSource;
-  if (deferredSave) {
-    if (!source.includes(deferredSaveCall)) throw new Error('save call was not found for test instrumentation');
-    source = source.replace(deferredSaveCall, deferredSaveReplacement);
-  }
-  if (deferredSyncCompletion) {
-    if (!source.includes(syncCompletionCall)) throw new Error('sync completion marker was not found for test instrumentation');
-    source = source.replace(syncCompletionCall, syncCompletionReplacement);
-  }
-  if (!source.includes('\ninit();\n')) throw new Error('app init marker was not found');
-  source = source.replace('\ninit();\n', `\n${testHookSource}\n`);
+  if (!appSource.includes(testHookMarker)) throw new Error('app test hook marker was not found');
+  const source = appSource.replace(testHookMarker, testHookSource);
   window.eval(source);
 
   return {
@@ -236,6 +298,7 @@ export async function createApp({deferredSave = false, deferredSyncCompletion = 
     close: async () => {
       window.__vylkTestHooks.cancelScheduledSync();
       window.__vylkTestHooks.cancelActiveSyncRequests();
+      await window.__vylkTestHooks.waitForPreferenceIdle();
       await window.__vylkTestHooks.waitForSyncIdle();
       await window.__vylkTestHooks.closeDatabase();
       window.close();

@@ -42,14 +42,19 @@ var zeroTime time.Time
 var frontendRevisionFiles = []string{
 	"static/index.html",
 	"static/style.css",
-	"static/app.js",
-	"static/shortcuts.js",
-	"static/interactive-preview.js",
-	"static/zen-editor.js",
-	"static/preview-worker.js",
-	"static/themes.js",
-	"static/merge.js",
-	"static/marked.min.js",
+	"static/js/app.js",
+	"static/js/core/http.js",
+	"static/js/core/routes.js",
+	"static/js/core/indexeddb.js",
+	"static/js/core/offline-store.js",
+	"static/js/editor/shortcuts.js",
+	"static/js/editor/interactive-preview.js",
+	"static/js/editor/markdown-formatting.js",
+	"static/js/editor/zen-editor.js",
+	"static/js/workers/preview-worker.js",
+	"static/js/ui/themes.js",
+	"static/js/editor/merge.js",
+	"static/vendor/marked.min.js",
 	"static/manifest.json",
 	"static/favicon.ico",
 	"static/icon-192.png",
@@ -176,7 +181,7 @@ func openBrowser(targetURL string) error {
 func staticCacheMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/", "/index.html", "/sw.js", "/manifest.json", "/app.js", "/shortcuts.js", "/interactive-preview.js", "/zen-editor.js", "/preview-worker.js", "/style.css", "/themes.js", "/merge.js", "/marked.min.js":
+		case "/", "/index.html", "/sw.js", "/manifest.json", "/js/app.js", "/js/core/http.js", "/js/core/routes.js", "/js/core/indexeddb.js", "/js/core/offline-store.js", "/js/editor/shortcuts.js", "/js/editor/interactive-preview.js", "/js/editor/markdown-formatting.js", "/js/editor/zen-editor.js", "/js/workers/preview-worker.js", "/style.css", "/js/ui/themes.js", "/js/editor/merge.js", "/vendor/marked.min.js":
 			// Cloudflare respects no-transform and therefore cannot inject its
 			// Web Analytics script into our strictly CSP-protected app shell.
 			w.Header().Set("Cache-Control", "no-cache, no-transform")
