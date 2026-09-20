@@ -31,8 +31,17 @@ def build_binary(os_name, arch, version, output, upx):
     env["GOOS"] = os_name
     env["GOARCH"] = arch
     env["CGO_ENABLED"] = "0"
-    ldflags = f"-s -w -X main.version={version}"
-    cmd = ["go", "build", "-trimpath", "-ldflags", ldflags, "-o", str(output), "."]
+    ldflags = f"-s -w -X vylk/internal/server.version={version}"
+    cmd = [
+        "go",
+        "build",
+        "-trimpath",
+        "-ldflags",
+        ldflags,
+        "-o",
+        str(output),
+        "./cmd/vylk",
+    ]
     print(f"building {output.name}...", end=" ", flush=True)
     result = subprocess.run(
         cmd, env=env, capture_output=True, text=True, check=False

@@ -1,7 +1,7 @@
 import {beforeEach, describe, expect, test} from 'vitest';
 import {IDBFactory} from 'fake-indexeddb';
 
-await import('../static/js/core/indexeddb.js');
+await import('../internal/web/static/js/core/indexeddb.js');
 
 describe('IndexedDB transaction helpers', () => {
   let indexedDB;

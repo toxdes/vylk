@@ -1,7 +1,7 @@
 import {beforeEach, describe, expect, test} from 'vitest';
 import {JSDOM} from 'jsdom';
 
-await import('../static/js/core/routes.js');
+await import('../internal/web/static/js/core/routes.js');
 
 describe('application routes', () => {
   let window;

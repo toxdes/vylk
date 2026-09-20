@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {expect, test} from 'vitest';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
-const staticDirectory = path.join(testDirectory, '..', 'static');
+const staticDirectory = path.join(testDirectory, '..', 'internal', 'web', 'static');
 
 function loadPreviewWorker() {
   const handlers = new Map();

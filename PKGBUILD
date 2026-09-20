@@ -18,7 +18,7 @@ pkgver() {
 
 build() {
   cd "$srcdir/vylk"
-  go build -trimpath -ldflags "-s -w -X main.version=${pkgver}" -o vylk .
+  go build -trimpath -ldflags "-s -w -X vylk/internal/server.version=${pkgver}" -o vylk ./cmd/vylk
 }
 
 package() {

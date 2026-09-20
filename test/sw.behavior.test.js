@@ -6,17 +6,59 @@ import {expect, test, vi} from 'vitest';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const serviceWorkerSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'sw.js'),
+  path.join(testDirectory, '..', 'internal', 'web', 'static', 'sw.js'),
   'utf8',
 );
 
 test('pre-caches the interactive preview helper with the app shell', () => {
   expect(serviceWorkerSource).toContain("'/js/editor/interactive-preview.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-content.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-dom.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-navigation.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-worker-client.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-renderer.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-decoration.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-model.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-drag-layout.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-drag-controller.js'");
   expect(serviceWorkerSource).toContain("'/js/editor/markdown-formatting.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/formatting-toolbar.js'");
   expect(serviceWorkerSource).toContain("'/js/core/routes.js'");
+  expect(serviceWorkerSource).toContain("'/js/core/api-client.js'");
   expect(serviceWorkerSource).toContain("'/js/core/indexeddb.js'");
   expect(serviceWorkerSource).toContain("'/js/core/offline-store.js'");
+  expect(serviceWorkerSource).toContain("'/js/core/sync-batch.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/server-events.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/conflict-actions.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/compacted-operations.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/conflict-workflow.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/acknowledgements.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/pusher.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/preference-conflicts.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/leadership.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/remote-notes.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/coordinator.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/panel-controller.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/navigation-controller.js'");
   expect(serviceWorkerSource).toContain("'/js/editor/zen-editor.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/source-adapter.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/zen-overlays.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/caret-controller.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-highlighter.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/note-saver.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/interactive-preview-session.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/shortcut-controller.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/default-commands.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/dashboard.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/dashboard-controller.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/auth.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/preferences.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/preferences-dialog.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/preferences-store.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/appearance.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/modal.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/conflict-resolver.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/feedback.js'");
   expect(serviceWorkerSource).toContain("'/js/workers/preview-worker.js'");
 });
 

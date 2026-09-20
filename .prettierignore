@@ -3,7 +3,7 @@ node_modules/
 playwright-report/
 test-results/
 yesb/
-static/vendor/marked.min.js
+internal/web/static/vendor/marked.min.js
 bun.lock
 LICENSE
 README.md

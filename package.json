@@ -4,15 +4,15 @@
   "type": "module",
   "packageManager": "bun@1.4.2",
   "scripts": {
-    "build:css": "sass --no-source-map --style=expanded frontend/styles/app.scss static/style.css && prettier --write static/style.css",
-    "check:css-build": "sass --no-source-map --style=expanded frontend/styles/app.scss /tmp/vylk-style.css && prettier --config .prettierrc.json --write /tmp/vylk-style.css && cmp static/style.css /tmp/vylk-style.css",
+    "build:css": "sass --no-source-map --style=expanded frontend/styles/app.scss internal/web/static/style.css && prettier --write internal/web/static/style.css",
+    "check:css-build": "sass --no-source-map --style=expanded frontend/styles/app.scss /tmp/vylk-style.css && prettier --config .prettierrc.json --write /tmp/vylk-style.css && cmp internal/web/static/style.css /tmp/vylk-style.css",
     "format": "prettier --write . && gofmt -w $(git ls-files '*.go') && bun run build:css",
     "format:check": "prettier --check .",
     "lint": "bun run lint:js && bun run lint:css && bun run lint:html",
     "lint:js": "eslint .",
     "lint:css": "stylelint 'frontend/**/*.scss'",
-    "lint:html": "htmlhint 'static/**/*.html'",
-    "test:frontend": "vitest run test && bun test ./static",
+    "lint:html": "htmlhint 'internal/web/static/**/*.html'",
+    "test:frontend": "vitest run test && bun test ./internal/web/static",
     "test:browser": "playwright test --config=playwright.config.js"
   },
   "devDependencies": {

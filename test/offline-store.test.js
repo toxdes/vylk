@@ -1,8 +1,8 @@
 import {beforeEach, describe, expect, test} from 'vitest';
 import {indexedDB} from 'fake-indexeddb';
 
-await import('../static/js/core/indexeddb.js');
-await import('../static/js/core/offline-store.js');
+await import('../internal/web/static/js/core/indexeddb.js');
+await import('../internal/web/static/js/core/offline-store.js');
 
 describe('offline store', () => {
   let databaseName;

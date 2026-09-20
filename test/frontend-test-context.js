@@ -32,7 +32,7 @@ export function pointerEvent(window, type, {pointerId = 1, pointerType = 'mouse'
 }
 
 export const styleSource = fs
-  .readFileSync(new URL('../static/style.css', import.meta.url), 'utf8')
+  .readFileSync(new URL('../internal/web/static/style.css', import.meta.url), 'utf8')
   .replace(/\s+/g, ' ')
   .replace(/\s*([{}:;,>])\s*/g, '$1')
   .replaceAll("'", '"')

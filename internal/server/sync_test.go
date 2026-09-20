@@ -1,0 +1,946 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"vylk/internal/auth"
+	"vylk/internal/event"
+	notepkg "vylk/internal/note"
+)
+
+func TestEventsStreamSendsAnImmediateHeartbeat(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	a := &app{db: db, sessions: auth.NewSessionStore(db)}
+	token, err := a.sessions.Create()
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := httptest.NewRequest(http.MethodGet, "/api/events", nil).WithContext(ctx)
+	r.AddCookie(&http.Cookie{Name: "session", Value: token})
+	w := &sseTestRecorder{ResponseRecorder: httptest.NewRecorder()}
+	a.auth(a.handleEvents)(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("events status = %d: %s", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Content-Type"); got != "text/event-stream" {
+		t.Fatalf("content type = %q", got)
+	}
+	if got := w.Header().Get("X-Accel-Buffering"); got != "no" {
+		t.Fatalf("X-Accel-Buffering = %q", got)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "retry: 3000\n\n") || !strings.Contains(body, "event: server\ndata: {") || !strings.Contains(body, `"revision":"`) || !strings.Contains(body, "event: heartbeat\n") {
+		t.Fatalf("events body = %q", body)
+	}
+	if w.flushes == 0 {
+		t.Fatal("events stream was not flushed")
+	}
+}
+
+func TestSSEChangeIncludesDurableSequence(t *testing.T) {
+	w := httptest.NewRecorder()
+	if err := writeSSEChange(w, event.Change{Type: "notes", Sequence: 42}); err != nil {
+		t.Fatalf("write SSE change: %v", err)
+	}
+	if body := w.Body.String(); !strings.Contains(body, `"type":"notes"`) || !strings.Contains(body, `"sequence":42`) {
+		t.Fatalf("SSE change body = %q", body)
+	}
+}
+
+func TestSyncPushOrdersAndDeduplicatesOperations(t *testing.T) {
+	notesDir := t.TempDir()
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	a := &app{db: db, notesDir: notesDir, noteCache: notepkg.NewCache()}
+	baseRevision := int64(0)
+	first := syncPushRequest{DeviceID: "device_a", Operations: []syncOperationRequest{{
+		ClientSequence: 1, OpID: "operation_1", Type: "note.save", NoteID: "replay-note", BaseRevision: &baseRevision, Title: "First", Content: "first body", BaseContent: "before edit",
+	}}}
+	push := func(request syncPushRequest) *httptest.ResponseRecorder {
+		body, err := json.Marshal(request)
+		if err != nil {
+			t.Fatalf("marshal request: %v", err)
+		}
+		r := httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body)))
+		r.Header.Set("Content-Type", "application/json")
+		result := httptest.NewRecorder()
+		a.handleSyncPush(result, r)
+		return result
+	}
+	decode := func(result *httptest.ResponseRecorder) syncPushResponse {
+		var response syncPushResponse
+		if err := json.Unmarshal(result.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		return response
+	}
+
+	result := push(first)
+	if result.Code != http.StatusOK {
+		t.Fatalf("first push status = %d: %s", result.Code, result.Body.String())
+	}
+	response := decode(result)
+	if len(response.Acknowledged) != 1 || response.Acknowledged[0].Status != "applied" || response.Acknowledged[0].Revision != 1 || response.ExpectedSequence != 2 {
+		t.Fatalf("first response = %#v", response)
+	}
+	var recordedOperation string
+	if err := db.QueryRow("SELECT operation FROM sync_operations WHERE device_id = ? AND client_sequence = 1", "device_a").Scan(&recordedOperation); err != nil || !strings.Contains(recordedOperation, "first body") || !strings.Contains(recordedOperation, "before edit") {
+		t.Fatalf("recorded operation = %q, %v", recordedOperation, err)
+	}
+
+	result = push(first)
+	if result.Code != http.StatusOK {
+		t.Fatalf("duplicate push status = %d: %s", result.Code, result.Body.String())
+	}
+	response = decode(result)
+	if len(response.Acknowledged) != 1 || response.Acknowledged[0].Revision != 1 || response.ExpectedSequence != 2 {
+		t.Fatalf("duplicate response = %#v", response)
+	}
+	n, err := getNote(db, "replay-note")
+	if err != nil || n.Revision != 1 {
+		t.Fatalf("note after duplicate = %#v, %v", n, err)
+	}
+
+	gap := first
+	gap.Operations[0].ClientSequence = 3
+	gap.Operations[0].OpID = "operation_3"
+	result = push(gap)
+	if result.Code != http.StatusConflict {
+		t.Fatalf("gap push status = %d: %s", result.Code, result.Body.String())
+	}
+	response = decode(result)
+	if response.ExpectedSequence != 2 {
+		t.Fatalf("gap response = %#v", response)
+	}
+
+	staleRevision := int64(0)
+	stale := syncPushRequest{DeviceID: "device_a", Operations: []syncOperationRequest{{
+		ClientSequence: 2, OpID: "operation_2", Type: "note.save", NoteID: "replay-note", BaseRevision: &staleRevision, Title: "Stale", Content: "stale body",
+	}}}
+	result = push(stale)
+	if result.Code != http.StatusOK {
+		t.Fatalf("conflict push status = %d: %s", result.Code, result.Body.String())
+	}
+	response = decode(result)
+	if len(response.Acknowledged) != 1 || response.Acknowledged[0].Status != "conflict" || response.Acknowledged[0].CurrentRevision != 1 || response.ExpectedSequence != 3 {
+		t.Fatalf("conflict response = %#v", response)
+	}
+}
+
+func TestSyncPushPublishesOneCoalescedNoteEventPerBatch(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	events := event.NewBroker()
+	subscriber := events.Subscribe()
+	defer events.Unsubscribe(subscriber)
+	a := &app{db: db, notesDir: t.TempDir(), noteCache: notepkg.NewCache(), events: events}
+	zero := int64(0)
+	body, err := json.Marshal(syncPushRequest{DeviceID: "device_batch", Operations: []syncOperationRequest{
+		{ClientSequence: 1, OpID: "batch_one", Type: "note.save", NoteID: "batch-one", BaseRevision: &zero, Title: "One", Content: "one"},
+		{ClientSequence: 2, OpID: "batch_two", Type: "note.save", NoteID: "batch-two", BaseRevision: &zero, Title: "Two", Content: "two"},
+	}})
+	if err != nil {
+		t.Fatalf("marshal batch: %v", err)
+	}
+	result := httptest.NewRecorder()
+	a.handleSyncPush(result, httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body))))
+	if result.Code != http.StatusOK {
+		t.Fatalf("batch status = %d: %s", result.Code, result.Body.String())
+	}
+	select {
+	case event := <-subscriber:
+		if event.Type != "notes" || event.Sequence != 2 {
+			t.Fatalf("batch event = %#v", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for batch event")
+	}
+	select {
+	case event := <-subscriber:
+		t.Fatalf("unexpected second batch event = %#v", event)
+	case <-time.After(25 * time.Millisecond):
+	}
+}
+
+func TestSyncPinOperationPreservesContentAndAssignsCanonicalOrder(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	if err := upsertNote(db, "pin-note", "Pinned", "pin-note.md", "work"); err != nil {
+		t.Fatalf("create note: %v", err)
+	}
+	before, err := getNote(db, "pin-note")
+	if err != nil {
+		t.Fatalf("read original note: %v", err)
+	}
+	a := &app{db: db, notesDir: t.TempDir()}
+	baseRevision := int64(1)
+	body, err := json.Marshal(syncPushRequest{DeviceID: "device_pin", Operations: []syncOperationRequest{{
+		ClientSequence: 1, OpID: "pin_operation", Type: "note.pin", NoteID: "pin-note", BaseRevision: &baseRevision, Pinned: true,
+	}}})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	record := httptest.NewRecorder()
+	a.handleSyncPush(record, httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body))))
+	if record.Code != http.StatusOK {
+		t.Fatalf("pin status = %d: %s", record.Code, record.Body.String())
+	}
+	var response syncPushResponse
+	if err := json.Unmarshal(record.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Acknowledged) != 1 || response.Acknowledged[0].Status != "applied" || response.Acknowledged[0].PinOrder < 1 {
+		t.Fatalf("pin response = %#v", response)
+	}
+	note, err := getNote(db, "pin-note")
+	if err != nil {
+		t.Fatalf("read pinned note: %v", err)
+	}
+	if !note.Pinned || note.PinOrder != response.Acknowledged[0].PinOrder || note.Revision != 2 {
+		t.Fatalf("pinned note = %#v", note)
+	}
+	if note.Title != "Pinned" || note.Tags != "work" || note.UpdatedAt != before.UpdatedAt {
+		t.Fatalf("pin changed note metadata unexpectedly = %#v", note)
+	}
+	replayRecord := httptest.NewRecorder()
+	a.handleSyncPush(replayRecord, httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body))))
+	var replay syncPushResponse
+	if replayRecord.Code != http.StatusOK || json.Unmarshal(replayRecord.Body.Bytes(), &replay) != nil || replay.Acknowledged[0].PinOrder != response.Acknowledged[0].PinOrder {
+		t.Fatalf("replayed pin = status %d, body %s", replayRecord.Code, replayRecord.Body.String())
+	}
+	if err := upsertNote(db, "second-pin", "Second", "second-pin.md", ""); err != nil {
+		t.Fatalf("create second note: %v", err)
+	}
+	secondRevision := int64(1)
+	secondBody, _ := json.Marshal(syncPushRequest{DeviceID: "device_other", Operations: []syncOperationRequest{{
+		ClientSequence: 1, OpID: "second-pin-operation", Type: "note.pin", NoteID: "second-pin", BaseRevision: &secondRevision, Pinned: true,
+	}}})
+	secondRecord := httptest.NewRecorder()
+	a.handleSyncPush(secondRecord, httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(secondBody))))
+	var secondResponse syncPushResponse
+	if secondRecord.Code != http.StatusOK || json.Unmarshal(secondRecord.Body.Bytes(), &secondResponse) != nil || secondResponse.Acknowledged[0].PinOrder <= response.Acknowledged[0].PinOrder {
+		t.Fatalf("second pin ordering = status %d, body %s", secondRecord.Code, secondRecord.Body.String())
+	}
+	unpinRevision := note.Revision
+	unpinBody, err := json.Marshal(syncPushRequest{DeviceID: "device_unpin", Operations: []syncOperationRequest{{
+		ClientSequence: 1, OpID: "unpin_operation", Type: "note.pin", NoteID: "pin-note", BaseRevision: &unpinRevision, Pinned: false,
+	}}})
+	if err != nil {
+		t.Fatalf("marshal unpin request: %v", err)
+	}
+	unpinRecord := httptest.NewRecorder()
+	a.handleSyncPush(unpinRecord, httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(unpinBody))))
+	if unpinRecord.Code != http.StatusOK {
+		t.Fatalf("unpin status = %d: %s", unpinRecord.Code, unpinRecord.Body.String())
+	}
+	note, err = getNote(db, "pin-note")
+	if err != nil || note.Pinned || note.PinOrder != 0 {
+		t.Fatalf("unpinned note = %#v, %v", note, err)
+	}
+}
+
+func TestSyncSaveCreatesPinnedNoteWithCanonicalOrder(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	a := &app{db: db, notesDir: t.TempDir(), noteCache: notepkg.NewCache()}
+	baseRevision := int64(0)
+	body, err := json.Marshal(syncPushRequest{DeviceID: "device_new_pin", Operations: []syncOperationRequest{{
+		ClientSequence: 1, OpID: "save_pinned_note", Type: "note.save", NoteID: "new-pinned-note", BaseRevision: &baseRevision, Title: "Pinned from birth", Content: "body", Pinned: true,
+	}}})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	record := httptest.NewRecorder()
+	a.handleSyncPush(record, httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body))))
+	if record.Code != http.StatusOK {
+		t.Fatalf("save status = %d: %s", record.Code, record.Body.String())
+	}
+	var response syncPushResponse
+	if err := json.Unmarshal(record.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Acknowledged) != 1 || response.Acknowledged[0].Revision != 1 || response.Acknowledged[0].PinOrder < 1 {
+		t.Fatalf("save response = %#v", response)
+	}
+	note, err := getNote(db, "new-pinned-note")
+	if err != nil || !note.Pinned || note.PinOrder != response.Acknowledged[0].PinOrder {
+		t.Fatalf("created note = %#v, %v", note, err)
+	}
+}
+
+func TestMigrationsAreRecordedAndIdempotent(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("initial migration: %v", err)
+	}
+	var count int
+	if err := db.QueryRow("SELECT count(*) FROM schema_migrations").Scan(&count); err != nil {
+		t.Fatalf("count migrations: %v", err)
+	}
+	if count != len(migrations) {
+		t.Fatalf("migration count = %d, want %d", count, len(migrations))
+	}
+	if err := initDB(db); err != nil {
+		t.Fatalf("repeat migration: %v", err)
+	}
+	if err := db.QueryRow("SELECT count(*) FROM schema_migrations").Scan(&count); err != nil {
+		t.Fatalf("count migrations after repeat: %v", err)
+	}
+	if count != len(migrations) {
+		t.Fatalf("migration count after repeat = %d, want %d", count, len(migrations))
+	}
+}
+
+func TestInitDBCreatesBackupBeforePendingMigration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "notes.db")
+	db, err := openDB(path)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create migration table: %v", err)
+	}
+	for _, migration := range migrations[:len(migrations)-1] {
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatalf("begin migration %d: %v", migration.Version, err)
+		}
+		if err := migration.Up(tx); err != nil {
+			t.Fatalf("apply migration %d: %v", migration.Version, err)
+		}
+		if _, err := tx.Exec("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)", migration.Version, "2026-01-01T00:00:00Z"); err != nil {
+			t.Fatalf("record migration %d: %v", migration.Version, err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("commit migration %d: %v", migration.Version, err)
+		}
+	}
+
+	if err := initDB(db, path); err != nil {
+		t.Fatalf("apply pending migration: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("read backup directory: %v", err)
+	}
+	prefix := filepath.Base(path) + ".pre-migration-v" + strconv.Itoa(migrations[len(migrations)-1].Version) + "-"
+	var backupPath string
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), prefix) && strings.HasSuffix(entry.Name(), ".db") {
+			backupPath = filepath.Join(filepath.Dir(path), entry.Name())
+			break
+		}
+	}
+	if backupPath == "" {
+		t.Fatal("pre-migration backup was not created")
+	}
+	backup, err := openDB(backupPath)
+	if err != nil {
+		t.Fatalf("open backup: %v", err)
+	}
+	defer backup.Close()
+	var applied int
+	if err := backup.QueryRow("SELECT count(*) FROM schema_migrations WHERE version = ?", migrations[len(migrations)-1].Version).Scan(&applied); err != nil {
+		t.Fatalf("inspect backup migration state: %v", err)
+	}
+	if applied != 0 {
+		t.Fatal("backup contains the pending migration")
+	}
+}
+
+func TestPruneMigrationBackupsKeepsThreeNewest(t *testing.T) {
+	directory := t.TempDir()
+	base := "notes.db"
+	for index := 0; index < 4; index++ {
+		path := filepath.Join(directory, base+".pre-migration-v9-20260101T00000"+strconv.Itoa(index)+"Z.db")
+		if err := os.WriteFile(path, []byte("backup"), 0600); err != nil {
+			t.Fatalf("write backup %d: %v", index, err)
+		}
+		stamp := time.Date(2026, time.January, 1, 0, 0, index, 0, time.UTC)
+		if err := os.Chtimes(path, stamp, stamp); err != nil {
+			t.Fatalf("set backup timestamp %d: %v", index, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(directory, "unrelated.db"), []byte("keep"), 0600); err != nil {
+		t.Fatalf("write unrelated file: %v", err)
+	}
+	if err := pruneMigrationBackups(directory, base); err != nil {
+		t.Fatalf("prune backups: %v", err)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatalf("read backup directory: %v", err)
+	}
+	backupCount := 0
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), base+".pre-migration-v") {
+			backupCount++
+		}
+	}
+	if backupCount != maxMigrationBackups {
+		t.Fatalf("backup count = %d, want %d", backupCount, maxMigrationBackups)
+	}
+	if _, err := os.Stat(filepath.Join(directory, "unrelated.db")); err != nil {
+		t.Fatalf("unrelated file was removed: %v", err)
+	}
+}
+
+func TestListSyncChangesRequestsResetAfterCompaction(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	if _, err := db.Exec("INSERT INTO sync_changes (sequence, note_id, revision, deleted, changed_at) VALUES (100, 'old-note', 1, 0, '2026-01-01T00:00:00Z'), (101, 'new-note', 1, 0, '2026-01-01T00:00:01Z')"); err != nil {
+		t.Fatalf("seed compacted change feed: %v", err)
+	}
+	page, err := listSyncChanges(db, 0, 100)
+	if err != nil {
+		t.Fatalf("list sync changes: %v", err)
+	}
+	if !page.ResetRequired || page.NextSequence != 101 || len(page.Changes) != 0 {
+		t.Fatalf("compacted sync page = %#v", page)
+	}
+}
+
+func TestCompactSyncOperationPayloadsPreservesAcknowledgements(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	previousLimit := maxSyncOperationPayloadBytes
+	maxSyncOperationPayloadBytes = 30
+	t.Cleanup(func() { maxSyncOperationPayloadBytes = previousLimit })
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin transaction: %v", err)
+	}
+	defer tx.Rollback()
+	for sequence, payload := range []string{"first-payload-is-large", "second-payload-is-large"} {
+		if _, err := tx.Exec("INSERT INTO sync_operations (device_id, client_sequence, op_id, op_type, result, operation, applied_at) VALUES (?, ?, ?, ?, ?, ?, ?)", "device", sequence+1, "op"+strconv.Itoa(sequence+1), "noop", `{"status":"applied"}`, payload, "2026-01-01T00:00:00Z"); err != nil {
+			t.Fatalf("insert operation %d: %v", sequence, err)
+		}
+	}
+	if _, err := tx.Exec("UPDATE sync_operation_stats SET operation_count = 2, payload_bytes = (SELECT COALESCE(SUM(length(operation)), 0) FROM sync_operations) WHERE id = 1"); err != nil {
+		t.Fatalf("update sync operation stats: %v", err)
+	}
+	if err := compactSyncOperationPayloads(tx); err != nil {
+		t.Fatalf("compact payloads: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit compacted operations: %v", err)
+	}
+	var compactedCount, resultCount int
+	if err := db.QueryRow("SELECT count(*) FROM sync_operations WHERE operation = ?", compactedOperationPayload).Scan(&compactedCount); err != nil {
+		t.Fatalf("count compacted payloads: %v", err)
+	}
+	if err := db.QueryRow("SELECT count(*) FROM sync_operations WHERE result = ?", `{"status":"applied"}`).Scan(&resultCount); err != nil {
+		t.Fatalf("count acknowledgements: %v", err)
+	}
+	if compactedCount == 0 || resultCount != 2 {
+		t.Fatalf("compacted = %d, acknowledgements = %d", compactedCount, resultCount)
+	}
+	var trackedBytes, actualBytes int64
+	if err := db.QueryRow("SELECT payload_bytes FROM sync_operation_stats WHERE id = 1").Scan(&trackedBytes); err != nil {
+		t.Fatalf("read tracked payload bytes: %v", err)
+	}
+	if err := db.QueryRow("SELECT COALESCE(SUM(length(operation)), 0) FROM sync_operations").Scan(&actualBytes); err != nil || trackedBytes != actualBytes {
+		t.Fatalf("tracked payload bytes = %d, actual = %d, %v", trackedBytes, actualBytes, err)
+	}
+}
+
+func TestCompactSyncOperationAcknowledgementsKeepsPayloadStatsExact(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	previousLimit := maxSyncOperationAcknowledgements
+	maxSyncOperationAcknowledgements = 1
+	t.Cleanup(func() { maxSyncOperationAcknowledgements = previousLimit })
+	for sequence, payload := range []string{"first-payload", "second-payload"} {
+		if _, err := db.Exec("INSERT INTO sync_operations (device_id, client_sequence, op_id, op_type, result, operation, applied_at) VALUES (?, ?, ?, ?, ?, ?, ?)", "device", sequence+1, "op"+strconv.Itoa(sequence+1), "noop", `{"status":"applied"}`, payload, fmt.Sprintf("2026-01-01T00:00:0%dZ", sequence)); err != nil {
+			t.Fatalf("insert operation %d: %v", sequence, err)
+		}
+	}
+	if _, err := db.Exec("UPDATE sync_operation_stats SET operation_count = 2, payload_bytes = (SELECT COALESCE(SUM(length(operation)), 0) FROM sync_operations) WHERE id = 1"); err != nil {
+		t.Fatalf("seed sync operation stats: %v", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin compaction: %v", err)
+	}
+	if err := compactSyncOperationAcknowledgements(tx); err != nil {
+		tx.Rollback()
+		t.Fatalf("compact acknowledgements: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit compaction: %v", err)
+	}
+
+	var trackedBytes, actualBytes int64
+	if err := db.QueryRow("SELECT payload_bytes FROM sync_operation_stats WHERE id = 1").Scan(&trackedBytes); err != nil {
+		t.Fatalf("read tracked payload bytes: %v", err)
+	}
+	if err := db.QueryRow("SELECT COALESCE(SUM(length(operation)), 0) FROM sync_operations").Scan(&actualBytes); err != nil {
+		t.Fatalf("read actual payload bytes: %v", err)
+	}
+	if trackedBytes != actualBytes {
+		t.Fatalf("tracked payload bytes = %d, actual = %d", trackedBytes, actualBytes)
+	}
+}
+
+func TestCompactSyncOperationAcknowledgementsBoundsDeletionBatch(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	previousLimit := maxSyncOperationAcknowledgements
+	maxSyncOperationAcknowledgements = 1
+	t.Cleanup(func() { maxSyncOperationAcknowledgements = previousLimit })
+	total := syncOperationCompactionBatchSize + 2
+	for sequence := 1; sequence <= total; sequence++ {
+		if _, err := db.Exec("INSERT INTO sync_operations (device_id, client_sequence, op_id, op_type, result, operation, applied_at) VALUES (?, ?, ?, 'noop', '{}', '{}', ?)", "device", sequence, "op"+strconv.Itoa(sequence), fmt.Sprintf("2026-01-01T00:00:%02dZ", sequence)); err != nil {
+			t.Fatalf("insert operation %d: %v", sequence, err)
+		}
+	}
+	if _, err := db.Exec("UPDATE sync_operation_stats SET operation_count = ?, payload_bytes = (SELECT COALESCE(SUM(length(operation)), 0) FROM sync_operations) WHERE id = 1", total); err != nil {
+		t.Fatalf("seed sync operation stats: %v", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin compaction: %v", err)
+	}
+	if err := compactSyncOperationAcknowledgements(tx); err != nil {
+		tx.Rollback()
+		t.Fatalf("compact acknowledgements: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit compaction: %v", err)
+	}
+	var remaining int
+	if err := db.QueryRow("SELECT COUNT(*) FROM sync_operations").Scan(&remaining); err != nil || remaining != 2 {
+		t.Fatalf("remaining operations = %d, %v; want 2", remaining, err)
+	}
+}
+
+func TestRepairSyncOperationStatsMigrationRecountsExistingRows(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	if _, err := db.Exec("INSERT INTO sync_operations (device_id, client_sequence, op_id, op_type, result, operation, applied_at) VALUES ('device', 1, 'op1', 'noop', '{}', 'existing-payload', '2026-01-01T00:00:00Z')"); err != nil {
+		t.Fatalf("insert existing operation: %v", err)
+	}
+	if _, err := db.Exec("UPDATE sync_operation_stats SET operation_count = 99, payload_bytes = 999 WHERE id = 1"); err != nil {
+		t.Fatalf("corrupt sync operation stats: %v", err)
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin repair: %v", err)
+	}
+	if err := migrateRepairSyncOperationStats(tx); err != nil {
+		tx.Rollback()
+		t.Fatalf("repair sync operation stats: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit repair: %v", err)
+	}
+	var count, bytes int64
+	if err := db.QueryRow("SELECT operation_count, payload_bytes FROM sync_operation_stats WHERE id = 1").Scan(&count, &bytes); err != nil {
+		t.Fatalf("read repaired stats: %v", err)
+	}
+	if count != 1 || bytes != int64(len("existing-payload")) {
+		t.Fatalf("repaired stats = count %d bytes %d", count, bytes)
+	}
+}
+
+func TestSyncPushAcknowledgesCompactedReplay(t *testing.T) {
+	notesDir := t.TempDir()
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	if _, err := db.Exec("INSERT INTO sync_device_state (device_id, last_sequence) VALUES (?, ?)", "device", 5); err != nil {
+		t.Fatalf("seed device state: %v", err)
+	}
+	a := &app{db: db, notesDir: notesDir, noteCache: notepkg.NewCache()}
+	body := `{"device_id":"device","operations":[{"client_sequence":1,"op_id":"old-operation","type":"noop"}]}`
+	r := httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	a.handleSyncPush(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("compacted replay status = %d: %s", w.Code, w.Body.String())
+	}
+	var response syncPushResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode compacted replay: %v", err)
+	}
+	if len(response.Acknowledged) != 1 || response.Acknowledged[0].Status != "compacted" || response.ExpectedSequence != 6 {
+		t.Fatalf("compacted replay response = %#v", response)
+	}
+}
+
+func TestSyncPushReportsPermanentValidationErrors(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	baseRevision := int64(0)
+	body, err := json.Marshal(syncPushRequest{
+		DeviceID: "device_a",
+		Operations: []syncOperationRequest{{
+			ClientSequence: 1,
+			OpID:           "operation_1",
+			Type:           "note.save",
+			NoteID:         "note-a",
+			BaseRevision:   &baseRevision,
+			Title:          strings.Repeat("x", notepkg.MaxTitleBytes+1),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body)))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	(&app{db: db, notesDir: t.TempDir(), noteCache: notepkg.NewCache()}).handleSyncPush(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("validation status = %d: %s", w.Code, w.Body.String())
+	}
+	var response map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode validation response: %v", err)
+	}
+	if response["code"] != "invalid_sync_operation" || response["permanent"] != true || response["op_id"] != "operation_1" {
+		t.Fatalf("validation response = %#v", response)
+	}
+}
+
+func TestPreferenceSyncMergesDisjointChangesAndConflictsSameField(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	a := &app{db: db, notesDir: t.TempDir(), noteCache: notepkg.NewCache()}
+	push := func(device string, sequence int64, opID string, patch, base map[string]json.RawMessage, revision int64) syncPushResponse {
+		body, err := json.Marshal(syncPushRequest{
+			DeviceID: device,
+			Operations: []syncOperationRequest{{
+				ClientSequence: sequence,
+				OpID:           opID,
+				Type:           "prefs.save",
+				BaseRevision:   &revision,
+				Prefs:          &prefs{SyncPatch: patch, SyncBase: base},
+			}},
+		})
+		if err != nil {
+			t.Fatalf("marshal preference push: %v", err)
+		}
+		r := httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body)))
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		a.handleSyncPush(w, r)
+		if w.Code != http.StatusOK {
+			t.Fatalf("preference push status = %d: %s", w.Code, w.Body.String())
+		}
+		var response syncPushResponse
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode preference push: %v", err)
+		}
+		return response
+	}
+	raw := func(value string) json.RawMessage { return json.RawMessage(strconv.Quote(value)) }
+
+	first := push("device_a", 1, "pref_a", map[string]json.RawMessage{"theme": raw("default-dark"), "statusDisplay": raw("compact"), "hideSaveButton": json.RawMessage("true"), "saveButtonLocation": raw("header"), "fontFamilyGoogle": json.RawMessage("true"), "interactivePreview": json.RawMessage("true")}, map[string]json.RawMessage{"theme": raw("default-light"), "statusDisplay": raw("normal"), "hideSaveButton": json.RawMessage("false"), "saveButtonLocation": raw("panel"), "fontFamilyGoogle": json.RawMessage("false"), "interactivePreview": json.RawMessage("false")}, 1)
+	if first.Acknowledged[0].Status != "applied" || first.Acknowledged[0].Revision != 2 {
+		t.Fatalf("first preference result = %#v", first.Acknowledged)
+	}
+	second := push("device_b", 1, "pref_b", map[string]json.RawMessage{"accentColor": raw("#123456"), "editorFontFamilyGoogle": json.RawMessage("true"), "previewFontFamilyGoogle": json.RawMessage("true"), "zenFontFamilyGoogle": json.RawMessage("true"), "contentWidth": raw("wide"), "zenPageWidth": raw("compact"), "fontSize": raw("0.9rem"), "editorFontSize": raw("1.25rem"), "previewFontSize": raw("1.5rem")}, map[string]json.RawMessage{"accentColor": raw(""), "editorFontFamilyGoogle": json.RawMessage("false"), "previewFontFamilyGoogle": json.RawMessage("false"), "zenFontFamilyGoogle": json.RawMessage("false"), "contentWidth": raw("standard"), "zenPageWidth": raw("standard"), "fontSize": raw("1rem"), "editorFontSize": raw("1rem"), "previewFontSize": raw("1rem")}, 1)
+	if second.Acknowledged[0].Status != "applied" || second.Acknowledged[0].Revision != 3 {
+		t.Fatalf("disjoint preference result = %#v", second.Acknowledged)
+	}
+	p, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("load merged preferences: %v", err)
+	}
+	if p.Theme != "default-dark" || p.AccentColor != "#123456" || p.StatusDisplay != "compact" || p.ContentWidth != "wide" || p.ZenPageWidth != "compact" || p.FontSize != "0.9rem" || p.EditorFontSize != "1.25rem" || p.PreviewFontSize != "1.5rem" || !p.HideSaveButton || p.SaveButtonLocation != "header" || !p.FontFamilyGoogle || !p.EditorFontFamilyGoogle || !p.PreviewFontFamilyGoogle || !p.ZenFontFamilyGoogle || !p.InteractivePreview || p.Revision != 3 {
+		t.Fatalf("merged preferences = %#v", p)
+	}
+	conflict := push("device_c", 1, "pref_c", map[string]json.RawMessage{"theme": raw("default-light")}, map[string]json.RawMessage{"theme": raw("default-light")}, 1)
+	if conflict.Acknowledged[0].Status != "conflict" || conflict.Acknowledged[0].CurrentRevision != 3 {
+		t.Fatalf("same-field preference result = %#v", conflict.Acknowledged)
+	}
+}
+
+func TestPreferenceSyncRejectsInvalidValuesPermanently(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	a := &app{db: db, notesDir: t.TempDir(), noteCache: notepkg.NewCache()}
+	body, err := json.Marshal(syncPushRequest{
+		DeviceID: "device_a",
+		Operations: []syncOperationRequest{{
+			ClientSequence: 1,
+			OpID:           "preference_1",
+			Type:           "prefs.save",
+			Prefs: &prefs{SyncPatch: map[string]json.RawMessage{
+				"fontSize":           json.RawMessage(`"calc(1rem + 2px)"`),
+				"editorFontSize":     json.RawMessage(`"14px"`),
+				"contentWidth":       json.RawMessage(`"bogus"`),
+				"zenPageWidth":       json.RawMessage(`"enormous"`),
+				"saveButtonLocation": json.RawMessage(`"toolbar"`),
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body)))
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	a.handleSyncPush(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid preference sync status = %d: %s", w.Code, w.Body.String())
+	}
+	var response map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode invalid preference response: %v", err)
+	}
+	if response["code"] != "invalid_sync_operation" || response["permanent"] != true || response["operation_index"] != float64(0) {
+		t.Fatalf("invalid preference response = %#v", response)
+	}
+	p, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("load preferences after rejected sync: %v", err)
+	}
+	if p.ContentWidth != "standard" || p.FontSize != "1rem" {
+		t.Fatalf("preferences changed after rejected sync = %#v", p)
+	}
+
+	body, err = json.Marshal(syncPushRequest{
+		DeviceID: "device_b",
+		Operations: []syncOperationRequest{{
+			ClientSequence: 1,
+			OpID:           "preference_2",
+			Type:           "prefs.save",
+			Prefs: &prefs{SyncPatch: map[string]json.RawMessage{
+				"previewFontSize": json.RawMessage(`14`),
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal wrong-type request: %v", err)
+	}
+	r = httptest.NewRequest(http.MethodPost, "/api/sync/push", strings.NewReader(string(body)))
+	r.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	a.handleSyncPush(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("wrong-type preference sync status = %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestDirectPreferencesRejectInvalidValues(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	a := &app{db: db}
+	for name, mutate := range map[string]func(*prefs){
+		"content width":        func(p *prefs) { p.ContentWidth = "bogus" },
+		"Zen page width":       func(p *prefs) { p.ZenPageWidth = "enormous" },
+		"font size":            func(p *prefs) { p.FontSize = "calc(1rem + 2px)" },
+		"save button location": func(p *prefs) { p.SaveButtonLocation = "toolbar" },
+	} {
+		p, err := getPrefs(db)
+		if err != nil {
+			t.Fatalf("load preferences for %s: %v", name, err)
+		}
+		mutate(p)
+		body, err := json.Marshal(p)
+		if err != nil {
+			t.Fatalf("marshal %s preferences: %v", name, err)
+		}
+		r := httptest.NewRequest(http.MethodPatch, "/api/prefs", strings.NewReader(string(body)))
+		r.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		a.handleSavePrefs(w, r)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("invalid %s preference status = %d: %s", name, w.Code, w.Body.String())
+		}
+	}
+	p, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("load preferences after direct rejection: %v", err)
+	}
+	if p.ContentWidth != "standard" || p.FontSize != "1rem" {
+		t.Fatalf("preferences changed after direct rejection = %#v", p)
+	}
+}
+
+func TestDirectPreferencePatchUsesRevisionAndPublishesChange(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	events := event.NewBroker()
+	a := &app{db: db, events: events}
+	p, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("load initial preferences: %v", err)
+	}
+	subscriber := events.Subscribe()
+	defer events.Unsubscribe(subscriber)
+	p.Theme = "default-dark"
+	p.SaveButtonLocation = "header"
+	body, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("marshal preferences: %v", err)
+	}
+	initial := httptest.NewRequest(http.MethodPatch, "/api/prefs", strings.NewReader(string(body)))
+	initial.Header.Set("Content-Type", "application/json")
+	initialResult := httptest.NewRecorder()
+	a.handleSavePrefs(initialResult, initial)
+	if initialResult.Code != http.StatusOK {
+		t.Fatalf("initial preference status = %d: %s", initialResult.Code, initialResult.Body.String())
+	}
+	<-subscriber
+
+	p.Theme = "default-light"
+	body, err = json.Marshal(p)
+	if err != nil {
+		t.Fatalf("marshal stale preferences: %v", err)
+	}
+	stale := httptest.NewRequest(http.MethodPatch, "/api/prefs", strings.NewReader(string(body)))
+	stale.Header.Set("Content-Type", "application/json")
+	stale.Header.Set("If-Match", `"1"`)
+	staleResult := httptest.NewRecorder()
+	a.handleSavePrefs(staleResult, stale)
+	if staleResult.Code != http.StatusConflict {
+		t.Fatalf("stale preference status = %d: %s", staleResult.Code, staleResult.Body.String())
+	}
+
+	current, err := getPrefs(db)
+	if err != nil {
+		t.Fatalf("reload preferences: %v", err)
+	}
+	current.Theme = "default-dark"
+	body, err = json.Marshal(current)
+	if err != nil {
+		t.Fatalf("marshal updated preferences: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPatch, "/api/prefs", strings.NewReader(string(body)))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("If-Match", `"2"`)
+	result := httptest.NewRecorder()
+	a.handleSavePrefs(result, request)
+	if result.Code != http.StatusOK {
+		t.Fatalf("direct preference status = %d: %s", result.Code, result.Body.String())
+	}
+	select {
+	case event := <-subscriber:
+		if event.Type != "preferences" || event.Revision != 3 {
+			t.Fatalf("preference event = %#v", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for preference event")
+	}
+	updated, err := getPrefs(db)
+	if err != nil || updated.Theme != "default-dark" || updated.SaveButtonLocation != "header" || updated.Revision != 3 {
+		t.Fatalf("updated preferences = %#v, %v", updated, err)
+	}
+}

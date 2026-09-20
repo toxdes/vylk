@@ -5,49 +5,197 @@ import {JSDOM} from 'jsdom';
 import {indexedDB, IDBKeyRange} from 'fake-indexeddb';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
-const appSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'js', 'app.js'), 'utf8');
-const themesSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'js', 'ui', 'themes.js'),
+const staticDirectory = path.join(testDirectory, '..', 'internal', 'web', 'static');
+const appSource = fs.readFileSync(path.join(staticDirectory, 'js', 'app.js'), 'utf8');
+const themesSource = fs.readFileSync(path.join(staticDirectory, 'js', 'ui', 'themes.js'), 'utf8');
+const dashboardSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'dashboard.js'),
   'utf8',
 );
-const markedSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'vendor', 'marked.min.js'),
+const dashboardControllerSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'dashboard-controller.js'),
   'utf8',
 );
-const mergeSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'js', 'editor', 'merge.js'),
+const authSource = fs.readFileSync(path.join(staticDirectory, 'js', 'ui', 'auth.js'), 'utf8');
+const preferencesSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'preferences.js'),
   'utf8',
 );
-const httpSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'js', 'core', 'http.js'),
+const preferencesDialogSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'preferences-dialog.js'),
   'utf8',
 );
-const routesSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'js', 'core', 'routes.js'),
+const preferencesStoreSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'preferences-store.js'),
   'utf8',
 );
+const appearanceSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'appearance.js'),
+  'utf8',
+);
+const modalSource = fs.readFileSync(path.join(staticDirectory, 'js', 'ui', 'modal.js'), 'utf8');
+const conflictResolverSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'conflict-resolver.js'),
+  'utf8',
+);
+const feedbackSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'feedback.js'),
+  'utf8',
+);
+const panelControllerSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'panel-controller.js'),
+  'utf8',
+);
+const navigationControllerSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'navigation-controller.js'),
+  'utf8',
+);
+const markedSource = fs.readFileSync(path.join(staticDirectory, 'vendor', 'marked.min.js'), 'utf8');
+const mergeSource = fs.readFileSync(path.join(staticDirectory, 'js', 'editor', 'merge.js'), 'utf8');
+const httpSource = fs.readFileSync(path.join(staticDirectory, 'js', 'core', 'http.js'), 'utf8');
+const apiClientSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'core', 'api-client.js'),
+  'utf8',
+);
+const routesSource = fs.readFileSync(path.join(staticDirectory, 'js', 'core', 'routes.js'), 'utf8');
 const indexedDBSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'js', 'core', 'indexeddb.js'),
+  path.join(staticDirectory, 'js', 'core', 'indexeddb.js'),
   'utf8',
 );
 const offlineStoreSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'js', 'core', 'offline-store.js'),
+  path.join(staticDirectory, 'js', 'core', 'offline-store.js'),
+  'utf8',
+);
+const syncBatchSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'core', 'sync-batch.js'),
+  'utf8',
+);
+const serverEventsSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'sync', 'server-events.js'),
+  'utf8',
+);
+const conflictActionsSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'sync', 'conflict-actions.js'),
+  'utf8',
+);
+const compactedOperationsSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'sync', 'compacted-operations.js'),
+  'utf8',
+);
+const conflictWorkflowSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'sync', 'conflict-workflow.js'),
+  'utf8',
+);
+const acknowledgementsSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'sync', 'acknowledgements.js'),
+  'utf8',
+);
+const syncPusherSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'sync', 'pusher.js'),
+  'utf8',
+);
+const preferenceConflictsSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'sync', 'preference-conflicts.js'),
+  'utf8',
+);
+const syncLeadershipSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'sync', 'leadership.js'),
+  'utf8',
+);
+const remoteNotesSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'sync', 'remote-notes.js'),
+  'utf8',
+);
+const syncCoordinatorSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'sync', 'coordinator.js'),
   'utf8',
 );
 const interactivePreviewSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'js', 'editor', 'interactive-preview.js'),
+  path.join(staticDirectory, 'js', 'editor', 'interactive-preview.js'),
+  'utf8',
+);
+const interactivePreviewSessionSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'interactive-preview-session.js'),
+  'utf8',
+);
+const previewContentSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'preview-content.js'),
+  'utf8',
+);
+const previewDOMSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'preview-dom.js'),
+  'utf8',
+);
+const previewNavigationSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'preview-navigation.js'),
+  'utf8',
+);
+const previewWorkerClientSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'preview-worker-client.js'),
+  'utf8',
+);
+const previewHighlighterSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'preview-highlighter.js'),
+  'utf8',
+);
+const previewRendererSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'preview-renderer.js'),
+  'utf8',
+);
+const previewDecorationSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'preview-decoration.js'),
+  'utf8',
+);
+const previewModelSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'preview-model.js'),
+  'utf8',
+);
+const previewDragLayoutSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'preview-drag-layout.js'),
+  'utf8',
+);
+const previewDragControllerSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'preview-drag-controller.js'),
   'utf8',
 );
 const markdownFormattingSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'js', 'editor', 'markdown-formatting.js'),
+  path.join(staticDirectory, 'js', 'editor', 'markdown-formatting.js'),
+  'utf8',
+);
+const formattingToolbarSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'formatting-toolbar.js'),
+  'utf8',
+);
+const noteSaverSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'note-saver.js'),
   'utf8',
 );
 const shortcutsSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'js', 'editor', 'shortcuts.js'),
+  path.join(staticDirectory, 'js', 'editor', 'shortcuts.js'),
+  'utf8',
+);
+const shortcutControllerSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'shortcut-controller.js'),
+  'utf8',
+);
+const defaultCommandsSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'default-commands.js'),
   'utf8',
 );
 const zenEditorSource = fs.readFileSync(
-  path.join(testDirectory, '..', 'static', 'js', 'editor', 'zen-editor.js'),
+  path.join(staticDirectory, 'js', 'editor', 'zen-editor.js'),
+  'utf8',
+);
+const editorSourceAdapterSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'source-adapter.js'),
+  'utf8',
+);
+const zenOverlaysSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'zen-overlays.js'),
+  'utf8',
+);
+const caretControllerSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'editor', 'caret-controller.js'),
   'utf8',
 );
 
@@ -71,7 +219,7 @@ globalThis.__vylkTestHooks = {
   applyRemoteSnapshot,
   removeLocalNoteAndSupersede,
   savePref,
-  applyFonts,
+  applyFonts: appearance.applyFonts,
   loadPrefs,
   applyRemoteDeletion,
   applyRemoteChangePage,
@@ -117,40 +265,23 @@ globalThis.__vylkTestHooks = {
   undoInteractivePreview,
   setInteractiveSourceLocked,
   getInteractivePreviewState: () => ({
-    pending: Boolean(activePreviewDrag),
-    dragging: Boolean(activePreviewDrag?.armed),
-    sourceLocked: interactiveSourceLocked,
-    ghostTransform: activePreviewDrag?.ghost?.style.transform || '',
+    pending: Boolean(previewDrag.active()),
+    dragging: Boolean(previewDrag.active()?.armed),
+    sourceLocked: interactivePreviewSession.locked(),
+    ghostTransform: previewDrag.active()?.ghost?.style.transform || '',
     outside: document.documentElement.classList.contains('preview-drag-outside'),
   }),
   previewAutoScrollDelta,
   highlightBlock,
   calculatePreviewScrollAdjustment,
   closeDatabase: closeOfflineDatabaseConnection,
-  cancelScheduledSync: () => {
-    if (syncScheduleTimer) clearTimeout(syncScheduleTimer);
-    syncScheduleTimer = null;
-    syncScheduleOptions = {};
-    syncPendingWhileInFlight = false;
-  },
-  waitForSyncIdle: async () => {
-    for (;;) {
-      const lifecycle = syncLifecyclePromise;
-      if (!lifecycle) return;
-      await lifecycle.catch(() => {});
-      if (syncLifecyclePromise === lifecycle) return;
-    }
-  },
+  cancelScheduledSync: syncCoordinator.cancelScheduled,
+  waitForSyncIdle: syncCoordinator.waitForIdle,
   waitForPreferenceIdle: async () => {
-    while (preferenceSaveTasks.size) {
-      await Promise.allSettled([...preferenceSaveTasks]);
-    }
-    await fontApplyQueue;
+    await preferencesStore.whenIdle();
+    await appearance.whenIdle();
   },
-  getSyncScheduleState: () => ({
-    scheduled: Boolean(syncScheduleTimer),
-    options: {...syncScheduleOptions},
-  }),
+  getSyncScheduleState: syncCoordinator.scheduleState,
 };
 `;
 
@@ -203,14 +334,11 @@ export async function createApp({
   realMarked = false,
   realMerge = false,
 } = {}) {
-  const dom = new JSDOM(
-    fs.readFileSync(path.join(testDirectory, '..', 'static', 'index.html'), 'utf8'),
-    {
-      url: 'http://localhost:8080/',
-      pretendToBeVisual: true,
-      runScripts: 'outside-only',
-    },
-  );
+  const dom = new JSDOM(fs.readFileSync(path.join(staticDirectory, 'index.html'), 'utf8'), {
+    url: 'http://localhost:8080/',
+    pretendToBeVisual: true,
+    runScripts: 'outside-only',
+  });
   const {window} = dom;
   window.__vylkDisableAutoInit = true;
   window.__vylkDependencies = {};
@@ -224,13 +352,55 @@ export async function createApp({
     });
   window.eval(themesSource);
   window.eval(httpSource);
+  window.eval(apiClientSource);
   window.eval(routesSource);
   window.eval(indexedDBSource);
   window.eval(offlineStoreSource);
+  window.eval(syncBatchSource);
+  window.eval(serverEventsSource);
+  window.eval(conflictActionsSource);
+  window.eval(compactedOperationsSource);
+  window.eval(conflictWorkflowSource);
+  window.eval(acknowledgementsSource);
+  window.eval(syncPusherSource);
+  window.eval(preferenceConflictsSource);
+  window.eval(syncLeadershipSource);
+  window.eval(remoteNotesSource);
+  window.eval(syncCoordinatorSource);
+  window.eval(previewContentSource);
+  window.eval(previewDOMSource);
+  window.eval(previewNavigationSource);
+  window.eval(previewHighlighterSource);
+  window.eval(previewWorkerClientSource);
+  window.eval(previewRendererSource);
+  window.eval(previewDecorationSource);
+  window.eval(previewModelSource);
+  window.eval(previewDragLayoutSource);
+  window.eval(previewDragControllerSource);
   window.eval(interactivePreviewSource);
+  window.eval(interactivePreviewSessionSource);
   window.eval(markdownFormattingSource);
+  window.eval(formattingToolbarSource);
+  window.eval(noteSaverSource);
   window.eval(shortcutsSource);
+  window.eval(shortcutControllerSource);
+  window.eval(defaultCommandsSource);
   window.eval(zenEditorSource);
+  window.eval(editorSourceAdapterSource);
+  window.eval(zenOverlaysSource);
+  window.eval(caretControllerSource);
+  window.eval(dashboardSource);
+  window.eval(dashboardControllerSource);
+  window.eval(authSource);
+  window.eval(preferencesSource);
+  window.eval(preferencesDialogSource);
+  window.eval(preferencesStoreSource);
+  window.eval(appearanceSource);
+  window.eval(modalSource);
+  window.eval(conflictResolverSource);
+  window.eval(feedbackSource);
+  window.eval(panelControllerSource);
+  window.eval(navigationControllerSource);
   if (realMerge) window.eval(mergeSource);
   if (realMarked) {
     window.eval(markedSource);

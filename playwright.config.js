@@ -23,7 +23,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'go run .',
+    command: 'go run ./cmd/vylk',
     cwd: process.cwd(),
     url: `http://127.0.0.1:${port}/`,
     timeout: 120000,

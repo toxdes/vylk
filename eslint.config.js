@@ -16,15 +16,15 @@ export default [
       'dist/**',
       'node_modules/**',
       'playwright-report/**',
-      'static/vendor/marked.min.js',
+      'internal/web/static/vendor/marked.min.js',
       'test-results/**',
       'yesb/**',
     ],
   },
   {
     ...js.configs.recommended,
-    files: ['static/*.js'],
-    ignores: ['static/*.test.js'],
+    files: ['internal/web/static/*.js'],
+    ignores: ['internal/web/static/*.test.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'script',
@@ -53,7 +53,7 @@ export default [
   },
   {
     ...js.configs.recommended,
-    files: ['*.config.js', 'static/*.test.js', 'test/**/*.js'],
+    files: ['*.config.js', 'internal/web/static/*.test.js', 'test/**/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
