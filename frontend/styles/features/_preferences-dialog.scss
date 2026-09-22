@@ -99,25 +99,25 @@
   line-height: 1;
 }
 
-.restore-defaults-modal-body {
+.confirmation-modal-body {
   width: min(100%, 28rem);
   padding-bottom: 1.5rem;
 }
 
-.restore-defaults-copy {
+.confirmation-modal-copy {
   margin: -0.25rem 0 1.25rem;
   color: var(--muted);
   font-size: 0.875rem;
   line-height: 1.5;
 }
 
-.restore-defaults-actions {
+.confirmation-modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
 }
 
-.restore-defaults-actions button {
+.confirmation-modal-actions button {
   min-height: 2.25rem;
 }
 

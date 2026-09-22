@@ -51,6 +51,25 @@ test('preferences headers align and Account owns the restore confirmation', asyn
   await expect(page.locator('#prefs-modal')).toBeVisible();
 });
 
+test('sign out confirms and returns to the login screen', async ({page}) => {
+  await signIn(page);
+  await page.locator('#prefs-btn').click();
+  await page.locator('#prefs-tab-account').click();
+  await page.locator('#logout-btn').click();
+
+  await expect(page.locator('#logout-modal')).toBeVisible();
+  await expect(page.locator('#logout-cancel')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#logout-modal')).toBeHidden();
+  await expect(page.locator('#prefs-modal')).toBeVisible();
+
+  await page.locator('#logout-btn').click();
+  await page.locator('#logout-confirm').click();
+  await expect(page.locator('#login-screen')).toBeVisible();
+  await expect(page.locator('#dashboard')).toBeHidden();
+  await expect(page.locator('#prefs-modal')).toBeHidden();
+});
+
 test('scrollbars reserve their own space and stay below mobile preference tabs', async ({page}) => {
   await page.setViewportSize({width: 390, height: 844});
   await signIn(page);
@@ -82,20 +101,23 @@ test('editor offline notice follows the configured content rail', async ({page})
   await page.setViewportSize({width: 1440, height: 960});
   await signIn(page);
   await page.locator('#new-note-btn').click();
-  await page.locator('#editor > .offline-notice').evaluate((notice) => notice.classList.remove('hidden'));
+  await page
+    .locator('#editor > .offline-notice')
+    .evaluate((notice) => notice.classList.remove('hidden'));
 
   const alignment = await page.evaluate(() => {
     const notice = document.querySelector('#editor > .offline-notice');
     const body = document.querySelector('#editor .editor-body');
     const bodyRect = body.getBoundingClientRect();
     return {
-      noticeContentLeft: notice
-        .querySelector('.offline-notice-message')
-        .getBoundingClientRect().left,
+      noticeContentLeft: notice.querySelector('.offline-notice-message').getBoundingClientRect()
+        .left,
       editorContentLeft: bodyRect.left + Number.parseFloat(getComputedStyle(body).paddingLeft),
     };
   });
-  expect(Math.abs(alignment.noticeContentLeft - alignment.editorContentLeft)).toBeLessThanOrEqual(1);
+  expect(Math.abs(alignment.noticeContentLeft - alignment.editorContentLeft)).toBeLessThanOrEqual(
+    1,
+  );
 });
 
 test('editor and preview content stay aligned while the splitter remains unobtrusive', async ({
@@ -127,8 +149,14 @@ test('editor and preview content stay aligned while the splitter remains unobtru
     return {
       source: sourceRect.top + Number.parseFloat(getComputedStyle(source).paddingTop),
       preview: previewRect.top + Number.parseFloat(getComputedStyle(preview).paddingTop),
-      sourceInset: sourceRect.left + Number.parseFloat(getComputedStyle(source).paddingLeft) - sourcePanel.getBoundingClientRect().left,
-      previewInset: previewRect.left + Number.parseFloat(getComputedStyle(preview).paddingLeft) - previewPanel.getBoundingClientRect().left,
+      sourceInset:
+        sourceRect.left +
+        Number.parseFloat(getComputedStyle(source).paddingLeft) -
+        sourcePanel.getBoundingClientRect().left,
+      previewInset:
+        previewRect.left +
+        Number.parseFloat(getComputedStyle(preview).paddingLeft) -
+        previewPanel.getBoundingClientRect().left,
     };
   });
   expect(Math.abs(contentTops.source - contentTops.preview)).toBeLessThanOrEqual(1);
@@ -169,9 +197,9 @@ test('editor and preview content stay aligned while the splitter remains unobtru
       preview: previewRect.top + Number.parseFloat(getComputedStyle(preview).paddingTop),
     };
   });
-  expect(Math.abs(hiddenToolbarContentTops.source - hiddenToolbarContentTops.preview)).toBeLessThanOrEqual(
-    1,
-  );
+  expect(
+    Math.abs(hiddenToolbarContentTops.source - hiddenToolbarContentTops.preview),
+  ).toBeLessThanOrEqual(1);
 
   await page.locator('#note-content').fill('A preview block must share the editor gutter.');
   await enableInteractivePreview(page);
@@ -185,9 +213,9 @@ test('editor and preview content stay aligned while the splitter remains unobtru
       previewGutter: Number.parseFloat(getComputedStyle(preview).paddingLeft),
     };
   });
-  expect(Math.abs(interactiveInset.renderedContent - interactiveInset.previewGutter)).toBeLessThanOrEqual(
-    1,
-  );
+  expect(
+    Math.abs(interactiveInset.renderedContent - interactiveInset.previewGutter),
+  ).toBeLessThanOrEqual(1);
 });
 
 test('mobile editor controls stay clear of the formatting toolbar', async ({page}) => {
@@ -210,16 +238,20 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
     const previewPanel = document.querySelector('#preview-panel');
     return {
       source:
-        source.getBoundingClientRect().top + Number.parseFloat(getComputedStyle(source).paddingTop) -
+        source.getBoundingClientRect().top +
+        Number.parseFloat(getComputedStyle(source).paddingTop) -
         sourcePanel.getBoundingClientRect().top,
       preview:
-        preview.getBoundingClientRect().top + Number.parseFloat(getComputedStyle(preview).paddingTop) -
+        preview.getBoundingClientRect().top +
+        Number.parseFloat(getComputedStyle(preview).paddingTop) -
         previewPanel.getBoundingClientRect().top,
       sourceInset:
-        source.getBoundingClientRect().left + Number.parseFloat(getComputedStyle(source).paddingLeft) -
+        source.getBoundingClientRect().left +
+        Number.parseFloat(getComputedStyle(source).paddingLeft) -
         sourcePanel.getBoundingClientRect().left,
       previewInset:
-        preview.getBoundingClientRect().left + Number.parseFloat(getComputedStyle(preview).paddingLeft) -
+        preview.getBoundingClientRect().left +
+        Number.parseFloat(getComputedStyle(preview).paddingLeft) -
         previewPanel.getBoundingClientRect().left,
     };
   });

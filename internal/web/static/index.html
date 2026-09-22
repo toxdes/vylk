@@ -805,7 +805,7 @@ SOFTWARE.
       <div id="restore-defaults-modal" class="modal hidden" aria-hidden="true">
         <div class="modal-backdrop"></div>
         <div
-          class="modal-body restore-defaults-modal-body"
+          class="modal-body confirmation-modal-body"
           role="dialog"
           aria-modal="true"
           aria-labelledby="restore-defaults-title"
@@ -823,17 +823,43 @@ SOFTWARE.
               <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
             </button>
           </div>
-          <p id="restore-defaults-copy" class="restore-defaults-copy">
+          <p id="restore-defaults-copy" class="confirmation-modal-copy">
             This resets your appearance, editor, Zen mode, and shortcut settings. Your notes are not
             affected.
           </p>
-          <div class="restore-defaults-actions">
+          <div class="confirmation-modal-actions">
             <button id="restore-defaults-cancel" class="btn-text" type="button" autofocus>
               Cancel
             </button>
             <button id="restore-defaults-confirm" class="btn-primary" type="button">
               Restore settings
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="logout-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body confirmation-modal-body"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="logout-title"
+          aria-describedby="logout-copy"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="logout-title">Sign out?</h3>
+            <button id="logout-close" class="modal-close" type="button" aria-label="Cancel">
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <p id="logout-copy" class="confirmation-modal-copy">
+            This ends your session and removes this device's local note data.
+          </p>
+          <div class="confirmation-modal-actions">
+            <button id="logout-cancel" class="btn-text" type="button" autofocus>Cancel</button>
+            <button id="logout-confirm" class="btn-primary danger" type="button">Sign out</button>
           </div>
         </div>
       </div>

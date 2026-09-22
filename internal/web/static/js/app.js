@@ -596,6 +596,7 @@
     api,
     cacheVersion: cacheAppVersion,
     cancelRequests: cancelActiveSyncRequests,
+    closeModal,
     clearDiagnostic: clearSyncDiagnostic,
     clearOfflineData,
     connectEvents: connectServerEvents,
@@ -603,12 +604,17 @@
     document,
     loadPreferences: (...args) => loadPrefs(...args),
     localStorage,
+    openModal,
     restoreRoute: (...args) => restoreRoute(...args),
     scheduleSync,
     setAuthenticationRequired: (required) => {
       authenticationRequired = required;
     },
     showLogin: () => {
+      clearCurrentNote();
+      setDashboardRoute({replace: true});
+      closeModal($('#prefs-modal'));
+      closeModal($('#restore-defaults-modal'));
       show(screens.login);
       $('#login-form input').focus();
     },

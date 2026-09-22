@@ -640,13 +640,15 @@ test('keeps the editor and preview gutters aligned when interactive preview is d
   await expect(page.locator('#prefs-modal')).toBeHidden();
   await expect(page.locator('#preview')).not.toHaveClass(/interactive-preview-active/);
 
-  await expect.poll(() =>
-    page.evaluate(() => {
-      const editor = document.querySelector('#note-content');
-      const preview = document.querySelector('#preview');
-      return getComputedStyle(editor).paddingLeft === getComputedStyle(preview).paddingLeft;
-    }),
-  ).toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const editor = document.querySelector('#note-content');
+        const preview = document.querySelector('#preview');
+        return getComputedStyle(editor).paddingLeft === getComputedStyle(preview).paddingLeft;
+      }),
+    )
+    .toBe(true);
 });
 
 test('keeps the current preview highlight while typed Markdown is rendering', async ({page}) => {

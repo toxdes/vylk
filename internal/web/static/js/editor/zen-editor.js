@@ -376,8 +376,7 @@
         );
         if (Math.abs(targetScrollTop - this.element.scrollTop) <= 1) return;
         const smooth =
-          smoothNext &&
-          !global.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+          smoothNext && !global.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
         if (smooth && typeof this.element.scrollTo === 'function') {
           this.smoothTypingAnchorUntil = now + 250;
           this.element.scrollTo({top: targetScrollTop, behavior: 'smooth'});

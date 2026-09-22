@@ -288,7 +288,8 @@ test('Zen mode keeps a typed caret in its comfortable reading area', async ({pag
       const selection = getSelection();
       const range = selection.getRangeAt(0).cloneRange();
       range.collapse(false);
-      const caret = range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
+      const caret =
+        range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
       const editor = element.getBoundingClientRect();
       return (caret.top + caret.height / 2 - editor.top) / editor.height;
     })(),
@@ -322,7 +323,8 @@ test('Zen mode eases a pointer-placed caret into its reading area', async ({page
         const selection = getSelection();
         const range = selection.getRangeAt(0).cloneRange();
         range.collapse(false);
-        const caret = range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
+        const caret =
+          range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
         const editorRect = element.getBoundingClientRect();
         return (caret.top + caret.height / 2 - editorRect.top) / editorRect.height;
       }),
@@ -351,7 +353,8 @@ test('Zen mode eases vertical navigation back into its reading area', async ({pa
         const selection = getSelection();
         const range = selection.getRangeAt(0).cloneRange();
         range.collapse(false);
-        const caret = range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
+        const caret =
+          range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
         const editorRect = element.getBoundingClientRect();
         return (caret.top + caret.height / 2 - editorRect.top) / editorRect.height;
       }),
