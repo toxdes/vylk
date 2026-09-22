@@ -1,6 +1,34 @@
 html {
   font-size: 16px;
   background: var(--bg);
+  scrollbar-gutter: stable;
+}
+
+/* A shared, quiet scrollbar keeps every scrollable surface predictable. */
+* {
+  scrollbar-color: color-mix(in srgb, var(--muted) 42%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 0.2rem solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted) 62%, transparent);
+  background-clip: padding-box;
 }
 
 body {
@@ -19,6 +47,7 @@ body {
 button,
 input,
 textarea {
+  scrollbar-gutter: stable;
   font: inherit;
 }
 

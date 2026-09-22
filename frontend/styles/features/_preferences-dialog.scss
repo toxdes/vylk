@@ -20,6 +20,7 @@
   max-height: calc(100dvh - 2rem);
   padding: 1.75rem 1.75rem 2.5rem;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   background: var(--card-bg);
   border: 0;
   border-radius: 12px;
@@ -96,6 +97,28 @@
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 1;
+}
+
+.restore-defaults-modal-body {
+  width: min(100%, 28rem);
+  padding-bottom: 1.5rem;
+}
+
+.restore-defaults-copy {
+  margin: -0.25rem 0 1.25rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.restore-defaults-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.restore-defaults-actions button {
+  min-height: 2.25rem;
 }
 
 /* Conflict resolution keeps both durable versions visible while the result remains editable. */
@@ -185,6 +208,7 @@
   margin: 0;
   padding: 0.7rem;
   overflow: auto;
+  scrollbar-gutter: stable;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   background: var(--surface);
@@ -255,14 +279,26 @@
 
 .note-conflict {
   display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   margin-left: 0.45rem;
-  padding: 0.16rem 0.38rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--status-syncing) 12%, var(--surface));
-  color: var(--status-syncing);
+  padding: 0.2rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--status-offline) 24%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--status-offline) 8%, var(--card-bg));
+  color: var(--status-offline);
   font-size: 0.6875rem;
   font-weight: 750;
   vertical-align: middle;
+}
+
+.note-conflict::before {
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 50%;
+  background: currentcolor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentcolor 13%, transparent);
+  content: '';
 }
 
 .conflict-version.is-selected {

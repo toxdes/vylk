@@ -1516,8 +1516,9 @@
     hasPendingOperation,
     localStorage,
     normalize: normalizePrefs,
-    onChanged: (key) => {
-      if (key === 'theme' || key === 'accentColor') appearance.applyTheme(prefs.theme);
+    onChanged: (keys) => {
+      const changed = new Set(keys);
+      if (changed.has('theme') || changed.has('accentColor')) appearance.applyTheme(prefs.theme);
       if (
         [
           'fontFamily',
@@ -1528,17 +1529,18 @@
           'previewFontFamilyGoogle',
           'zenFontFamily',
           'zenFontFamilyGoogle',
-        ].includes(key)
+        ].some((key) => changed.has(key))
       )
         void appearance.applyFonts(true);
       appearance.applyFontSizes();
       applyContentWidth();
       applyEditorPrefs();
-      if (key === 'autoSave' || key === 'hideSaveButton') updateManualSavePreferenceControl();
+      if (changed.has('autoSave') || changed.has('hideSaveButton'))
+        updateManualSavePreferenceControl();
       if (
-        key === 'shortcutPrefix' ||
-        key === 'keyboardShortcuts' ||
-        key === 'shortcutConfirmationSkips'
+        changed.has('shortcutPrefix') ||
+        changed.has('keyboardShortcuts') ||
+        changed.has('shortcutConfirmationSkips')
       )
         renderShortcutPreferences();
     },
@@ -1555,6 +1557,12 @@
 
   function savePref(key, value) {
     return preferencesStore.save(key, value);
+  }
+
+  function restoreDefaultPrefs() {
+    const defaults = {...DEFAULT_PREFS};
+    delete defaults.revision;
+    return preferencesStore.saveMany(defaults);
   }
 
   function updateManualSavePreferenceControl() {
@@ -1676,10 +1684,12 @@
   preferencesDialog = window.VylkPreferencesDialog.create({
     appearance,
     close: closePreferences,
+    closeModal,
     document,
     getPreferences: () => prefs,
     openModal,
     renderShortcuts: renderShortcutPreferences,
+    restoreDefaults: restoreDefaultPrefs,
     save: savePref,
     setRoute: setPreferencesRoute,
   });

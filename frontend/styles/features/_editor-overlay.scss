@@ -25,10 +25,9 @@
   position: absolute;
   z-index: 0;
   top: var(--editor-caret-top, 1rem);
-  right: 1.125rem;
-  left: 1.125rem;
+  right: var(--editor-content-gutter, 1.125rem);
+  left: var(--editor-content-gutter, 1.125rem);
   height: var(--editor-caret-height, 1.65rem);
-  border-radius: 4px;
   background: color-mix(in srgb, var(--accent) 6%, transparent);
   opacity: 0;
   pointer-events: none;
@@ -90,7 +89,7 @@
 }
 
 .view-control[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  background: transparent;
   color: var(--accent);
 }
 
@@ -98,6 +97,88 @@
   width: 0.9rem;
   height: 0.9rem;
   stroke-width: 2;
+}
+
+/* Regular editor controls float directly over their surface. The panel labels
+   duplicated information already conveyed by the split layout and are hidden. */
+#editor:not(.zen-mode) {
+  --editor-content-gutter: 1.25rem;
+  --editor-overlay-inset: 0.55rem;
+  --editor-control-size: 1.5rem;
+  --editor-writing-top: calc(
+    var(--editor-overlay-inset) + var(--editor-control-size) + 0.55rem
+  );
+  --editor-toolbar-height: 2.6rem;
+  --editor-toolbar-writing-inset: calc(var(--editor-toolbar-height) + 0.4rem);
+}
+
+#editor:not(.zen-mode) .panel-header {
+  position: absolute;
+  z-index: 6;
+  top: var(--editor-overlay-inset);
+  right: var(--editor-content-gutter);
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+#editor:not(.zen-mode) .panel-label {
+  display: none;
+}
+
+#editor:not(.zen-mode) .panel-header-actions {
+  border-radius: var(--radius-micro);
+  background: var(--card-bg);
+  pointer-events: auto;
+}
+
+#editor:not(.zen-mode) .panel-editor .fmt-bar {
+  flex-wrap: nowrap;
+  min-height: var(--editor-toolbar-height);
+  overflow-x: auto;
+  padding-right: 9.25rem;
+  scrollbar-width: thin;
+}
+
+#editor:not(.zen-mode) .panel-editor .fmt-bar:not(.hidden) ~ .editor-source-wrap #note-content {
+  padding-top: 0.4rem;
+}
+
+#editor:not(.zen-mode) .panel-editor .fmt-bar.hidden ~ .editor-source-wrap #note-content {
+  padding-top: var(--editor-writing-top);
+}
+
+#editor:not(.zen-mode) .panel-preview .preview {
+  padding-inline: var(--editor-content-gutter);
+  padding-top: var(--editor-toolbar-writing-inset);
+}
+
+#editor:not(.zen-mode) .editor-panels:has(.fmt-bar.hidden) .panel-preview .preview {
+  padding-top: var(--editor-writing-top);
+}
+
+/* Keep a forgiving, unobtrusive resize target between the two panels. */
+#editor:not(.zen-mode) .panel-resizer {
+  flex-basis: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  #editor:not(.zen-mode) .panel-header {
+    top: auto;
+    right: var(--editor-content-gutter);
+    bottom: 0.75rem;
+  }
+
+  #editor:not(.zen-mode) .panel-editor .fmt-bar {
+    padding-right: 0.4rem;
+  }
+
+  #editor:not(.zen-mode) .panel-preview .preview {
+    padding-bottom: 4rem;
+  }
 }
 
 .editor-body:has(.panels-single) .meta-pane {
@@ -346,7 +427,7 @@
 }
 
 .zen-controls button[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  background: transparent;
   color: var(--accent);
 }
 

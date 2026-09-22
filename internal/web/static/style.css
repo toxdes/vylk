@@ -20,7 +20,12 @@
   --font: ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, 'Segoe UI', sans-serif;
   --mono: ui-monospace, sfmono-regular, menlo, monaco, consolas, 'Liberation Mono', monospace;
   --shadow: 0 1px 3px rgb(0, 0, 0, 0.06);
-  --highlight: #fef9c3;
+  --border-strong: color-mix(in srgb, var(--border) 72%, var(--fg));
+  --surface-hover: color-mix(in srgb, var(--fg) 5%, var(--surface));
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--card-bg));
+  --focus-ring: color-mix(in srgb, var(--accent) 24%, transparent);
+  --shadow-control: 0 1px 2px color-mix(in srgb, var(--fg) 8%, transparent);
+  --shadow-card: 0 8px 24px color-mix(in srgb, var(--fg) 7%, transparent);
   color-scheme: light;
 }
 
@@ -36,13 +41,40 @@
   --card-bg: #1a1d31;
   --surface: var(--bg);
   --shadow: 0 1px 3px rgb(0, 0, 0, 0.2);
-  --highlight: #3b3b1a;
   color-scheme: dark;
 }
 
 html {
   font-size: 16px;
   background: var(--bg);
+  scrollbar-gutter: stable;
+}
+
+/* A shared, quiet scrollbar keeps every scrollable surface predictable. */
+* {
+  scrollbar-color: color-mix(in srgb, var(--muted) 42%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 0.2rem solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 42%, transparent);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--muted) 62%, transparent);
+  background-clip: padding-box;
 }
 
 body {
@@ -61,6 +93,7 @@ body {
 button,
 input,
 textarea {
+  scrollbar-gutter: stable;
   font: inherit;
 }
 
@@ -167,6 +200,8 @@ textarea:focus-visible {
   line-height: 1.25;
   transition:
     background 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s,
     color 0.15s,
     transform 0.15s;
 }
@@ -193,16 +228,20 @@ textarea:focus-visible {
 
 .btn-primary {
   padding: 0.5rem 0.9rem;
+  border: 1px solid var(--accent);
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .btn-primary:hover {
+  border-color: var(--accent-hover);
   background: var(--accent-hover);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .btn-primary:active {
+  box-shadow: none;
   transform: translateY(1px);
 }
 
@@ -215,7 +254,7 @@ textarea:focus-visible {
 }
 
 .prefs-btn:hover {
-  background: var(--surface);
+  background: var(--surface-hover);
   color: var(--fg);
 }
 
@@ -404,13 +443,13 @@ header h1 {
   width: 100%;
   max-width: 54rem;
   margin: 0 auto;
-  padding: 0.75rem 0 1.5rem;
+  padding: 1.5rem 0 3rem;
 }
 
 .toolbar {
   display: flex;
   justify-content: flex-end;
-  padding: 0 1.25rem 0.5rem;
+  padding: 0 1.25rem 0.625rem;
 }
 
 .toolbar .btn-primary {
@@ -420,15 +459,17 @@ header h1 {
 #tag-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  padding: 0.25rem 1.25rem 0.5rem;
+  gap: 0.375rem;
+  padding: 0.25rem 1.25rem 0.75rem;
 }
 
 .tag {
   display: inline-block;
-  padding: 0.3rem 0.7rem;
-  border-radius: 999px;
-  background: var(--surface);
+  min-height: 1.875rem;
+  padding: 0.32rem 0.625rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
   color: var(--muted);
   font-size: 0.8125rem;
   font-weight: 600;
@@ -441,13 +482,14 @@ header h1 {
 }
 
 .tag:hover {
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  background: var(--surface-hover);
   color: var(--fg);
 }
 
 .tag.active {
-  background: var(--accent);
-  color: #fff;
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 #note-list {
@@ -467,7 +509,8 @@ header h1 {
   display: block;
   width: 100%;
   min-width: 0;
-  padding: 1rem 3rem 1rem 1.125rem;
+  min-height: 6.125rem;
+  padding: 1rem 3.25rem 0.95rem 1.125rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card-bg);
@@ -475,20 +518,21 @@ header h1 {
   cursor: pointer;
   font: inherit;
   text-align: left;
+  box-shadow: var(--shadow-control);
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
 }
 
 .note-item:hover {
-  border-color: var(--accent);
-  box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  box-shadow: var(--shadow-card);
 }
 
 .note-item .note-title {
-  margin-bottom: 0.15rem;
+  margin-bottom: 0.25rem;
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 680;
   letter-spacing: -0.01em;
   line-height: 1.4;
 }
@@ -502,20 +546,27 @@ header h1 {
 .note-item .note-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
-  margin-top: 0.45rem;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
 }
 
 .note-item .note-tags .tag {
-  padding: 0.2rem 0.5rem;
+  min-height: auto;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-micro);
+  background: var(--surface);
+  color: var(--muted);
   font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
   cursor: default;
 }
 
 .note-pin {
   position: absolute;
-  top: 0.25rem;
-  right: 0.25rem;
+  top: 0.65rem;
+  right: 0.65rem;
   display: inline-flex;
   width: 2.25rem;
   height: 2.25rem;
@@ -523,7 +574,7 @@ header h1 {
   justify-content: center;
   padding: 0.1rem;
   border: 0;
-  border-radius: 50%;
+  border-radius: 6px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -556,7 +607,7 @@ header h1 {
 
 .note-pin:hover,
 .note-pin[aria-pressed='true'] {
-  background: transparent;
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
@@ -608,19 +659,20 @@ header h1 {
   align-items: center;
   gap: 0.45rem;
   width: 100%;
-  padding: 0.55rem 0.75rem;
-  background: var(--surface);
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--card-bg);
   color: var(--muted);
   font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.075em;
+  letter-spacing: 0;
   line-height: 1.3;
   text-align: left;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .meta-toggle:hover {
-  background: color-mix(in srgb, var(--border) 50%, var(--surface));
+  background: var(--surface-hover);
 }
 
 .meta-toggle .icon {
@@ -634,11 +686,11 @@ header h1 {
 }
 
 .meta-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.65rem 0.75rem 0.75rem;
-  border-top: 1px solid var(--border);
+  display: grid;
+  align-items: end;
+  gap: 0.75rem;
+  padding: 0.25rem 0.75rem 0.75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .meta-pane.collapsed .meta-body {
@@ -657,7 +709,7 @@ header h1 {
 #note-tags {
   width: 100%;
   padding: 0.55rem 0.7rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--card-bg);
   color: var(--fg);
@@ -665,6 +717,17 @@ header h1 {
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
+}
+
+#note-title:hover,
+#note-tags:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
+}
+
+#note-title:focus,
+#note-tags:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 #note-title {
@@ -691,6 +754,7 @@ header h1 {
 }
 
 .panel {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -758,26 +822,14 @@ header h1 {
   outline: none;
 }
 
-.panel-resizer::before {
-  position: absolute;
-  top: 0.4rem;
-  bottom: 0.4rem;
-  left: 50%;
-  width: 1px;
-  background: var(--border);
-  content: '';
-  transform: translateX(-50%) scaleX(1);
-  transform-origin: center;
-  transition:
-    background 0.15s,
-    transform 0.15s;
+.panel-resizer::before,
+.panel-resizer::after {
+  content: none;
 }
 
-.panel-resizer:hover::before,
-.panel-resizer:focus-visible::before,
-.editor-panels.resizing .panel-resizer::before {
-  background: var(--accent);
-  transform: translateX(-50%) scaleX(3);
+.panel-resizer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
 }
 
 .fmt-bar {
@@ -825,6 +877,11 @@ header h1 {
   flex-shrink: 0;
 }
 
+@media (max-width: 640px) {
+  .meta-body {
+    grid-template-columns: 1fr;
+  }
+}
 /* Writing and rendered Markdown use the same deliberate type scale. */
 #note-content {
   padding-bottom: 4.95em;
@@ -835,7 +892,7 @@ header h1 {
 .preview {
   flex: 1;
   min-height: 0;
-  padding: 1rem 1.125rem;
+  padding: 1rem var(--editor-content-gutter, 1.125rem);
   border: 0;
   border-radius: 0;
   background: var(--card-bg);
@@ -844,6 +901,7 @@ header h1 {
   font-size: 1rem;
   line-height: 1.65;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .preview {
@@ -992,11 +1050,6 @@ header h1 {
   font-weight: 700;
 }
 
-.preview .highlight {
-  border-radius: 4px;
-  background: var(--highlight);
-}
-
 .sync-indicator {
   display: inline-flex;
   align-items: center;
@@ -1137,33 +1190,28 @@ header h1 {
   text-decoration: none;
 }
 
-/* Interactive Markdown preview: a fixed gutter, then marker/content inside each card. */
+/* Interactive Markdown preview: controls never displace rendered content. */
 .interactive-preview-locked {
   opacity: 0.55;
   pointer-events: none;
 }
 
-.preview:not(.interactive-preview-active) {
-  padding-inline: 3rem;
-}
-
 .interactive-preview-active {
-  --preview-drag-gutter: 1.75rem;
-  --preview-card-gap: 0.25rem;
-  padding-left: 0.75rem;
+  --preview-action-size: 1.75rem;
+  --preview-action-gap: 0.125rem;
+  --preview-action-inset: 0.375rem;
+  --preview-action-lane: calc(
+    var(--preview-action-size) * 2 + var(--preview-action-gap) + var(--preview-action-inset)
+  );
 }
 
 .interactive-preview-card {
   position: relative;
-  display: grid;
-  grid-template-columns: var(--preview-drag-gutter) minmax(0, 1fr);
-  align-items: start;
-  column-gap: var(--preview-card-gap);
   width: fit-content;
   max-width: 100%;
   min-width: 0;
   margin: 0;
-  padding: 0.25rem 2.5rem 0.25rem 0.25rem;
+  padding: 0 var(--preview-action-lane) 0 0;
   border-radius: 6px;
   outline: 1px solid transparent;
   outline-offset: -1px;
@@ -1178,12 +1226,21 @@ header h1 {
 }
 
 .preview-drag-handle {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: calc(var(--preview-action-inset) + var(--preview-action-size) + var(--preview-action-gap));
   display: grid;
-  width: var(--preview-drag-gutter);
-  height: 1.75rem;
+  width: var(--preview-action-size);
+  height: var(--preview-action-size);
+  padding: 0;
   place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
   color: var(--muted);
   cursor: grab;
+  font: inherit;
   opacity: 0;
   touch-action: none;
   user-select: none;
@@ -1209,6 +1266,11 @@ header h1 {
   opacity: 1;
 }
 
+.preview-drag-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .preview-drag-handle .icon {
   width: 0.75rem;
   height: 1.125rem;
@@ -1217,11 +1279,12 @@ header h1 {
 
 .preview-edit-button {
   position: absolute;
-  top: 0.25rem;
-  right: 0.375rem;
+  z-index: 1;
+  top: 0;
+  right: var(--preview-action-inset);
   display: grid;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: var(--preview-action-size);
+  height: var(--preview-action-size);
   padding: 0.35rem;
   place-items: center;
   border-radius: 5px;
@@ -1287,16 +1350,15 @@ header h1 {
 }
 
 .interactive-preview-rule-card {
-  align-items: center;
   width: 100%;
 }
 
 .interactive-preview-rule-card > .preview-drag-handle {
-  align-self: center;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .interactive-preview-rule-card > .preview-block-content {
-  align-self: center;
   width: 100%;
 }
 
@@ -1330,7 +1392,7 @@ header h1 {
 }
 
 .interactive-preview-list-item > :is(ul, ol) {
-  margin-left: calc(var(--preview-drag-gutter) + var(--preview-card-gap));
+  margin-left: 1rem;
 }
 
 .preview-list-content {
@@ -1441,24 +1503,22 @@ header h1 {
     padding-inline: 1rem;
   }
   .interactive-preview-active {
-    --preview-drag-gutter: 1.5rem;
-    padding-right: 0.5rem;
-    padding-left: 0.375rem;
+    --preview-action-size: 2.75rem;
+    --preview-action-inset: 0;
   }
   .interactive-preview-card {
-    padding-right: 2.75rem;
-    padding-left: 0.125rem;
+    padding-right: var(--preview-action-lane);
   }
   .preview-drag-handle {
-    width: 2.75rem;
-    height: 2.75rem;
-    margin: -0.5rem 0 -0.5rem -0.625rem;
+    width: var(--preview-action-size);
+    height: var(--preview-action-size);
+    margin: 0;
   }
   .preview-edit-button {
     top: 0;
     right: 0;
-    width: 2.75rem;
-    height: 2.75rem;
+    width: var(--preview-action-size);
+    height: var(--preview-action-size);
     padding: 0.7rem;
   }
   .interactive-preview-list-item > :is(ul, ol) {
@@ -1467,21 +1527,22 @@ header h1 {
 }
 @media (hover: none), (pointer: coarse) {
   .interactive-preview-active {
-    --preview-drag-gutter: 2.75rem;
+    --preview-action-size: 2.75rem;
+    --preview-action-inset: 0;
   }
   .interactive-preview-card {
-    padding-right: 2.75rem;
+    padding-right: var(--preview-action-lane);
   }
   .preview-drag-handle {
-    width: 2.75rem;
-    min-height: 2.75rem;
+    width: var(--preview-action-size);
+    min-height: var(--preview-action-size);
     opacity: 0.72;
   }
   .preview-edit-button {
     top: 0;
     right: 0;
-    width: 2.75rem;
-    height: 2.75rem;
+    width: var(--preview-action-size);
+    height: var(--preview-action-size);
     padding: 0.7rem;
     opacity: 0.72;
     pointer-events: auto;
@@ -1566,9 +1627,9 @@ header h1 {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  margin-top: 0.75rem;
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--border);
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .meta-actions .btn-text {
@@ -1598,6 +1659,7 @@ header h1 {
   max-height: calc(100dvh - 2rem);
   padding: 1.75rem 1.75rem 2.5rem;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   background: var(--card-bg);
   border: 0;
   border-radius: 12px;
@@ -1674,6 +1736,28 @@ header h1 {
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 1;
+}
+
+.restore-defaults-modal-body {
+  width: min(100%, 28rem);
+  padding-bottom: 1.5rem;
+}
+
+.restore-defaults-copy {
+  margin: -0.25rem 0 1.25rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.restore-defaults-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.restore-defaults-actions button {
+  min-height: 2.25rem;
 }
 
 /* Conflict resolution keeps both durable versions visible while the result remains editable. */
@@ -1763,6 +1847,7 @@ header h1 {
   margin: 0;
   padding: 0.7rem;
   overflow: auto;
+  scrollbar-gutter: stable;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   background: var(--surface);
@@ -1833,14 +1918,26 @@ header h1 {
 
 .note-conflict {
   display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   margin-left: 0.45rem;
-  padding: 0.16rem 0.38rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--status-syncing) 12%, var(--surface));
-  color: var(--status-syncing);
+  padding: 0.2rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--status-offline) 24%, var(--border));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--status-offline) 8%, var(--card-bg));
+  color: var(--status-offline);
   font-size: 0.6875rem;
   font-weight: 750;
   vertical-align: middle;
+}
+
+.note-conflict::before {
+  width: 0.3rem;
+  height: 0.3rem;
+  border-radius: 50%;
+  background: currentcolor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentcolor 13%, transparent);
+  content: '';
 }
 
 .conflict-version.is-selected {
@@ -2065,16 +2162,17 @@ header h1 {
 /* Preferences are intentionally sectioned so future settings have a stable home. */
 .prefs-modal-body {
   display: flex;
-  width: min(95vw, 84rem);
-  height: min(50rem, 100dvh - 2rem);
+  width: min(92vw, 62rem);
+  height: min(42rem, 100dvh - 2rem);
   max-height: calc(100dvh - 2rem);
   padding: 0;
   overflow: hidden;
+  border-radius: 10px;
 }
 
 .prefs-sidebar {
   display: flex;
-  flex: 0 0 12rem;
+  flex: 0 0 11rem;
   flex-direction: column;
   padding: 1.25rem 0.75rem;
   border-right: 1px solid var(--border);
@@ -2094,7 +2192,8 @@ header h1 {
 }
 
 .prefs-nav {
-  padding: 0.6rem 0.7rem;
+  min-height: 2.125rem;
+  padding: 0.45rem 0.6rem;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
@@ -2104,12 +2203,12 @@ header h1 {
 }
 
 .prefs-nav:hover {
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  background: var(--surface-hover);
   color: var(--fg);
 }
 
 .prefs-nav.active {
-  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
@@ -2119,7 +2218,7 @@ header h1 {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  padding: 1.5rem 1.75rem 2.25rem;
+  padding: 1.5rem 1.5rem 2rem;
   overflow: hidden;
 }
 
@@ -2148,31 +2247,8 @@ header h1 {
 .prefs-section.active {
   display: block;
   min-height: 0;
-  padding-inline-end: 0.5rem;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--muted) 42%, transparent) transparent;
-}
-
-.prefs-section.active::-webkit-scrollbar {
-  width: 0.7rem;
-}
-
-.prefs-section.active::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.prefs-section.active::-webkit-scrollbar-thumb {
-  border: 0.2rem solid transparent;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 42%, transparent);
-  background-clip: padding-box;
-}
-
-.prefs-section.active::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--muted) 62%, transparent);
-  background-clip: padding-box;
 }
 
 .prefs-section-intro {
@@ -2207,7 +2283,8 @@ header h1 {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.9rem 0;
+  min-height: 4.5rem;
+  padding: 1rem 0;
   border-top: 1px solid var(--border);
   font-size: 0.9375rem;
 }
@@ -2228,10 +2305,20 @@ header h1 {
 .pref-control select {
   width: min(13rem, 45%);
   padding: 0.45rem 0.55rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--card-bg);
   color: var(--fg);
+}
+
+.pref-control select:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
+}
+
+.pref-control select:focus {
+  border-color: var(--accent);
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .pref-control input[type='color'] {
@@ -2274,6 +2361,15 @@ header h1 {
   white-space: nowrap;
 }
 
+.pref-restore-settings {
+  align-items: center;
+}
+
+.pref-restore-settings button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 @media (max-width: 640px) {
   .prefs-modal-body {
     min-height: calc(100dvh - 2rem);
@@ -2288,14 +2384,19 @@ header h1 {
   .prefs-sidebar-title {
     padding: 0.2rem 0.35rem 0.65rem;
   }
+  .prefs-tabs-scroll {
+    margin: 0 -0.75rem;
+    padding-bottom: 0.45rem;
+    overflow: auto hidden;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+  }
   .prefs-sidebar nav {
     display: flex;
     gap: 0;
-    margin: 0 -0.75rem;
-    overflow-x: auto;
+    width: max-content;
+    min-width: 100%;
     border-bottom: 1px solid var(--border);
-    scrollbar-width: thin;
-    -webkit-overflow-scrolling: touch;
   }
   .prefs-nav {
     flex: 0 0 auto;
@@ -2448,7 +2549,7 @@ body {
 }
 
 .preview .highlight {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: transparent;
 }
 
 .prefs-sidebar {
@@ -2769,15 +2870,9 @@ body {
 }
 /* Connectivity and notifications use the same restrained card language as the editor. */
 :root {
-  --status-online: #167a42;
-  --status-syncing: #a65f00;
-  --status-offline: #c24141;
-}
-
-:root.dark {
-  --status-online: #55d58a;
-  --status-syncing: #f5b84b;
-  --status-offline: #fb7185;
+  --status-online: var(--online, #167a42);
+  --status-syncing: var(--syncing, #a65f00);
+  --status-offline: var(--offline, #c24141);
 }
 
 .sync-indicator {
@@ -2962,7 +3057,8 @@ body {
     font-size: 0.6875rem;
   }
   .offline-notice,
-  #dashboard > .offline-notice {
+  #dashboard > .offline-notice,
+  #editor:not(.zen-mode) > .offline-notice {
     align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
@@ -3068,7 +3164,8 @@ header {
   margin-inline: auto;
 }
 
-#dashboard > .offline-notice {
+#dashboard > .offline-notice,
+#editor:not(.zen-mode) > .offline-notice {
   padding-right: max(1.25rem, (100% - var(--content-max-width)) / 2 + 1.25rem);
   padding-left: max(1.25rem, (100% - var(--content-max-width)) / 2 + 1.25rem);
 }
@@ -3090,27 +3187,28 @@ header {
 }
 
 .sync-indicator {
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  gap: 0.4rem;
+  min-height: 1.75rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--sync-color) 24%, var(--border));
+  border-radius: var(--radius-action);
+  background: color-mix(in srgb, var(--sync-color) 5%, var(--card-bg));
+  gap: 0.375rem;
+  color: var(--sync-color);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 680;
   line-height: 1.25;
 }
 
 .sync-indicator-dot {
   width: 0.45rem;
   height: 0.45rem;
-  box-shadow: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentcolor 13%, transparent);
 }
 
 :root[data-status-display='compact'] .sync-indicator {
-  width: auto;
+  width: 1.75rem;
   padding-inline: 0;
-  justify-content: initial;
+  justify-content: center;
 }
 
 @media (max-width: 640px) {
@@ -3156,9 +3254,9 @@ header {
 
 /* Radius scale follows the lander CTA proportion: roughly 10-11% of control height. */
 :root {
-  --radius-action: 4px;
-  --radius-field: 5px;
-  --radius-micro: 3px;
+  --radius-action: 6px;
+  --radius-field: 6px;
+  --radius-micro: 4px;
 }
 
 .btn-text,
@@ -3200,8 +3298,7 @@ header {
   border-radius: var(--radius-field);
 }
 
-.preview code,
-.preview .highlight {
+.preview code {
   border-radius: var(--radius-micro);
 }
 
@@ -3292,11 +3389,12 @@ header h1 {
 }
 
 #note-title {
-  font-size: 1.125em;
+  font-size: 0.875em;
+  font-weight: 500;
 }
 
 #note-tags {
-  font-size: 0.9375em;
+  font-size: 0.875em;
 }
 
 .panel-header {
@@ -3458,10 +3556,9 @@ header h1 {
   position: absolute;
   z-index: 0;
   top: var(--editor-caret-top, 1rem);
-  right: 1.125rem;
-  left: 1.125rem;
+  right: var(--editor-content-gutter, 1.125rem);
+  left: var(--editor-content-gutter, 1.125rem);
   height: var(--editor-caret-height, 1.65rem);
-  border-radius: 4px;
   background: color-mix(in srgb, var(--accent) 6%, transparent);
   opacity: 0;
   pointer-events: none;
@@ -3522,7 +3619,7 @@ header h1 {
 }
 
 .view-control[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  background: transparent;
   color: var(--accent);
 }
 
@@ -3532,6 +3629,83 @@ header h1 {
   stroke-width: 2;
 }
 
+/* Regular editor controls float directly over their surface. The panel labels
+   duplicated information already conveyed by the split layout and are hidden. */
+#editor:not(.zen-mode) {
+  --editor-content-gutter: 1.25rem;
+  --editor-overlay-inset: 0.55rem;
+  --editor-control-size: 1.5rem;
+  --editor-writing-top: calc(var(--editor-overlay-inset) + var(--editor-control-size) + 0.55rem);
+  --editor-toolbar-height: 2.6rem;
+  --editor-toolbar-writing-inset: calc(var(--editor-toolbar-height) + 0.4rem);
+}
+
+#editor:not(.zen-mode) .panel-header {
+  position: absolute;
+  z-index: 6;
+  top: var(--editor-overlay-inset);
+  right: var(--editor-content-gutter);
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+#editor:not(.zen-mode) .panel-label {
+  display: none;
+}
+
+#editor:not(.zen-mode) .panel-header-actions {
+  border-radius: var(--radius-micro);
+  background: var(--card-bg);
+  pointer-events: auto;
+}
+
+#editor:not(.zen-mode) .panel-editor .fmt-bar {
+  flex-wrap: nowrap;
+  min-height: var(--editor-toolbar-height);
+  overflow-x: auto;
+  padding-right: 9.25rem;
+  scrollbar-width: thin;
+}
+
+#editor:not(.zen-mode) .panel-editor .fmt-bar:not(.hidden) ~ .editor-source-wrap #note-content {
+  padding-top: 0.4rem;
+}
+
+#editor:not(.zen-mode) .panel-editor .fmt-bar.hidden ~ .editor-source-wrap #note-content {
+  padding-top: var(--editor-writing-top);
+}
+
+#editor:not(.zen-mode) .panel-preview .preview {
+  padding-inline: var(--editor-content-gutter);
+  padding-top: var(--editor-toolbar-writing-inset);
+}
+
+#editor:not(.zen-mode) .editor-panels:has(.fmt-bar.hidden) .panel-preview .preview {
+  padding-top: var(--editor-writing-top);
+}
+
+/* Keep a forgiving, unobtrusive resize target between the two panels. */
+#editor:not(.zen-mode) .panel-resizer {
+  flex-basis: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  #editor:not(.zen-mode) .panel-header {
+    top: auto;
+    right: var(--editor-content-gutter);
+    bottom: 0.75rem;
+  }
+  #editor:not(.zen-mode) .panel-editor .fmt-bar {
+    padding-right: 0.4rem;
+  }
+  #editor:not(.zen-mode) .panel-preview .preview {
+    padding-bottom: 4rem;
+  }
+}
 .editor-body:has(.panels-single) .meta-pane {
   display: block;
   align-self: stretch;
@@ -3778,7 +3952,7 @@ header h1 {
 }
 
 .zen-controls button[aria-pressed='true'] {
-  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  background: transparent;
   color: var(--accent);
 }
 

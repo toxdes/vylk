@@ -1,16 +1,17 @@
 /* Preferences are intentionally sectioned so future settings have a stable home. */
 .prefs-modal-body {
   display: flex;
-  width: min(95vw, 84rem);
-  height: min(50rem, calc(100dvh - 2rem));
+  width: min(92vw, 62rem);
+  height: min(42rem, calc(100dvh - 2rem));
   max-height: calc(100dvh - 2rem);
   padding: 0;
   overflow: hidden;
+  border-radius: 10px;
 }
 
 .prefs-sidebar {
   display: flex;
-  flex: 0 0 12rem;
+  flex: 0 0 11rem;
   flex-direction: column;
   padding: 1.25rem 0.75rem;
   border-right: 1px solid var(--border);
@@ -30,7 +31,8 @@
 }
 
 .prefs-nav {
-  padding: 0.6rem 0.7rem;
+  min-height: 2.125rem;
+  padding: 0.45rem 0.6rem;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
@@ -40,12 +42,12 @@
 }
 
 .prefs-nav:hover {
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  background: var(--surface-hover);
   color: var(--fg);
 }
 
 .prefs-nav.active {
-  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
@@ -55,7 +57,7 @@
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  padding: 1.5rem 1.75rem 2.25rem;
+  padding: 1.5rem 1.5rem 2rem;
   overflow: hidden;
 }
 
@@ -84,31 +86,8 @@
 .prefs-section.active {
   display: block;
   min-height: 0;
-  padding-inline-end: 0.5rem;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--muted) 42%, transparent) transparent;
-}
-
-.prefs-section.active::-webkit-scrollbar {
-  width: 0.7rem;
-}
-
-.prefs-section.active::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.prefs-section.active::-webkit-scrollbar-thumb {
-  border: 0.2rem solid transparent;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 42%, transparent);
-  background-clip: padding-box;
-}
-
-.prefs-section.active::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--muted) 62%, transparent);
-  background-clip: padding-box;
 }
 
 .prefs-section-intro {
@@ -143,7 +122,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.9rem 0;
+  min-height: 4.5rem;
+  padding: 1rem 0;
   border-top: 1px solid var(--border);
   font-size: 0.9375rem;
 }
@@ -164,10 +144,20 @@
 .pref-control select {
   width: min(13rem, 45%);
   padding: 0.45rem 0.55rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   background: var(--card-bg);
   color: var(--fg);
+}
+
+.pref-control select:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
+}
+
+.pref-control select:focus {
+  border-color: var(--accent);
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .pref-control input[type='color'] {
@@ -210,6 +200,15 @@
   white-space: nowrap;
 }
 
+.pref-restore-settings {
+  align-items: center;
+}
+
+.pref-restore-settings button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 @media (max-width: 640px) {
   .prefs-modal-body {
     min-height: calc(100dvh - 2rem);
@@ -227,14 +226,20 @@
     padding: 0.2rem 0.35rem 0.65rem;
   }
 
+  .prefs-tabs-scroll {
+    margin: 0 -0.75rem;
+    padding-bottom: 0.45rem;
+    overflow: auto hidden;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .prefs-sidebar nav {
     display: flex;
     gap: 0;
-    margin: 0 -0.75rem;
-    overflow-x: auto;
+    width: max-content;
+    min-width: 100%;
     border-bottom: 1px solid var(--border);
-    scrollbar-width: thin;
-    -webkit-overflow-scrolling: touch;
   }
 
   .prefs-nav {
@@ -397,7 +402,7 @@ body {
 }
 
 .preview .highlight {
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: transparent;
 }
 
 .prefs-sidebar {

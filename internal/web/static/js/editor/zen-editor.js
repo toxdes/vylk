@@ -172,6 +172,8 @@
       this.future = [];
       this.lastSelection = {start: 0, end: 0, direction: 'none'};
       this.activeLine = null;
+      this.typingAnchorFrame = null;
+      this.smoothTypingAnchorUntil = 0;
       element.contentEditable = 'true';
       element.spellcheck = true;
       element.setAttribute('role', 'textbox');
@@ -180,6 +182,9 @@
       element.setAttribute('autocapitalize', 'sentences');
       element.setAttribute('enterkeyhint', 'enter');
       element.addEventListener('beforeinput', (event) => this.onBeforeInput(event));
+      element.addEventListener('pointerdown', (event) => {
+        if (event.button === 0 && event.isPrimary !== false) this.smoothNextTypingAnchor = true;
+      });
       element.addEventListener('keydown', (event) => this.onKeyDown(event));
       element.addEventListener('keyup', (event) => this.onKeyUp(event));
       element.addEventListener('paste', (event) => this.onPaste(event));
@@ -318,10 +323,9 @@
       this.updateActiveLine();
     }
 
-    ensureSelectionVisible() {
-      if (!this.active || document.activeElement !== this.element) return;
+    caretRect() {
       const selection = global.getSelection?.();
-      if (!selection?.rangeCount || !this.element.contains(selection.focusNode)) return;
+      if (!selection?.rangeCount || !this.element.contains(selection.focusNode)) return null;
       const range = selection.getRangeAt(0).cloneRange();
       range.collapse(false);
       const lineElement = (
@@ -329,7 +333,12 @@
           ? selection.focusNode
           : selection.focusNode.parentElement
       )?.closest?.('.zen-editor-line');
-      const caretRect = range.getClientRects()[0] || lineElement?.getBoundingClientRect();
+      return range.getClientRects()[0] || lineElement?.getBoundingClientRect() || null;
+    }
+
+    ensureSelectionVisible() {
+      if (!this.active || document.activeElement !== this.element) return;
+      const caretRect = this.caretRect();
       if (!caretRect) return;
       const editorRect = this.element.getBoundingClientRect();
       const inset = Math.max(8, Number.parseFloat(getComputedStyle(this.element).lineHeight) || 0);
@@ -337,6 +346,43 @@
         this.element.scrollTop -= editorRect.top + inset - caretRect.top;
       else if (caretRect.bottom > editorRect.bottom - inset)
         this.element.scrollTop += caretRect.bottom - editorRect.bottom + inset;
+    }
+
+    scheduleTypingAnchor({smooth = false} = {}) {
+      if (smooth) this.smoothNextTypingAnchor = true;
+      if (this.typingAnchorFrame !== null) return;
+      this.typingAnchorFrame = global.requestAnimationFrame(() => {
+        this.typingAnchorFrame = null;
+        if (!this.active || document.activeElement !== this.element) return;
+        const now = global.performance?.now?.() || 0;
+        if (now < this.smoothTypingAnchorUntil) return;
+        const smoothNext = this.smoothNextTypingAnchor;
+        this.smoothNextTypingAnchor = false;
+        const caretRect = this.caretRect();
+        if (!caretRect) return;
+        const editorRect = this.element.getBoundingClientRect();
+        const caretCenter = caretRect.top + caretRect.height / 2;
+        const relativePosition = (caretCenter - editorRect.top) / editorRect.height;
+        const comfortTop = 0.3;
+        const comfortBottom = 0.6;
+        if (relativePosition >= comfortTop && relativePosition <= comfortBottom) return;
+        const maxScrollTop = Math.max(0, this.element.scrollHeight - this.element.clientHeight);
+        const targetScrollTop = Math.max(
+          0,
+          Math.min(
+            maxScrollTop,
+            this.element.scrollTop + caretCenter - (editorRect.top + editorRect.height * 0.42),
+          ),
+        );
+        if (Math.abs(targetScrollTop - this.element.scrollTop) <= 1) return;
+        const smooth =
+          smoothNext &&
+          !global.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (smooth && typeof this.element.scrollTo === 'function') {
+          this.smoothTypingAnchorUntil = now + 250;
+          this.element.scrollTo({top: targetScrollTop, behavior: 'smooth'});
+        } else this.element.scrollTop = targetScrollTop;
+      });
     }
 
     textBetween(start, end) {
@@ -405,6 +451,7 @@
           this.dispatchEvent(
             new CustomEvent('input', {detail: {inputType, data: replacement, length: this.length}}),
           );
+          this.scheduleTypingAnchor();
           return;
         }
         line.text = nextTexts[0];
@@ -422,6 +469,7 @@
         this.dispatchEvent(
           new CustomEvent('input', {detail: {inputType, data: replacement, length: this.length}}),
         );
+        this.scheduleTypingAnchor();
         return;
       }
       const removedLines = this.lines.slice(first.line, last.line + 1);
@@ -453,6 +501,7 @@
       this.dispatchEvent(
         new CustomEvent('input', {detail: {inputType, data: replacement, length: this.length}}),
       );
+      this.scheduleTypingAnchor();
     }
 
     replaceSelection(inserted, inputType = 'insertText') {
@@ -568,6 +617,8 @@
       if (!this.active) return;
       if ((event.ctrlKey || event.metaKey) && ['Home', 'End'].includes(event.key)) {
         this.ensureSelectionVisible();
+      } else if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
+        this.scheduleTypingAnchor({smooth: true});
       }
     }
 

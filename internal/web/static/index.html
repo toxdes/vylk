@@ -298,7 +298,7 @@ SOFTWARE.
         </div>
         <div class="dashboard-body">
           <div class="toolbar">
-            <button id="new-note-btn" class="btn-primary" type="button">+ New</button>
+            <button id="new-note-btn" class="btn-primary" type="button">+ New note</button>
           </div>
           <div id="tag-bar" role="group" aria-label="Filter notes"></div>
           <ul id="note-list" aria-label="Notes"></ul>
@@ -325,80 +325,82 @@ SOFTWARE.
         >
           <aside class="prefs-sidebar">
             <div class="prefs-sidebar-title">Preferences</div>
-            <nav class="prefs-tabs" role="tablist" aria-label="Preference sections">
-              <button
-                id="prefs-tab-appearance"
-                class="prefs-nav active"
-                role="tab"
-                aria-selected="true"
-                aria-controls="prefs-panel-appearance"
-                tabindex="0"
-                type="button"
-                data-pref-section="appearance"
-              >
-                Appearance
-              </button>
-              <button
-                id="prefs-tab-editor"
-                class="prefs-nav"
-                role="tab"
-                aria-selected="false"
-                aria-controls="prefs-panel-editor"
-                tabindex="-1"
-                type="button"
-                data-pref-section="editor"
-              >
-                Editor
-              </button>
-              <button
-                id="prefs-tab-zen"
-                class="prefs-nav"
-                role="tab"
-                aria-selected="false"
-                aria-controls="prefs-panel-zen"
-                tabindex="-1"
-                type="button"
-                data-pref-section="zen"
-              >
-                Zen mode
-              </button>
-              <button
-                id="prefs-tab-shortcuts"
-                class="prefs-nav"
-                role="tab"
-                aria-selected="false"
-                aria-controls="prefs-panel-shortcuts"
-                tabindex="-1"
-                type="button"
-                data-pref-section="shortcuts"
-              >
-                Shortcuts
-              </button>
-              <button
-                id="prefs-tab-account"
-                class="prefs-nav"
-                role="tab"
-                aria-selected="false"
-                aria-controls="prefs-panel-account"
-                tabindex="-1"
-                type="button"
-                data-pref-section="account"
-              >
-                Account
-              </button>
-              <button
-                id="prefs-tab-about"
-                class="prefs-nav"
-                role="tab"
-                aria-selected="false"
-                aria-controls="prefs-panel-about"
-                tabindex="-1"
-                type="button"
-                data-pref-section="about"
-              >
-                About
-              </button>
-            </nav>
+            <div class="prefs-tabs-scroll">
+              <nav class="prefs-tabs" role="tablist" aria-label="Preference sections">
+                <button
+                  id="prefs-tab-appearance"
+                  class="prefs-nav active"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="prefs-panel-appearance"
+                  tabindex="0"
+                  type="button"
+                  data-pref-section="appearance"
+                >
+                  Appearance
+                </button>
+                <button
+                  id="prefs-tab-editor"
+                  class="prefs-nav"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="prefs-panel-editor"
+                  tabindex="-1"
+                  type="button"
+                  data-pref-section="editor"
+                >
+                  Editor
+                </button>
+                <button
+                  id="prefs-tab-zen"
+                  class="prefs-nav"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="prefs-panel-zen"
+                  tabindex="-1"
+                  type="button"
+                  data-pref-section="zen"
+                >
+                  Zen mode
+                </button>
+                <button
+                  id="prefs-tab-shortcuts"
+                  class="prefs-nav"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="prefs-panel-shortcuts"
+                  tabindex="-1"
+                  type="button"
+                  data-pref-section="shortcuts"
+                >
+                  Shortcuts
+                </button>
+                <button
+                  id="prefs-tab-account"
+                  class="prefs-nav"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="prefs-panel-account"
+                  tabindex="-1"
+                  type="button"
+                  data-pref-section="account"
+                >
+                  Account
+                </button>
+                <button
+                  id="prefs-tab-about"
+                  class="prefs-nav"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="prefs-panel-about"
+                  tabindex="-1"
+                  type="button"
+                  data-pref-section="about"
+                >
+                  About
+                </button>
+              </nav>
+            </div>
           </aside>
           <main class="prefs-content">
             <div class="prefs-content-header">
@@ -747,6 +749,14 @@ SOFTWARE.
               hidden
             >
               <p class="prefs-section-intro">Manage this signed-in session.</p>
+              <div class="pref-row pref-restore-settings">
+                <span
+                  ><strong>Preferences</strong
+                  ><small>Restore appearance, editor, Zen mode, and shortcut settings.</small></span
+                ><button id="prefs-restore-defaults" class="btn-text" type="button">
+                  Restore default settings
+                </button>
+              </div>
               <div class="pref-row pref-signout">
                 <span
                   ><strong>Session</strong
@@ -789,6 +799,42 @@ SOFTWARE.
               </div>
             </section>
           </main>
+        </div>
+      </div>
+
+      <div id="restore-defaults-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body restore-defaults-modal-body"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="restore-defaults-title"
+          aria-describedby="restore-defaults-copy"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="restore-defaults-title">Restore default settings?</h3>
+            <button
+              id="restore-defaults-close"
+              class="modal-close"
+              type="button"
+              aria-label="Cancel"
+            >
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <p id="restore-defaults-copy" class="restore-defaults-copy">
+            This resets your appearance, editor, Zen mode, and shortcut settings. Your notes are not
+            affected.
+          </p>
+          <div class="restore-defaults-actions">
+            <button id="restore-defaults-cancel" class="btn-text" type="button" autofocus>
+              Cancel
+            </button>
+            <button id="restore-defaults-confirm" class="btn-primary" type="button">
+              Restore settings
+            </button>
+          </div>
         </div>
       </div>
 

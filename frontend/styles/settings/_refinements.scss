@@ -81,7 +81,8 @@ header {
   margin-inline: auto;
 }
 
-#dashboard > .offline-notice {
+#dashboard > .offline-notice,
+#editor:not(.zen-mode) > .offline-notice {
   padding-right: max(1.25rem, calc((100% - var(--content-max-width)) / 2 + 1.25rem));
   padding-left: max(1.25rem, calc((100% - var(--content-max-width)) / 2 + 1.25rem));
 }
@@ -103,27 +104,28 @@ header {
 }
 
 .sync-indicator {
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  gap: 0.4rem;
+  min-height: 1.75rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--sync-color) 24%, var(--border));
+  border-radius: var(--radius-action);
+  background: color-mix(in srgb, var(--sync-color) 5%, var(--card-bg));
+  gap: 0.375rem;
+  color: var(--sync-color);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 680;
   line-height: 1.25;
 }
 
 .sync-indicator-dot {
   width: 0.45rem;
   height: 0.45rem;
-  box-shadow: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, currentcolor 13%, transparent);
 }
 
 :root[data-status-display='compact'] .sync-indicator {
-  width: auto;
+  width: 1.75rem;
   padding-inline: 0;
-  justify-content: initial;
+  justify-content: center;
 }
 
 @media (max-width: 640px) {
@@ -170,9 +172,9 @@ header {
 
 /* Radius scale follows the lander CTA proportion: roughly 10-11% of control height. */
 :root {
-  --radius-action: 4px;
-  --radius-field: 5px;
-  --radius-micro: 3px;
+  --radius-action: 6px;
+  --radius-field: 6px;
+  --radius-micro: 4px;
 }
 
 .btn-text,
@@ -214,8 +216,7 @@ header {
   border-radius: var(--radius-field);
 }
 
-.preview code,
-.preview .highlight {
+.preview code {
   border-radius: var(--radius-micro);
 }
 
@@ -307,11 +308,12 @@ header h1 {
 }
 
 #note-title {
-  font-size: 1.125em;
+  font-size: 0.875em;
+  font-weight: 500;
 }
 
 #note-tags {
-  font-size: 0.9375em;
+  font-size: 0.875em;
 }
 
 .panel-header {

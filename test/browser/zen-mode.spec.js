@@ -240,7 +240,7 @@ test('Zen mode reconciles composed mobile input without duplicating text', async
   await expect(page.locator('#note-content')).toHaveValue('Al語pha');
 });
 
-test('Zen mode does not force a scroll recenter while typing', async ({page}) => {
+test('Zen mode keeps a typed caret in its comfortable reading area', async ({page}) => {
   await page.setViewportSize({width: 1440, height: 960});
   await signIn(page);
   await openZenMode(page);
@@ -250,16 +250,16 @@ test('Zen mode does not force a scroll recenter while typing', async ({page}) =>
     Array.from({length: 400}, (_, index) => `Line ${index}`).join('\n'),
     240,
   );
-  const before = await editor.evaluate((element) => {
+  await editor.evaluate((element) => {
     element.dataset.scrollEvents = '0';
     element.addEventListener('scroll', () => {
       element.dataset.scrollEvents = String(Number(element.dataset.scrollEvents || 0) + 1);
     });
-    return element.scrollTop;
   });
   await page.evaluate(() => new Promise(requestAnimationFrame));
-  await editor.evaluate((element, scrollTop) => {
-    element.scrollTop = scrollTop;
+  await editor.evaluate((element) => {
+    const line = element.children[240];
+    element.scrollTop = Math.max(0, line.offsetTop - element.clientHeight * 0.76);
     element.dataset.scrollEvents = '0';
     const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
     window.__zenScrollWrites = [];
@@ -273,7 +273,7 @@ test('Zen mode does not force a scroll recenter while typing', async ({page}) =>
         descriptor.set.call(this, value);
       },
     });
-  }, before);
+  });
 
   await page.keyboard.type('x');
   await page.evaluate(
@@ -284,9 +284,79 @@ test('Zen mode does not force a scroll recenter while typing', async ({page}) =>
     scrollTop: element.scrollTop,
     scrollEvents: Number(element.dataset.scrollEvents || 0),
     writes: window.__zenScrollWrites,
+    caretPosition: (() => {
+      const selection = getSelection();
+      const range = selection.getRangeAt(0).cloneRange();
+      range.collapse(false);
+      const caret = range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
+      const editor = element.getBoundingClientRect();
+      return (caret.top + caret.height / 2 - editor.top) / editor.height;
+    })(),
   }));
-  expect(after.writes).toEqual([]);
-  expect(after.scrollEvents).toBeLessThanOrEqual(1);
+  expect(after.writes).not.toEqual([]);
+  expect(after.scrollEvents).toBeGreaterThan(0);
+  expect(after.caretPosition).toBeGreaterThanOrEqual(0.3);
+  expect(after.caretPosition).toBeLessThanOrEqual(0.5);
+});
+
+test('Zen mode eases a pointer-placed caret into its reading area', async ({page}) => {
+  await page.setViewportSize({width: 1440, height: 960});
+  await signIn(page);
+  await openZenMode(page);
+
+  const editor = await replaceZenSource(
+    page,
+    Array.from({length: 400}, (_, index) => `Line ${index}`).join('\n'),
+    240,
+  );
+  const line = editor.locator('.zen-editor-line').nth(240);
+  await editor.evaluate((element) => {
+    const target = element.children[240];
+    element.scrollTop = Math.max(0, target.offsetTop - element.clientHeight * 0.76);
+  });
+  await line.click();
+  await page.keyboard.type('x');
+  await expect
+    .poll(() =>
+      editor.evaluate((element) => {
+        const selection = getSelection();
+        const range = selection.getRangeAt(0).cloneRange();
+        range.collapse(false);
+        const caret = range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
+        const editorRect = element.getBoundingClientRect();
+        return (caret.top + caret.height / 2 - editorRect.top) / editorRect.height;
+      }),
+    )
+    .toBeLessThanOrEqual(0.5);
+});
+
+test('Zen mode eases vertical navigation back into its reading area', async ({page}) => {
+  await page.setViewportSize({width: 1440, height: 960});
+  await signIn(page);
+  await openZenMode(page);
+
+  const editor = await replaceZenSource(
+    page,
+    Array.from({length: 400}, (_, index) => `Line ${index}`).join('\n'),
+    240,
+  );
+  await editor.evaluate((element) => {
+    const target = element.children[240];
+    element.scrollTop = Math.max(0, target.offsetTop - element.clientHeight * 0.76);
+  });
+  await page.keyboard.press('ArrowDown');
+  await expect
+    .poll(() =>
+      editor.evaluate((element) => {
+        const selection = getSelection();
+        const range = selection.getRangeAt(0).cloneRange();
+        range.collapse(false);
+        const caret = range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
+        const editorRect = element.getBoundingClientRect();
+        return (caret.top + caret.height / 2 - editorRect.top) / editorRect.height;
+      }),
+    )
+    .toBeLessThanOrEqual(0.5);
 });
 
 test('Zen mode does not recenter a visible caret during keyboard navigation', async ({page}) => {
@@ -470,11 +540,13 @@ test('Zen mode preserves its writing page on a narrow screen', async ({page}) =>
   expect(titleBox).not.toBeNull();
   expect(wordCountBox).not.toBeNull();
   expect(textareaBox.x).toBeLessThanOrEqual(20);
-  expect(390 - textareaBox.x - textareaBox.width).toBeLessThanOrEqual(20);
+  // The trailing scrollbar gutter is deliberately reserved to prevent layout shift.
+  expect(390 - textareaBox.x - textareaBox.width).toBeLessThanOrEqual(textareaBox.x + 12);
   expect(firstControlBox.width).toBeGreaterThanOrEqual(44);
   expect(controlsBox.y).toBeLessThanOrEqual(12);
   expect(titleBox.x).toBeLessThanOrEqual(20);
-  expect(390 - wordCountBox.x - wordCountBox.width).toBeLessThanOrEqual(20);
+  // Root scrollbar space is intentionally reserved, including for fixed Zen overlays.
+  expect(390 - wordCountBox.x - wordCountBox.width).toBeLessThanOrEqual(32);
   await page.screenshot({path: '/tmp/vylk-zen-mobile.png'});
 });
 

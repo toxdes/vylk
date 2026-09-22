@@ -462,7 +462,7 @@ describe('font preferences', () => {
       'grid-template-columns:minmax(0,1fr) 10rem;align-items:end;gap:0.75rem',
     );
     expect(styleSource).toContain(
-      '.prefs-modal-body{display:flex;width:min(95vw,84rem);height:min(50rem,100dvh - 2rem)',
+      '.prefs-modal-body{display:flex;width:min(92vw,62rem);height:min(42rem,100dvh - 2rem)',
     );
     expect(styleSource).toContain(
       '.font-control input[type="text"],.font-control select{height:2.5rem;min-height:2.5rem;box-sizing:border-box;padding:0.55rem 0.7rem}',
@@ -576,6 +576,47 @@ describe('font preferences', () => {
 });
 
 describe('editor display preferences', () => {
+  test('restores every preference in one confirmed sync operation', async () => {
+    const app = track(await createApp());
+    await app.hooks.savePref('contentWidth', 'wide');
+    await app.hooks.savePref('fontFamily', 'Aptos');
+    await app.hooks.savePref('hideToolbar', true);
+
+    app.window.document.querySelector('#prefs-btn').click();
+    app.window.document.querySelector('#prefs-tab-account').click();
+    expect(app.window.document.querySelector('#prefs-restore-defaults').textContent).toContain(
+      'Restore default settings',
+    );
+    app.window.document.querySelector('#prefs-restore-defaults').click();
+    expect(
+      app.window.document.querySelector('#restore-defaults-modal').classList.contains('hidden'),
+    ).toBe(false);
+    expect(JSON.parse(app.window.localStorage.getItem('vylk-prefs')).contentWidth).toBe('wide');
+    app.window.document.querySelector('#restore-defaults-confirm').click();
+    await app.hooks.waitForPreferenceIdle();
+
+    const saved = JSON.parse(app.window.localStorage.getItem('vylk-prefs'));
+    expect(saved).toMatchObject({
+      contentWidth: 'standard',
+      fontFamily: 'system-sans',
+      hideToolbar: false,
+      theme: 'default-light',
+    });
+    expect(app.window.document.querySelector('#pref-content-width').value).toBe('standard');
+    expect(app.window.document.querySelector('#pref-font').value).toBe('system-sans');
+    expect(app.window.document.querySelector('#pref-hidetoolbar').checked).toBe(true);
+
+    app.hooks.cancelScheduledSync();
+    const pending = await app.hooks.pendingOperations();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].prefs._sync_patch).toMatchObject({
+      contentWidth: 'standard',
+      fontFamily: 'system-sans',
+      hideToolbar: false,
+    });
+    expect(pending[0].prefs._sync_patch).not.toHaveProperty('revision');
+  });
+
   test('applies status display modes and save button visibility', async () => {
     const app = track(await createApp());
     const root = app.window.document.documentElement;

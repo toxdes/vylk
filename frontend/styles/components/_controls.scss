@@ -13,6 +13,8 @@
   line-height: 1.25;
   transition:
     background 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s,
     color 0.15s,
     transform 0.15s;
 }
@@ -39,16 +41,20 @@
 
 .btn-primary {
   padding: 0.5rem 0.9rem;
+  border: 1px solid var(--accent);
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .btn-primary:hover {
+  border-color: var(--accent-hover);
   background: var(--accent-hover);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .btn-primary:active {
+  box-shadow: none;
   transform: translateY(1px);
 }
 
@@ -61,7 +67,7 @@
 }
 
 .prefs-btn:hover {
-  background: var(--surface);
+  background: var(--surface-hover);
   color: var(--fg);
 }
 

@@ -13,10 +13,11 @@
     }
 
     function createDragHandle() {
-      const handleElement = document.createElement('span');
+      const handleElement = document.createElement('button');
       handleElement.className = 'preview-drag-handle';
       handleElement.dataset.previewDragIndicator = 'true';
-      handleElement.setAttribute('aria-hidden', 'true');
+      handleElement.type = 'button';
+      handleElement.setAttribute('aria-label', 'Drag this block');
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.classList.add('icon');
       svg.setAttribute('viewBox', '0 0 12 18');

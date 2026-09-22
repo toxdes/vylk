@@ -144,7 +144,12 @@
       const item = event.target.closest(
         '#preview > [data-interactive-start], #preview li[data-interactive-start]',
       );
-      if (!item || event.target.closest('a,input,button,select,textarea')) return;
+      if (
+        !item ||
+        (event.target.closest('a,input,button,select,textarea') &&
+          !event.target.closest('.preview-drag-handle'))
+      )
+        return;
       const entry = decoration.entryForElement(item);
       if (!entry) return;
       if (activeDrag) cancel({animateReturn: false});

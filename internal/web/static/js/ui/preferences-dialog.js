@@ -4,10 +4,12 @@
   function create({
     appearance,
     close,
+    closeModal,
     document,
     getPreferences,
     openModal,
     renderShortcuts,
+    restoreDefaults,
     save,
     setRoute,
   }) {
@@ -26,8 +28,9 @@
         : 'Manual Save stays available while automatic sync is off.';
     }
 
-    function open({route = 'push'} = {}) {
+    function render() {
       const preferences = getPreferences();
+      appearance.renderOptions();
       $('#pref-autosave').checked = preferences.autoSave;
       $('#pref-start-view').value = preferences.startView;
       $('#pref-hidetoolbar').checked = !preferences.hideToolbar;
@@ -47,10 +50,17 @@
       $('#pref-zen-word-count').checked = preferences.zenWordCount;
       $('#pref-zen-show-title').checked = preferences.zenShowTitle;
       $('#pref-zen-show-controls').checked = preferences.zenShowControls;
-      appearance.renderOptions();
       renderShortcuts();
+    }
+
+    function open({route = 'push'} = {}) {
+      render();
       if (route === 'push') setRoute();
       openModal($('#prefs-modal'));
+    }
+
+    function closeRestoreDefaults() {
+      closeModal($('#restore-defaults-modal'));
     }
 
     function bindCheckbox(selector, key, invert = false, afterSave = null) {
@@ -70,6 +80,22 @@
     $('#editor-prefs-btn').addEventListener('click', open);
     $('#prefs-close').addEventListener('click', close);
     $('#prefs-modal .modal-backdrop').addEventListener('click', close);
+    $('#prefs-restore-defaults').addEventListener('click', () =>
+      openModal($('#restore-defaults-modal')),
+    );
+    $('#restore-defaults-close').addEventListener('click', closeRestoreDefaults);
+    $('#restore-defaults-cancel').addEventListener('click', closeRestoreDefaults);
+    $('#restore-defaults-modal .modal-backdrop').addEventListener('click', closeRestoreDefaults);
+    $('#restore-defaults-confirm').addEventListener('click', async function () {
+      this.disabled = true;
+      try {
+        await restoreDefaults();
+        render();
+        closeRestoreDefaults();
+      } finally {
+        this.disabled = false;
+      }
+    });
     bindCheckbox('#pref-autosave', 'autoSave', false, updateManualSaveControl);
     bindValue('#pref-start-view', 'startView');
     bindCheckbox('#pref-hidetoolbar', 'hideToolbar', true);

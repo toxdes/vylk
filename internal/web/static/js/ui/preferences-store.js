@@ -15,9 +15,10 @@
   }) {
     const saveTasks = new Set();
 
-    async function persist(key, value) {
+    async function persist(values) {
       const previous = {...getPreferences()};
-      const next = normalize({...previous, [key]: value});
+      const keys = Object.keys(values).filter((key) => key !== 'revision');
+      const next = normalize({...previous, ...values, revision: previous.revision});
       setPreferences(next);
       localStorage.setItem('vylk-prefs', JSON.stringify(next));
       await queueOperation({
@@ -26,22 +27,29 @@
         base_revision: previous.revision || 1,
         prefs: {
           ...next,
-          _sync_patch: {[key]: next[key]},
-          _sync_base: {[key]: previous[key]},
+          _sync_patch: Object.fromEntries(keys.map((key) => [key, next[key]])),
+          _sync_base: Object.fromEntries(keys.map((key) => [key, previous[key]])),
         },
       });
-      onChanged(key);
+      onChanged(keys);
       scheduleSync();
     }
 
-    function save(key, value) {
-      const task = persist(key, value);
+    function track(task) {
       saveTasks.add(task);
       void task.then(
         () => saveTasks.delete(task),
         () => saveTasks.delete(task),
       );
       return task;
+    }
+
+    function save(key, value) {
+      return track(persist({[key]: value}));
+    }
+
+    function saveMany(values) {
+      return track(persist(values));
     }
 
     async function load() {
@@ -73,7 +81,7 @@
       while (saveTasks.size) await Promise.allSettled([...saveTasks]);
     }
 
-    return {load, save, whenIdle};
+    return {load, save, saveMany, whenIdle};
   }
 
   global.VylkPreferencesStore = {create};
