@@ -1,0 +1,9 @@
+dist/
+node_modules/
+playwright-report/
+test-results/
+yesb/
+internal/web/static/vendor/marked.min.js
+bun.lock
+LICENSE
+README.md

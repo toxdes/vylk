@@ -52,7 +52,13 @@ jobs:
       - name: Install frontend dependencies
         run: bun ci
 
-      - name: Lint frontend
+      - name: Check frontend formatting
+        run: bun run format:check
+
+      - name: Check generated CSS
+        run: bun run check:css-build
+
+      - name: Lint frontend assets
         run: bun run lint
 
       - name: Run frontend behavior tests

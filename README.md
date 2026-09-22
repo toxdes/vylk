@@ -79,7 +79,7 @@ If the same note changed on another device while you were offline, vylk first pe
 ## Build
 
 ```
-go build -trimpath -ldflags="-s -w -X main.version=$(cat VERSION)" -o vylk .
+go build -trimpath -ldflags="-s -w -X vylk/internal/server.version=$(cat VERSION)" -o vylk ./cmd/vylk
 ```
 
 Cross-compile all targets (Linux binaries compressed with UPX):
@@ -87,6 +87,14 @@ Cross-compile all targets (Linux binaries compressed with UPX):
 ```
 ./build.py
 ```
+
+### Project layout
+
+- `cmd/vylk` contains the executable entry point.
+- `internal/server` composes HTTP handlers and application workflows.
+- Focused `internal` packages own authentication, notes, sync, preferences, persistence, events, encryption, and embedded web assets.
+- `frontend/styles` contains authored SCSS; `internal/web/static` contains the browser application and generated CSS served by the binary.
+- `test` contains frontend behavior and browser tests; package-local tests stay beside their implementation.
 
 ### Linux packages
 

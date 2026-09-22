@@ -1,0 +1,264 @@
+/* Editor chrome */
+.note-pin[aria-pressed='true'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#editor {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+}
+
+#editor.header-hidden > header {
+  display: none;
+}
+
+.editor-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.75rem 1.25rem 1rem;
+  overflow: hidden;
+}
+
+.meta-pane {
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+}
+
+.meta-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--card-bg);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.3;
+  text-align: left;
+  text-transform: none;
+}
+
+.meta-toggle:hover {
+  background: var(--surface-hover);
+}
+
+.meta-toggle .icon {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 0.2s;
+}
+
+.meta-pane.collapsed .meta-toggle .icon {
+  transform: rotate(-90deg);
+}
+
+.meta-body {
+  display: grid;
+  align-items: end;
+  gap: 0.75rem;
+  padding: 0.25rem 0.75rem 0.75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.meta-pane.collapsed .meta-body {
+  display: none;
+}
+
+.input-label {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+#note-title,
+#note-tags {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--card-bg);
+  color: var(--fg);
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+#note-title:hover,
+#note-tags:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
+}
+
+#note-title:focus,
+#note-tags:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+#note-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+}
+
+#note-tags {
+  font-size: 0.9375rem;
+  line-height: 1.4;
+}
+
+.editor-panels {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  overflow: hidden;
+}
+
+.editor-panels:not(.panels-single) .panel-editor {
+  flex: 0 0 var(--editor-panel-width, 50%);
+}
+
+.panel {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card-bg);
+  box-shadow: var(--shadow);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  flex-shrink: 0;
+}
+
+.panel-label {
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.panel-layout {
+  display: grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  place-items: center;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.panel-layout:hover {
+  background: var(--border);
+  color: var(--fg);
+}
+
+.panel-layout .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+  stroke-width: 2;
+}
+
+.panel-resizer {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 0.75rem;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.panel-resizer::before,
+.panel-resizer::after {
+  content: none;
+}
+
+.panel-resizer:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.fmt-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.0625rem;
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+  flex-shrink: 0;
+}
+
+.fmt-bar button {
+  display: grid;
+  min-width: 1.9rem;
+  height: 1.9rem;
+  padding: 0.3rem;
+  place-items: center;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg);
+}
+
+.fmt-bar button:hover {
+  background: var(--surface);
+}
+
+.fmt-bar button:active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.fmt-bar .icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  stroke-width: 2;
+}
+
+.fmt-sep {
+  width: 1px;
+  height: 1.125rem;
+  margin: 0 0.2rem;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .meta-body {
+    grid-template-columns: 1fr;
+  }
+}

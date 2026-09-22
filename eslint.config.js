@@ -16,15 +16,15 @@ export default [
       'dist/**',
       'node_modules/**',
       'playwright-report/**',
-      'static/marked.min.js',
+      'internal/web/static/vendor/marked.min.js',
       'test-results/**',
       'yesb/**',
     ],
   },
   {
     ...js.configs.recommended,
-    files: ['static/*.js'],
-    ignores: ['static/*.test.js'],
+    files: ['internal/web/static/*.js'],
+    ignores: ['internal/web/static/*.test.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'script',
@@ -33,11 +33,15 @@ export default [
     rules: {
       // These helpers are exposed through the test hook bridge rather than
       // referenced statically by the browser script.
-      'no-unused-vars': ['error', {
-        args: 'none',
-        caughtErrors: 'none',
-        varsIgnorePattern: '^(applyRemoteDeletion|cacheRemoteNote|claimQueueOperation|getOfflineDatabaseInfo)$',
-      }],
+      'no-unused-vars': [
+        'error',
+        {
+          args: 'none',
+          caughtErrors: 'none',
+          varsIgnorePattern:
+            '^(applyRemoteDeletion|cacheRemoteNote|claimQueueOperation|getOfflineDatabaseInfo)$',
+        },
+      ],
       // Best-effort cleanup and optional browser APIs intentionally ignore
       // failures in this client-side code.
       'no-empty': ['error', {allowEmptyCatch: true}],
@@ -49,7 +53,7 @@ export default [
   },
   {
     ...js.configs.recommended,
-    files: ['*.config.js', 'static/*.test.js', 'test/**/*.js'],
+    files: ['*.config.js', 'internal/web/static/*.test.js', 'test/**/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

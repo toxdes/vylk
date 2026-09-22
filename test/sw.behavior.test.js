@@ -5,16 +5,67 @@ import {fileURLToPath} from 'node:url';
 import {expect, test, vi} from 'vitest';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
-const serviceWorkerSource = fs.readFileSync(path.join(testDirectory, '..', 'static', 'sw.js'), 'utf8');
+const serviceWorkerSource = fs.readFileSync(
+  path.join(testDirectory, '..', 'internal', 'web', 'static', 'sw.js'),
+  'utf8',
+);
 
 test('pre-caches the interactive preview helper with the app shell', () => {
-  expect(serviceWorkerSource).toContain("'/interactive-preview.js'");
-  expect(serviceWorkerSource).toContain("'/zen-editor.js'");
-  expect(serviceWorkerSource).toContain("'/preview-worker.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/interactive-preview.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-content.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-dom.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-navigation.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-worker-client.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-renderer.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-decoration.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-model.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-drag-layout.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-drag-controller.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/markdown-formatting.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/formatting-toolbar.js'");
+  expect(serviceWorkerSource).toContain("'/js/core/routes.js'");
+  expect(serviceWorkerSource).toContain("'/js/core/api-client.js'");
+  expect(serviceWorkerSource).toContain("'/js/core/indexeddb.js'");
+  expect(serviceWorkerSource).toContain("'/js/core/offline-store.js'");
+  expect(serviceWorkerSource).toContain("'/js/core/sync-batch.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/server-events.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/conflict-actions.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/compacted-operations.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/conflict-workflow.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/acknowledgements.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/pusher.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/preference-conflicts.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/leadership.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/remote-notes.js'");
+  expect(serviceWorkerSource).toContain("'/js/sync/coordinator.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/panel-controller.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/navigation-controller.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/zen-editor.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/source-adapter.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/zen-overlays.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/caret-controller.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/preview-highlighter.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/note-saver.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/interactive-preview-session.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/shortcut-controller.js'");
+  expect(serviceWorkerSource).toContain("'/js/editor/default-commands.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/dashboard.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/dashboard-controller.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/auth.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/preferences.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/preferences-dialog.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/preferences-store.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/appearance.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/modal.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/conflict-resolver.js'");
+  expect(serviceWorkerSource).toContain("'/js/ui/feedback.js'");
+  expect(serviceWorkerSource).toContain("'/js/workers/preview-worker.js'");
 });
 
 function cacheKey(request) {
-  return typeof request === 'string' ? new URL(request, 'http://localhost:8080/').href : request.url;
+  return typeof request === 'string'
+    ? new URL(request, 'http://localhost:8080/').href
+    : request.url;
 }
 
 function createCacheStorage() {
@@ -79,17 +130,22 @@ function loadWorker({revision = 'new', caches, fetchImpl}) {
     self,
     async install() {
       const promises = [];
-      handlers.get('install')({waitUntil: promise => promises.push(Promise.resolve(promise))});
+      handlers.get('install')({waitUntil: (promise) => promises.push(Promise.resolve(promise))});
       return Promise.all(promises);
     },
     async activate() {
       const promises = [];
-      handlers.get('activate')({waitUntil: promise => promises.push(Promise.resolve(promise))});
+      handlers.get('activate')({waitUntil: (promise) => promises.push(Promise.resolve(promise))});
       return Promise.all(promises);
     },
     async fetch(request) {
       let responsePromise;
-      handlers.get('fetch')({request, respondWith: promise => { responsePromise = Promise.resolve(promise); }});
+      handlers.get('fetch')({
+        request,
+        respondWith: (promise) => {
+          responsePromise = Promise.resolve(promise);
+        },
+      });
       return responsePromise;
     },
   };
@@ -98,17 +154,17 @@ function loadWorker({revision = 'new', caches, fetchImpl}) {
 test('a failed install leaves the active revision cache untouched', async () => {
   const caches = createCacheStorage();
   const oldCache = await caches.open('vylk-shell-old');
-  await oldCache.put('/app.js', new Response('old app'));
+  await oldCache.put('/js/app.js', new Response('old app'));
   const fetchImpl = vi.fn(async (request, options) => {
     expect(options.headers['X-Vylk-Shell']).toBe('1');
-    if (String(request).endsWith('/app.js')) throw new Error('asset unavailable');
+    if (String(request).endsWith('/js/app.js')) throw new Error('asset unavailable');
     return new Response(`asset ${request}`);
   });
   const worker = loadWorker({caches, fetchImpl});
 
   await expect(worker.install()).rejects.toThrow('asset unavailable');
   expect(await caches.keys()).toEqual(expect.arrayContaining(['vylk-shell-old', 'vylk-shell-new']));
-  expect(await (await caches.open('vylk-shell-old')).match('/app.js')).toBeDefined();
+  expect(await (await caches.open('vylk-shell-old')).match('/js/app.js')).toBeDefined();
   expect(worker.self.skipWaiting).not.toHaveBeenCalled();
 });
 
@@ -117,7 +173,10 @@ test('activation promotes a complete revision and removes old shell caches', asy
   await caches.open('vylk-shell-old');
   await caches.open('vylk-shell');
   await caches.open('vylk-fonts');
-  const worker = loadWorker({caches, fetchImpl: async request => new Response(`asset ${request}`)});
+  const worker = loadWorker({
+    caches,
+    fetchImpl: async (request) => new Response(`asset ${request}`),
+  });
 
   await worker.install();
   await worker.activate();
@@ -131,17 +190,23 @@ test('navigation is served from the active shell cache without waiting for netwo
   const caches = createCacheStorage();
   const shell = await caches.open('vylk-shell-new');
   await shell.put('/index.html', new Response('cached shell'));
-  const fetchImpl = vi.fn(async () => { throw new Error('network unavailable'); });
+  const fetchImpl = vi.fn(async () => {
+    throw new Error('network unavailable');
+  });
   const worker = loadWorker({caches, fetchImpl});
 
-  const response = await worker.fetch({method: 'GET', mode: 'navigate', url: 'http://localhost:8080/note-a'});
+  const response = await worker.fetch({
+    method: 'GET',
+    mode: 'navigate',
+    url: 'http://localhost:8080/note-a',
+  });
   expect(await response.text()).toBe('cached shell');
   expect(fetchImpl).not.toHaveBeenCalled();
 });
 
 test('caches Google Fonts CSS and font binaries for offline reloads', async () => {
   const caches = createCacheStorage();
-  const fetchImpl = vi.fn(async request => {
+  const fetchImpl = vi.fn(async (request) => {
     const url = typeof request === 'string' ? request : request.url;
     if (url.includes('fonts.googleapis.com')) return new Response('font css');
     if (url.includes('fonts.gstatic.com')) return new Response('font binary');
@@ -161,7 +226,9 @@ test('caches Google Fonts CSS and font binaries for offline reloads', async () =
 test('returns a fetched font when browser cache storage rejects the cache write', async () => {
   const caches = createCacheStorage();
   const fonts = await caches.open('vylk-fonts');
-  fonts.put = vi.fn(async () => { throw new Error('cross-origin cache write rejected'); });
+  fonts.put = vi.fn(async () => {
+    throw new Error('cross-origin cache write rejected');
+  });
   const fetchImpl = vi.fn(async () => new Response('font binary'));
   const worker = loadWorker({caches, fetchImpl});
   const fontRequest = {method: 'GET', url: 'https://fonts.gstatic.com/s/inter/test.woff2'};
@@ -174,7 +241,9 @@ test('returns a fetched font when browser cache storage rejects the cache write'
 test('fetches a font when browser cache lookup rejects', async () => {
   const caches = createCacheStorage();
   const fonts = await caches.open('vylk-fonts');
-  fonts.match = vi.fn(async () => { throw new Error('cross-origin cache lookup rejected'); });
+  fonts.match = vi.fn(async () => {
+    throw new Error('cross-origin cache lookup rejected');
+  });
   const fetchImpl = vi.fn(async () => new Response('font binary'));
   const worker = loadWorker({caches, fetchImpl});
   const fontRequest = {method: 'GET', url: 'https://fonts.gstatic.com/s/inter/test.woff2'};

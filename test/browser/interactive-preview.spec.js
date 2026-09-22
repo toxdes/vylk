@@ -13,7 +13,7 @@ async function enableInteractivePreview(page) {
   await page.locator('#editor-prefs-btn').click();
   await page.locator('#prefs-tab-editor').click();
   const preference = page.locator('#pref-interactive-preview');
-  if (!await preference.isChecked()) await preference.check();
+  if (!(await preference.isChecked())) await preference.check();
   await page.locator('#prefs-close').click();
   await expect(page.locator('#prefs-modal')).toBeHidden();
 }
@@ -26,12 +26,20 @@ test('interactive preview preserves selection and tracks drag reflow', async ({p
 
   const body = page.locator('#preview .preview-list-item-body').first();
   const firstHandle = page.locator('#preview .preview-drag-handle').first();
-  const firstEdit = page.getByRole('button', {name:'Edit this block in source'}).first();
-  await expect.poll(() => firstHandle.evaluate(element => Number(getComputedStyle(element).opacity))).toBe(0);
-  await expect.poll(() => firstEdit.evaluate(element => Number(getComputedStyle(element).opacity))).toBe(0);
+  const firstEdit = page.getByRole('button', {name: 'Edit this block in source'}).first();
+  await expect
+    .poll(() => firstHandle.evaluate((element) => Number(getComputedStyle(element).opacity)))
+    .toBe(0);
+  await expect
+    .poll(() => firstEdit.evaluate((element) => Number(getComputedStyle(element).opacity)))
+    .toBe(0);
   await body.hover();
-  await expect.poll(() => firstHandle.evaluate(element => Number(getComputedStyle(element).opacity))).toBeGreaterThan(.8);
-  await expect.poll(() => firstEdit.evaluate(element => Number(getComputedStyle(element).opacity))).toBe(1);
+  await expect
+    .poll(() => firstHandle.evaluate((element) => Number(getComputedStyle(element).opacity)))
+    .toBeGreaterThan(0.8);
+  await expect
+    .poll(() => firstEdit.evaluate((element) => Number(getComputedStyle(element).opacity)))
+    .toBe(1);
   await firstEdit.click();
   await expect(page.locator('#note-content')).toBeFocused();
   await expect(page.locator('.editor-source-wrap')).toHaveClass(/is-caret-visible/);
@@ -41,43 +49,70 @@ test('interactive preview preserves selection and tracks drag reflow', async ({p
   expect(firstEditor).not.toBeNull();
   expect(firstCue.y).toBeGreaterThanOrEqual(firstEditor.y);
   expect(firstCue.y).toBeLessThan(firstEditor.y + firstEditor.height);
-  expect(await page.locator('#note-content').evaluate(textarea => getComputedStyle(textarea).caretColor)).not.toBe('auto');
-  expect(await page.locator('#note-content').evaluate(textarea => textarea.selectionStart)).toBe(2);
+  expect(
+    await page
+      .locator('#note-content')
+      .evaluate((textarea) => getComputedStyle(textarea).caretColor),
+  ).not.toBe('auto');
+  expect(await page.locator('#note-content').evaluate((textarea) => textarea.selectionStart)).toBe(
+    2,
+  );
   await body.hover();
-  await page.locator('#note-content').evaluate(textarea => {
+  await page.locator('#note-content').evaluate((textarea) => {
     const position = textarea.value.indexOf('Charlie');
     textarea.setSelectionRange(position, position);
-    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
   });
-  await expect(page.locator('#preview .interactive-preview-list-card').nth(2)).toHaveClass(/highlight/);
+  await expect(page.locator('#preview .interactive-preview-list-card').nth(2)).toHaveClass(
+    /highlight/,
+  );
   await expect(page.locator('#preview > ul')).not.toHaveClass(/highlight/);
   const textBounds = await body.boundingBox();
   expect(textBounds).not.toBeNull();
   await page.mouse.move(textBounds.x + 2, textBounds.y + textBounds.height / 2);
   await page.mouse.down();
-  await page.mouse.move(textBounds.x + Math.min(44, textBounds.width - 2), textBounds.y + textBounds.height / 2);
+  await page.mouse.move(
+    textBounds.x + Math.min(44, textBounds.width - 2),
+    textBounds.y + textBounds.height / 2,
+  );
   await page.mouse.up();
   await expect(page.locator('.preview-drag-ghost')).toHaveCount(0);
-  expect(await page.evaluate(() => window.getSelection()?.toString().length || 0)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.getSelection()?.toString().length || 0)).toBeGreaterThan(
+    0,
+  );
 
   const handles = page.locator('#preview .preview-drag-handle');
   const sourceHandle = await handles.nth(0).boundingBox();
   const targetHandle = await handles.nth(2).boundingBox();
-  const sourceCard = await page.locator('#preview .interactive-preview-list-card').nth(0).boundingBox();
+  const sourceCard = await page
+    .locator('#preview .interactive-preview-list-card')
+    .nth(0)
+    .boundingBox();
   expect(sourceHandle).not.toBeNull();
   expect(targetHandle).not.toBeNull();
   expect(sourceCard).not.toBeNull();
-  const start = {x:sourceHandle.x + sourceHandle.width / 2, y:sourceHandle.y + sourceHandle.height / 2};
-  const moved = {x:start.x + 36, y:start.y + 14};
+  const start = {
+    x: sourceHandle.x + sourceHandle.width / 2,
+    y: sourceHandle.y + sourceHandle.height / 2,
+  };
+  const moved = {x: start.x + 36, y: start.y + 14};
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(moved.x, moved.y, {steps:2});
+  await page.mouse.move(moved.x, moved.y, {steps: 2});
 
   const ghost = await page.locator('.preview-drag-ghost').boundingBox();
-  expect(Math.abs((ghost.x - sourceCard.x) - (moved.x - start.x))).toBeLessThanOrEqual(2);
-  expect(Math.abs((ghost.y - sourceCard.y) - (moved.y - start.y))).toBeLessThanOrEqual(2);
-  await page.mouse.move(targetHandle.x + targetHandle.width / 2, targetHandle.y + targetHandle.height, {steps:2});
-  expect(await page.evaluate(() => document.getAnimations().some(animation => animation.id === 'preview-reflow'))).toBe(true);
+  expect(Math.abs(ghost.x - sourceCard.x - (moved.x - start.x))).toBeLessThanOrEqual(2);
+  expect(Math.abs(ghost.y - sourceCard.y - (moved.y - start.y))).toBeLessThanOrEqual(2);
+  await page.mouse.move(
+    targetHandle.x + targetHandle.width / 2,
+    targetHandle.y + targetHandle.height,
+    {steps: 2},
+  );
+  expect(
+    await page.evaluate(() =>
+      document.getAnimations().some((animation) => animation.id === 'preview-reflow'),
+    ),
+  ).toBe(true);
   await page.mouse.up();
 
   await expect(page.locator('#note-content')).toHaveValue('- Bravo\n- Charlie\n- Alpha\n- Delta');
@@ -85,38 +120,59 @@ test('interactive preview preserves selection and tracks drag reflow', async ({p
 });
 
 test.describe('mobile interactive preview', () => {
-  test.use({viewport:{width:390, height:844}, hasTouch:true, isMobile:true});
+  test.use({viewport: {width: 390, height: 844}, hasTouch: true, isMobile: true});
 
-  test('uses direct touch controls and reorders after a stationary hold', async ({page, context}) => {
+  test('uses direct touch controls and reorders after a stationary hold', async ({
+    page,
+    context,
+  }) => {
     await signIn(page);
     await page.locator('#new-note-btn').click();
     await page.locator('#note-content').fill('- Alpha\n- Bravo\n- Charlie');
     await enableInteractivePreview(page);
 
     const handles = page.locator('#preview .preview-drag-handle');
-    const editButtons = page.getByRole('button', {name:'Edit this block in source'});
+    const editButtons = page.getByRole('button', {name: 'Edit this block in source'});
     const sourceHandle = await handles.first().boundingBox();
     const targetHandle = await handles.nth(2).boundingBox();
     expect(sourceHandle).not.toBeNull();
     expect(targetHandle).not.toBeNull();
     expect(sourceHandle.width).toBeGreaterThanOrEqual(44);
     expect(sourceHandle.height).toBeGreaterThanOrEqual(44);
-    await expect.poll(() => editButtons.first().evaluate(element => ({
-      opacity:Number(getComputedStyle(element).opacity),
-      pointerEvents:getComputedStyle(element).pointerEvents,
-      width:element.getBoundingClientRect().width,
-      height:element.getBoundingClientRect().height,
-    }))).toEqual({opacity:.72, pointerEvents:'auto', width:44, height:44});
+    await expect
+      .poll(() =>
+        editButtons.first().evaluate((element) => ({
+          opacity: Number(getComputedStyle(element).opacity),
+          pointerEvents: getComputedStyle(element).pointerEvents,
+          width: element.getBoundingClientRect().width,
+          height: element.getBoundingClientRect().height,
+        })),
+      )
+      .toEqual({opacity: 0.72, pointerEvents: 'auto', width: 44, height: 44});
 
-    const start = {x:sourceHandle.x + sourceHandle.width / 2, y:sourceHandle.y + sourceHandle.height / 2};
-    const destination = {x:targetHandle.x + targetHandle.width / 2, y:targetHandle.y + targetHandle.height - 2};
+    const start = {
+      x: sourceHandle.x + sourceHandle.width / 2,
+      y: sourceHandle.y + sourceHandle.height / 2,
+    };
+    const destination = {
+      x: targetHandle.x + targetHandle.width / 2,
+      y: targetHandle.y + targetHandle.height - 2,
+    };
     const cdp = await context.newCDPSession(page);
-    await cdp.send('Input.dispatchTouchEvent', {type:'touchStart', touchPoints:[{...start, id:1}]});
-    await expect(page.locator('#preview .interactive-preview-list-card').first()).toHaveClass(/is-drag-pending/);
-    await expect(page.locator('.preview-drag-ghost')).toHaveCount(1, {timeout:1000});
-    await cdp.send('Input.dispatchTouchEvent', {type:'touchMove', touchPoints:[{...destination, id:1}]});
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{...start, id: 1}],
+    });
+    await expect(page.locator('#preview .interactive-preview-list-card').first()).toHaveClass(
+      /is-drag-pending/,
+    );
+    await expect(page.locator('.preview-drag-ghost')).toHaveCount(1, {timeout: 1000});
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{...destination, id: 1}],
+    });
     await expect(page.locator('#preview li[data-preview-drop]')).toHaveCount(1);
-    await cdp.send('Input.dispatchTouchEvent', {type:'touchEnd', touchPoints:[]});
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
 
     await expect(page.locator('#note-content')).toHaveValue('- Bravo\n- Charlie\n- Alpha');
     await expect(page.locator('.preview-drag-ghost')).toHaveCount(0);
@@ -131,16 +187,18 @@ test('source caret cue follows wrapped visual rows', async ({page}) => {
   await editor.fill(content);
   await editor.focus();
 
-  const setCaret = async position => editor.evaluate((textarea, nextPosition) => {
-    textarea.setSelectionRange(nextPosition, nextPosition);
-    textarea.dispatchEvent(new Event('select', {bubbles:true}));
-  }, position);
+  const setCaret = async (position) =>
+    editor.evaluate((textarea, nextPosition) => {
+      textarea.setSelectionRange(nextPosition, nextPosition);
+      textarea.dispatchEvent(new Event('select', {bubbles: true}));
+    }, position);
   await setCaret(0);
   await expect(page.locator('.editor-source-wrap')).toHaveClass(/is-caret-visible/);
-  const cueDocumentTop = () => page.locator('#note-content').evaluate(textarea => {
-    const cue = document.querySelector('.editor-current-line');
-    return parseFloat(getComputedStyle(cue).top) + textarea.scrollTop;
-  });
+  const cueDocumentTop = () =>
+    page.locator('#note-content').evaluate((textarea) => {
+      const cue = document.querySelector('.editor-current-line');
+      return parseFloat(getComputedStyle(cue).top) + textarea.scrollTop;
+    });
   await expect.poll(cueDocumentTop).toBeLessThan(40);
   const firstRowTop = await cueDocumentTop();
   await setCaret(96);
@@ -155,25 +213,32 @@ test('source caret cue stays on logical line starts, including blank lines', asy
   await editor.fill(content);
   await editor.focus();
 
-  const lineStarts = [0, content.indexOf('bravo'), content.indexOf('\n\n') + 1, content.indexOf('charlie')];
+  const lineStarts = [
+    0,
+    content.indexOf('bravo'),
+    content.indexOf('\n\n') + 1,
+    content.indexOf('charlie'),
+  ];
   const measurements = [];
   for (const position of lineStarts) {
     await editor.evaluate((textarea, nextPosition) => {
       textarea.setSelectionRange(nextPosition, nextPosition);
-      textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+      textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
     }, position);
     await page.waitForTimeout(140);
-    measurements.push(await editor.evaluate(textarea => {
-      const cue = document.querySelector('.editor-current-line');
-      return {
-        top:parseFloat(getComputedStyle(cue).top) + textarea.scrollTop,
-        lineHeight:parseFloat(getComputedStyle(textarea).lineHeight),
-      };
-    }));
+    measurements.push(
+      await editor.evaluate((textarea) => {
+        const cue = document.querySelector('.editor-current-line');
+        return {
+          top: parseFloat(getComputedStyle(cue).top) + textarea.scrollTop,
+          lineHeight: parseFloat(getComputedStyle(textarea).lineHeight),
+        };
+      }),
+    );
   }
   const firstTop = measurements[0].top;
   const lineHeight = measurements[0].lineHeight;
-  expect(measurements.map(measurement => measurement.top - firstTop)).toEqual([
+  expect(measurements.map((measurement) => measurement.top - firstTop)).toEqual([
     0,
     expect.closeTo(lineHeight, 1),
     expect.closeTo(lineHeight * 2, 1),
@@ -189,17 +254,33 @@ test('source caret cue stays on the first character of a soft-wrapped row', asyn
   await editor.fill(content);
   await editor.focus();
 
-  const position = await editor.evaluate(textarea => {
+  const position = await editor.evaluate((textarea) => {
     const computed = getComputedStyle(textarea);
     const mirror = document.createElement('div');
     const before = document.createTextNode('');
     const marker = document.createElement('span');
     const after = document.createTextNode(textarea.value);
-    mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;white-space:pre-wrap;';
+    mirror.style.cssText =
+      'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;white-space:pre-wrap;';
     mirror.style.width = `${textarea.clientWidth}px`;
     mirror.style.boxSizing = 'border-box';
-    ['border', 'padding', 'font', 'letterSpacing', 'lineHeight', 'tabSize', 'whiteSpace', 'overflowWrap', 'wordBreak', 'textIndent', 'direction', 'unicodeBidi', 'wordSpacing']
-      .forEach(property => { mirror.style[property] = computed[property]; });
+    [
+      'border',
+      'padding',
+      'font',
+      'letterSpacing',
+      'lineHeight',
+      'tabSize',
+      'whiteSpace',
+      'overflowWrap',
+      'wordBreak',
+      'textIndent',
+      'direction',
+      'unicodeBidi',
+      'wordSpacing',
+    ].forEach((property) => {
+      mirror.style[property] = computed[property];
+    });
     marker.textContent = '\u200b';
     mirror.append(before, marker, after);
     textarea.parentElement.append(mirror);
@@ -222,7 +303,7 @@ test('source caret cue stays on the first character of a soft-wrapped row', asyn
   expect(position).toBeGreaterThan(0);
   await editor.evaluate((textarea, nextPosition) => {
     textarea.setSelectionRange(nextPosition, nextPosition);
-    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
   }, position);
   await page.waitForTimeout(140);
 
@@ -230,12 +311,32 @@ test('source caret cue stays on the first character of a soft-wrapped row', asyn
     const computed = getComputedStyle(textarea);
     const mirror = document.createElement('div');
     const marker = document.createElement('span');
-    mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;white-space:pre-wrap;';
+    mirror.style.cssText =
+      'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;white-space:pre-wrap;';
     mirror.style.width = `${textarea.clientWidth}px`;
     mirror.style.boxSizing = 'border-box';
-    ['border', 'padding', 'font', 'letterSpacing', 'lineHeight', 'tabSize', 'whiteSpace', 'overflowWrap', 'wordBreak', 'textIndent', 'direction', 'unicodeBidi', 'wordSpacing']
-      .forEach(property => { mirror.style[property] = computed[property]; });
-    mirror.append(document.createTextNode(textarea.value.slice(0, nextPosition)), marker, document.createTextNode(textarea.value.slice(nextPosition)));
+    [
+      'border',
+      'padding',
+      'font',
+      'letterSpacing',
+      'lineHeight',
+      'tabSize',
+      'whiteSpace',
+      'overflowWrap',
+      'wordBreak',
+      'textIndent',
+      'direction',
+      'unicodeBidi',
+      'wordSpacing',
+    ].forEach((property) => {
+      mirror.style[property] = computed[property];
+    });
+    mirror.append(
+      document.createTextNode(textarea.value.slice(0, nextPosition)),
+      marker,
+      document.createTextNode(textarea.value.slice(nextPosition)),
+    );
     marker.textContent = '\u200b';
     textarea.parentElement.append(mirror);
     const markerRect = marker.getBoundingClientRect();
@@ -244,7 +345,10 @@ test('source caret cue stays on the first character of a soft-wrapped row', asyn
     const wrapRect = document.querySelector('.editor-source-wrap').getBoundingClientRect();
     const actual = parseFloat(getComputedStyle(cue).top) + textarea.scrollTop;
     mirror.remove();
-    return {actualOffset:actual - (textarea.getBoundingClientRect().top - wrapRect.top), expectedOffset:markerRect.top - mirrorRect.top};
+    return {
+      actualOffset: actual - (textarea.getBoundingClientRect().top - wrapRect.top),
+      expectedOffset: markerRect.top - mirrorRect.top,
+    };
   }, position);
   expect(actualOffset).toBeCloseTo(expectedOffset, 1);
 });
@@ -256,20 +360,30 @@ test('source caret cue stays at the active end while text is selected', async ({
   const editor = page.locator('#note-content');
   await editor.fill(content);
   await editor.focus();
-  await editor.evaluate(textarea => {
+  await editor.evaluate((textarea) => {
     textarea.setSelectionRange(0, 0);
-    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
   });
   await page.waitForTimeout(140);
-  const firstTop = await editor.evaluate(textarea => parseFloat(getComputedStyle(document.querySelector('.editor-current-line')).top) + textarea.scrollTop);
-  await editor.evaluate(textarea => {
-    textarea.focus({preventScroll:true});
+  const firstTop = await editor.evaluate(
+    (textarea) =>
+      parseFloat(getComputedStyle(document.querySelector('.editor-current-line')).top) +
+      textarea.scrollTop,
+  );
+  await editor.evaluate((textarea) => {
+    textarea.focus({preventScroll: true});
     textarea.setSelectionRange(0, 'first line'.length + 1);
-    textarea.dispatchEvent(new Event('select', {bubbles:true}));
+    textarea.dispatchEvent(new Event('select', {bubbles: true}));
   });
   await page.waitForTimeout(140);
-  const lineHeight = await editor.evaluate(textarea => parseFloat(getComputedStyle(textarea).lineHeight));
-  const top = await editor.evaluate(textarea => parseFloat(getComputedStyle(document.querySelector('.editor-current-line')).top) + textarea.scrollTop);
+  const lineHeight = await editor.evaluate((textarea) =>
+    parseFloat(getComputedStyle(textarea).lineHeight),
+  );
+  const top = await editor.evaluate(
+    (textarea) =>
+      parseFloat(getComputedStyle(document.querySelector('.editor-current-line')).top) +
+      textarea.scrollTop,
+  );
   expect(top - firstTop).toBeCloseTo(lineHeight, 1);
   await expect(page.locator('.editor-source-wrap')).toHaveClass(/is-caret-visible/);
   expect(lineHeight).toBeGreaterThan(0);
@@ -277,14 +391,15 @@ test('source caret cue stays at the active end while text is selected', async ({
 
 test('source caret cue follows a real ArrowUp movement', async ({page}) => {
   await signIn(page);
-  await page.setViewportSize({width:1000, height:800});
+  await page.setViewportSize({width: 1000, height: 800});
   await page.locator('#new-note-btn').click();
-  const content = [
-    '2. [x] UI still feels slow to type on mobile',
-    '',
-    "1. [x] Markdown preview doesn't render for the first time when it's hidden by default, we need one render extra whenever we go from `hidden` -> `shown`",
-    '---',
-  ].join('\n') + '\n';
+  const content =
+    [
+      '2. [x] UI still feels slow to type on mobile',
+      '',
+      "1. [x] Markdown preview doesn't render for the first time when it's hidden by default, we need one render extra whenever we go from `hidden` -> `shown`",
+      '---',
+    ].join('\n') + '\n';
   const editor = page.locator('#note-content');
   await editor.fill(content);
   await editor.focus();
@@ -292,7 +407,7 @@ test('source caret cue follows a real ArrowUp movement', async ({page}) => {
   await editor.press('ArrowUp');
   await page.waitForTimeout(140);
 
-  const state = await editor.evaluate(textarea => {
+  const state = await editor.evaluate((textarea) => {
     const cue = document.querySelector('.editor-current-line');
     const wrap = document.querySelector('.editor-source-wrap');
     const textareaRect = textarea.getBoundingClientRect();
@@ -300,12 +415,32 @@ test('source caret cue follows a real ArrowUp movement', async ({page}) => {
     const computed = getComputedStyle(textarea);
     const mirror = document.createElement('div');
     const marker = document.createElement('span');
-    mirror.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;white-space:pre-wrap;';
+    mirror.style.cssText =
+      'position:absolute;top:0;left:0;visibility:hidden;pointer-events:none;height:auto;overflow:visible;white-space:pre-wrap;';
     mirror.style.width = `${textarea.clientWidth}px`;
     mirror.style.boxSizing = 'border-box';
-    ['border', 'padding', 'font', 'letterSpacing', 'lineHeight', 'tabSize', 'whiteSpace', 'overflowWrap', 'wordBreak', 'textIndent', 'direction', 'unicodeBidi', 'wordSpacing']
-      .forEach(property => { mirror.style[property] = computed[property]; });
-    mirror.append(document.createTextNode(textarea.value.slice(0, textarea.selectionStart)), marker, document.createTextNode(textarea.value.slice(textarea.selectionStart)));
+    [
+      'border',
+      'padding',
+      'font',
+      'letterSpacing',
+      'lineHeight',
+      'tabSize',
+      'whiteSpace',
+      'overflowWrap',
+      'wordBreak',
+      'textIndent',
+      'direction',
+      'unicodeBidi',
+      'wordSpacing',
+    ].forEach((property) => {
+      mirror.style[property] = computed[property];
+    });
+    mirror.append(
+      document.createTextNode(textarea.value.slice(0, textarea.selectionStart)),
+      marker,
+      document.createTextNode(textarea.value.slice(textarea.selectionStart)),
+    );
     marker.textContent = '\u200b';
     wrap.append(mirror);
     const markerRect = marker.getBoundingClientRect();
@@ -313,10 +448,13 @@ test('source caret cue follows a real ArrowUp movement', async ({page}) => {
     const expectedOffset = markerRect.top - mirrorRect.top;
     mirror.remove();
     return {
-      position:textarea.selectionStart,
-      cueOffset:parseFloat(getComputedStyle(cue).top) + textarea.scrollTop - (textareaRect.top - wrapRect.top),
+      position: textarea.selectionStart,
+      cueOffset:
+        parseFloat(getComputedStyle(cue).top) +
+        textarea.scrollTop -
+        (textareaRect.top - wrapRect.top),
       expectedOffset,
-      value:textarea.value,
+      value: textarea.value,
     };
   });
   expect(state.position).toBe(state.value.length - 4);
@@ -332,9 +470,11 @@ test('editing from preview-only mode opens source at the selected block', async 
 
   await page.locator('.view-control[data-panel="preview"]').click();
   await expect(page.locator('.panel-editor')).toBeHidden();
-  const paragraphCard = page.locator('#preview .interactive-preview-block-card').filter({hasText:'A paragraph to edit.'});
+  const paragraphCard = page
+    .locator('#preview .interactive-preview-block-card')
+    .filter({hasText: 'A paragraph to edit.'});
   await paragraphCard.hover();
-  await paragraphCard.getByRole('button', {name:'Edit this block in source'}).click();
+  await paragraphCard.getByRole('button', {name: 'Edit this block in source'}).click();
 
   await expect(page.locator('.panel-editor')).toBeVisible();
   await expect(page.locator('.panel-preview')).toBeHidden();
@@ -346,7 +486,9 @@ test('editing from preview-only mode opens source at the selected block', async 
   expect(editor).not.toBeNull();
   expect(cue.y).toBeGreaterThanOrEqual(editor.y);
   expect(cue.y).toBeLessThan(editor.y + editor.height);
-  const position = await page.locator('#note-content').evaluate(textarea => textarea.selectionStart);
+  const position = await page
+    .locator('#note-content')
+    .evaluate((textarea) => textarea.selectionStart);
   expect(position).toBe('# Heading\n\n'.length);
 });
 
@@ -358,26 +500,35 @@ test('updates a typed preview block without replacing its layout node', async ({
   await expect(page.locator('#preview p')).toHaveCount(2);
 
   await page.evaluate(() => {
-    window.__typedPreviewBlockBefore = [...document.querySelectorAll('#preview p')]
-      .find(element => element.textContent === 'First paragraph.');
+    window.__typedPreviewBlockBefore = [...document.querySelectorAll('#preview p')].find(
+      (element) => element.textContent === 'First paragraph.',
+    );
   });
-  await editor.evaluate(textarea => {
+  await editor.evaluate((textarea) => {
     const position = textarea.value.indexOf('First paragraph.') + 'First paragraph.'.length;
     textarea.focus();
     textarea.setSelectionRange(position, position);
   });
   await editor.type(' Updated');
   await expect(page.locator('#note-content')).toHaveValue(/First paragraph\. Updated/);
-  await expect.poll(() => page.locator('#preview p').first().textContent()).toContain('First paragraph. Updated');
-  expect(await page.evaluate(() => [...document.querySelectorAll('#preview p')]
-    .find(element => element.textContent === 'First paragraph. Updated') === window.__typedPreviewBlockBefore)).toBe(true);
+  await expect
+    .poll(() => page.locator('#preview p').first().textContent())
+    .toContain('First paragraph. Updated');
+  expect(
+    await page.evaluate(
+      () =>
+        [...document.querySelectorAll('#preview p')].find(
+          (element) => element.textContent === 'First paragraph. Updated',
+        ) === window.__typedPreviewBlockBefore,
+    ),
+  ).toBe(true);
 });
 
 test('updates one typed list item without replacing the list', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
   const editor = page.locator('#note-content');
-  const items = Array.from({length:20}, (_, index) => `- Item ${index + 1}`);
+  const items = Array.from({length: 20}, (_, index) => `- Item ${index + 1}`);
   await editor.fill(items.join('\n'));
   await expect(page.locator('#preview > ul')).toHaveCount(1);
   await expect(page.locator('#preview > ul > li')).toHaveCount(20);
@@ -389,7 +540,7 @@ test('updates one typed list item without replacing the list', async ({page}) =>
       items: [...list.children],
     };
   });
-  await editor.evaluate(textarea => {
+  await editor.evaluate((textarea) => {
     const position = textarea.value.indexOf('- Item 10') + '- Item 10'.length;
     textarea.focus();
     textarea.setSelectionRange(position, position);
@@ -397,20 +548,24 @@ test('updates one typed list item without replacing the list', async ({page}) =>
   await editor.type(' updated');
 
   await expect(page.locator('#preview > ul > li').nth(9)).toContainText('Item 10 updated');
-  expect(await page.evaluate(() => {
-    const list = document.querySelector('#preview > ul');
-    return {
-      sameList: list === window.__typedListBefore.list,
-      sameItems: [...list.children].every((item, index) => item === window.__typedListBefore.items[index]),
-    };
-  })).toEqual({sameList:true, sameItems:true});
+  expect(
+    await page.evaluate(() => {
+      const list = document.querySelector('#preview > ul');
+      return {
+        sameList: list === window.__typedListBefore.list,
+        sameItems: [...list.children].every(
+          (item, index) => item === window.__typedListBefore.items[index],
+        ),
+      };
+    }),
+  ).toEqual({sameList: true, sameItems: true});
 });
 
 test('updates one typed interactive list item without replacing the list', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
   const editor = page.locator('#note-content');
-  const items = Array.from({length:20}, (_, index) => `- Item ${index + 1}`);
+  const items = Array.from({length: 20}, (_, index) => `- Item ${index + 1}`);
   await editor.fill(items.join('\n'));
   await enableInteractivePreview(page);
   await expect(page.locator('#preview > ul > li')).toHaveCount(20);
@@ -422,7 +577,7 @@ test('updates one typed interactive list item without replacing the list', async
       items: [...list.children],
     };
   });
-  await editor.evaluate(textarea => {
+  await editor.evaluate((textarea) => {
     const position = textarea.value.indexOf('- Item 10') + '- Item 10'.length;
     textarea.focus();
     textarea.setSelectionRange(position, position);
@@ -430,27 +585,33 @@ test('updates one typed interactive list item without replacing the list', async
   await editor.type(' updated');
 
   await expect(page.locator('#preview > ul > li').nth(9)).toContainText('Item 10 updated');
-  expect(await page.evaluate(() => {
-    const list = document.querySelector('#preview > ul');
-    return {
-      sameList: list === window.__typedInteractiveListBefore.list,
-      sameItems: [...list.children].every((item, index) => item === window.__typedInteractiveListBefore.items[index]),
-    };
-  })).toEqual({sameList:true, sameItems:true});
+  expect(
+    await page.evaluate(() => {
+      const list = document.querySelector('#preview > ul');
+      return {
+        sameList: list === window.__typedInteractiveListBefore.list,
+        sameItems: [...list.children].every(
+          (item, index) => item === window.__typedInteractiveListBefore.items[index],
+        ),
+      };
+    }),
+  ).toEqual({sameList: true, sameItems: true});
 });
 
 test('keeps an interactive task checkbox enabled after editing its list item', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
   const editor = page.locator('#note-content');
-  const items = Array.from({length:20}, (_, index) => `- [ ] Task ${index + 1}`);
+  const items = Array.from({length: 20}, (_, index) => `- [ ] Task ${index + 1}`);
   await editor.fill(items.join('\n'));
   await enableInteractivePreview(page);
   await expect(page.locator('#preview > ul > li')).toHaveCount(20);
   await expect(page.locator('#preview > ul > li input[type="checkbox"]')).toHaveCount(20);
-  await expect(page.locator('#preview > ul > li').nth(9).locator('input[type="checkbox"]')).toBeEnabled();
+  await expect(
+    page.locator('#preview > ul > li').nth(9).locator('input[type="checkbox"]'),
+  ).toBeEnabled();
 
-  await editor.evaluate(textarea => {
+  await editor.evaluate((textarea) => {
     const position = textarea.value.indexOf('- [ ] Task 10') + '- [ ] Task 10'.length;
     textarea.focus();
     textarea.setSelectionRange(position, position);
@@ -462,7 +623,9 @@ test('keeps an interactive task checkbox enabled after editing its list item', a
   await expect(target.locator('input[type="checkbox"]')).toBeEnabled();
 });
 
-test('keeps a comfortable horizontal inset when interactive preview is disabled', async ({page}) => {
+test('keeps the editor and preview gutters aligned when interactive preview is disabled', async ({
+  page,
+}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
   await page.locator('#note-content').fill('A readable preview paragraph.');
@@ -477,10 +640,15 @@ test('keeps a comfortable horizontal inset when interactive preview is disabled'
   await expect(page.locator('#prefs-modal')).toBeHidden();
   await expect(page.locator('#preview')).not.toHaveClass(/interactive-preview-active/);
 
-  await expect.poll(() => page.locator('#preview').evaluate(element => ({
-    left:getComputedStyle(element).paddingLeft,
-    right:getComputedStyle(element).paddingRight,
-  }))).toEqual({left:'48px', right:'48px'});
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const editor = document.querySelector('#note-content');
+        const preview = document.querySelector('#preview');
+        return getComputedStyle(editor).paddingLeft === getComputedStyle(preview).paddingLeft;
+      }),
+    )
+    .toBe(true);
 });
 
 test('keeps the current preview highlight while typed Markdown is rendering', async ({page}) => {
@@ -491,17 +659,23 @@ test('keeps the current preview highlight while typed Markdown is rendering', as
   await expect(page.locator('#preview p')).toHaveCount(2);
   await page.waitForTimeout(200);
 
-  await editor.evaluate(textarea => {
+  await editor.evaluate((textarea) => {
     const position = textarea.value.indexOf('First paragraph.');
     textarea.focus();
     textarea.setSelectionRange(position, position);
-    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles:true}));
+    textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
   });
-  const isFirstParagraphHighlighted = () => page.evaluate(() => {
-    const paragraph = [...document.querySelectorAll('#preview p')]
-      .find(element => element.textContent === 'First paragraph.');
-    return Boolean((paragraph?.closest('.interactive-preview-card') || paragraph)?.classList.contains('highlight'));
-  });
+  const isFirstParagraphHighlighted = () =>
+    page.evaluate(() => {
+      const paragraph = [...document.querySelectorAll('#preview p')].find(
+        (element) => element.textContent === 'First paragraph.',
+      );
+      return Boolean(
+        (paragraph?.closest('.interactive-preview-card') || paragraph)?.classList.contains(
+          'highlight',
+        ),
+      );
+    });
   await expect.poll(isFirstParagraphHighlighted).toBe(true);
   await editor.type(' Updated');
   await page.waitForTimeout(100);
@@ -512,30 +686,38 @@ test('keeps the current preview highlight while typed Markdown is rendering', as
 test('centers a preview edit target within the source viewport', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
-  const items = Array.from({length:40}, (_, index) => `- Item ${index + 1}`);
+  const items = Array.from({length: 40}, (_, index) => `- Item ${index + 1}`);
   await page.locator('#note-content').fill(items.join('\n'));
   await enableInteractivePreview(page);
 
   await page.locator('.view-control[data-panel="preview"]').click();
-  const targetItem = page.locator('#preview li').filter({hasText:'Item 20'}).first();
+  const targetItem = page.locator('#preview li').filter({hasText: 'Item 20'}).first();
   await expect(targetItem).toHaveText('Item 20');
   await targetItem.scrollIntoViewIfNeeded();
   const target = targetItem.locator(':scope > .interactive-preview-list-card');
   await expect(target).toBeVisible();
   await target.hover();
-  await target.getByRole('button', {name:'Edit this block in source'}).click();
+  await target.getByRole('button', {name: 'Edit this block in source'}).click();
 
   await expect(page.locator('#note-content')).toBeFocused();
-  await expect.poll(() => page.locator('#note-content').evaluate(textarea => {
-    const maxScrollTop = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
-    return textarea.scrollTop > 0 && textarea.scrollTop < maxScrollTop;
-  })).toBe(true);
+  await expect
+    .poll(() =>
+      page.locator('#note-content').evaluate((textarea) => {
+        const maxScrollTop = Math.max(0, textarea.scrollHeight - textarea.clientHeight);
+        return textarea.scrollTop > 0 && textarea.scrollTop < maxScrollTop;
+      }),
+    )
+    .toBe(true);
 });
 
-test('interactive preview preserves checkbox position and auto-scrolls during drag', async ({page}) => {
+test('interactive preview preserves checkbox position and auto-scrolls during drag', async ({
+  page,
+}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
-  const items = Array.from({length:50}, (_, index) => index === 12 ? '- [ ] Toggle without jumping' : `- Item ${index + 1}`);
+  const items = Array.from({length: 50}, (_, index) =>
+    index === 12 ? '- [ ] Toggle without jumping' : `- Item ${index + 1}`,
+  );
   await page.locator('#note-content').fill(items.join('\n'));
   await enableInteractivePreview(page);
 
@@ -545,23 +727,52 @@ test('interactive preview preserves checkbox position and auto-scrolls during dr
     window.__taskCheckboxBeforeToggle = document.querySelector('#preview input[type="checkbox"]');
     window.__taskItemBeforeToggle = window.__taskCheckboxBeforeToggle?.closest('li');
   });
-  const scrollBeforeToggle = await page.locator('#preview').evaluate(element => element.scrollTop);
+  const scrollBeforeToggle = await page
+    .locator('#preview')
+    .evaluate((element) => element.scrollTop);
   await checkbox.click();
-  await expect(page.locator('#note-content')).toHaveValue(new RegExp('- \\[x\\] Toggle without jumping'));
-  expect(await page.evaluate(() => document.querySelector('#preview input[type="checkbox"]') === window.__taskCheckboxBeforeToggle)).toBe(true);
-  expect(await page.evaluate(() => document.querySelector('#preview input[type="checkbox"]')?.closest('li') === window.__taskItemBeforeToggle)).toBe(true);
-  await expect.poll(() => page.locator('#preview').evaluate(element => element.scrollTop)).toBe(scrollBeforeToggle);
+  await expect(page.locator('#note-content')).toHaveValue(
+    new RegExp('- \\[x\\] Toggle without jumping'),
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        document.querySelector('#preview input[type="checkbox"]') ===
+        window.__taskCheckboxBeforeToggle,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () =>
+        document.querySelector('#preview input[type="checkbox"]')?.closest('li') ===
+        window.__taskItemBeforeToggle,
+    ),
+  ).toBe(true);
+  await expect
+    .poll(() => page.locator('#preview').evaluate((element) => element.scrollTop))
+    .toBe(scrollBeforeToggle);
   await expect(page.locator('#toast-region .toast')).toHaveCount(0);
 
-  await page.locator('#preview').evaluate(element => { element.scrollTop = 0; });
+  await page.locator('#preview').evaluate((element) => {
+    element.scrollTop = 0;
+  });
   const previewBounds = await page.locator('#preview').boundingBox();
   const handleBounds = await page.locator('#preview .preview-drag-handle').first().boundingBox();
   expect(previewBounds).not.toBeNull();
   expect(handleBounds).not.toBeNull();
-  await page.mouse.move(handleBounds.x + handleBounds.width / 2, handleBounds.y + handleBounds.height / 2);
+  await page.mouse.move(
+    handleBounds.x + handleBounds.width / 2,
+    handleBounds.y + handleBounds.height / 2,
+  );
   await page.mouse.down();
-  await page.mouse.move(previewBounds.x + previewBounds.width / 2, previewBounds.y + previewBounds.height - 4, {steps:3});
-  await expect.poll(() => page.locator('#preview').evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  await page.mouse.move(
+    previewBounds.x + previewBounds.width / 2,
+    previewBounds.y + previewBounds.height - 4,
+    {steps: 3},
+  );
+  await expect
+    .poll(() => page.locator('#preview').evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
 
   await page.mouse.move(previewBounds.x - 20, previewBounds.y + previewBounds.height / 2);
   await expect(page.locator('html')).toHaveClass(/preview-drag-outside/);
@@ -581,10 +792,16 @@ test('loose ordered task lists render one checkbox per item', async ({page}) => 
   await expect(items.nth(1).locator('input[type="checkbox"]')).toHaveCount(1);
 });
 
-test('keeps long interactive previews fully functional with bounded control DOM', async ({page}) => {
+test('keeps long interactive previews fully functional with bounded control DOM', async ({
+  page,
+}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
-  const sections = Array.from({length:240}, (_, index) => `## Section ${index + 1}\n\n- first item\n- second item\n\nParagraph ${index + 1}.`);
+  const sections = Array.from(
+    {length: 240},
+    (_, index) =>
+      `## Section ${index + 1}\n\n- first item\n- second item\n\nParagraph ${index + 1}.`,
+  );
   await page.locator('#note-content').fill(sections.join('\n\n'));
   await enableInteractivePreview(page);
 
@@ -594,31 +811,42 @@ test('keeps long interactive previews fully functional with bounded control DOM'
   expect(await cards.count()).toBeLessThan(100);
 
   await page.waitForTimeout(200);
-  expect(await preview.evaluate(async element => {
-    const firstHeading = element.querySelector('h2');
-    const firstCard = element.querySelector('.interactive-preview-card');
-    const editor = document.querySelector('#note-content');
-    editor.value += '\n\nIncremental update marker';
-    editor.dispatchEvent(new Event('input', {bubbles:true}));
-    while (!element.textContent.includes('Incremental update marker')) await new Promise(requestAnimationFrame);
-    const currentHeading = element.querySelector('h2');
-    return {
-      headingPreserved:firstHeading === currentHeading,
-      cardPreserved:firstCard?.isConnected && firstCard === element.querySelector('.interactive-preview-card'),
-    };
-  })).toEqual({headingPreserved:true, cardPreserved:true});
+  expect(
+    await preview.evaluate(async (element) => {
+      const firstHeading = element.querySelector('h2');
+      const firstCard = element.querySelector('.interactive-preview-card');
+      const editor = document.querySelector('#note-content');
+      editor.value += '\n\nIncremental update marker';
+      editor.dispatchEvent(new Event('input', {bubbles: true}));
+      while (!element.textContent.includes('Incremental update marker'))
+        await new Promise(requestAnimationFrame);
+      const currentHeading = element.querySelector('h2');
+      return {
+        headingPreserved: firstHeading === currentHeading,
+        cardPreserved:
+          firstCard?.isConnected &&
+          firstCard === element.querySelector('.interactive-preview-card'),
+      };
+    }),
+  ).toEqual({headingPreserved: true, cardPreserved: true});
 
-  await preview.evaluate(element => { element.scrollTop = element.scrollHeight; });
-  const lastParagraph = preview.getByText('Paragraph 240.', {exact:true});
+  await preview.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  const lastParagraph = preview.getByText('Paragraph 240.', {exact: true});
   await expect(lastParagraph).toBeVisible();
-  await expect(lastParagraph.locator('xpath=ancestor::*[contains(@class,"interactive-preview-card")]')).toHaveCount(1);
+  await expect(
+    lastParagraph.locator('xpath=ancestor::*[contains(@class,"interactive-preview-card")]'),
+  ).toHaveCount(1);
   expect(await cards.count()).toBeLessThan(140);
 });
 
 test('block dragging keeps its rendered preview and accepts cross-type drops', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
-  await page.locator('#note-content').fill('# Compact heading\n\nA short paragraph.\n\n1. [ ] First task\n2. Second item');
+  await page
+    .locator('#note-content')
+    .fill('# Compact heading\n\nA short paragraph.\n\n1. [ ] First task\n2. Second item');
   await enableInteractivePreview(page);
 
   const preview = page.locator('#preview');
@@ -628,14 +856,23 @@ test('block dragging keeps its rendered preview and accepts cross-type drops', a
   const previewBounds = await preview.boundingBox();
   expect(headingBounds).not.toBeNull();
   expect(previewBounds).not.toBeNull();
-  expect(headingBounds.width).toBeLessThan(previewBounds.width * .8);
-  const originalFontSize = await heading.evaluate(element => getComputedStyle(element).fontSize);
+  expect(headingBounds.width).toBeLessThan(previewBounds.width * 0.8);
+  const originalFontSize = await heading.evaluate((element) => getComputedStyle(element).fontSize);
 
-  const orderedHandle = await preview.locator('.interactive-preview-list-card .preview-drag-handle').first().boundingBox();
+  const orderedHandle = await preview
+    .locator('.interactive-preview-list-card .preview-drag-handle')
+    .first()
+    .boundingBox();
   expect(orderedHandle).not.toBeNull();
-  await page.mouse.move(orderedHandle.x + orderedHandle.width / 2, orderedHandle.y + orderedHandle.height / 2);
+  await page.mouse.move(
+    orderedHandle.x + orderedHandle.width / 2,
+    orderedHandle.y + orderedHandle.height / 2,
+  );
   await page.mouse.down();
-  await page.mouse.move(orderedHandle.x + orderedHandle.width / 2 + 12, orderedHandle.y + orderedHandle.height / 2);
+  await page.mouse.move(
+    orderedHandle.x + orderedHandle.width / 2 + 12,
+    orderedHandle.y + orderedHandle.height / 2,
+  );
   await expect(page.locator('.preview-drag-ghost .preview-list-marker')).toHaveText('1.');
   await expect(page.locator('.preview-drag-ghost input[type="checkbox"]')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -645,11 +882,18 @@ test('block dragging keeps its rendered preview and accepts cross-type drops', a
   const listTarget = await preview.locator('.interactive-preview-list-card').first().boundingBox();
   expect(headingHandle).not.toBeNull();
   expect(listTarget).not.toBeNull();
-  await page.mouse.move(headingHandle.x + headingHandle.width / 2, headingHandle.y + headingHandle.height / 2);
+  await page.mouse.move(
+    headingHandle.x + headingHandle.width / 2,
+    headingHandle.y + headingHandle.height / 2,
+  );
   await page.mouse.down();
-  await page.mouse.move(listTarget.x + listTarget.width / 2, listTarget.y + 2, {steps:3});
+  await page.mouse.move(listTarget.x + listTarget.width / 2, listTarget.y + 2, {steps: 3});
   await expect(page.locator('.preview-drag-ghost h1')).toHaveText('Compact heading');
-  expect(await page.locator('.preview-drag-ghost h1').evaluate(element => getComputedStyle(element).fontSize)).toBe(originalFontSize);
+  expect(
+    await page
+      .locator('.preview-drag-ghost h1')
+      .evaluate((element) => getComputedStyle(element).fontSize),
+  ).toBe(originalFontSize);
   await page.mouse.up();
 
   const source = await page.locator('#note-content').inputValue();
@@ -661,27 +905,42 @@ test('block dragging keeps its rendered preview and accepts cross-type drops', a
 test('interactive rules span the row and ordered markers never wrap', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
-  await page.locator('#note-content').fill('---\n\n13. [ ] A numbered task with enough text to wrap naturally');
+  await page
+    .locator('#note-content')
+    .fill('---\n\n13. [ ] A numbered task with enough text to wrap naturally');
   await enableInteractivePreview(page);
 
   const preview = page.locator('#preview');
   const previewBounds = await preview.boundingBox();
   const ruleCardBounds = await preview.locator('.interactive-preview-rule-card').boundingBox();
   const ruleBounds = await preview.locator('.interactive-preview-rule-card hr').boundingBox();
-  const ruleHandleBounds = await preview.locator('.interactive-preview-rule-card .preview-drag-handle').boundingBox();
+  const ruleHandleBounds = await preview
+    .locator('.interactive-preview-rule-card .preview-drag-handle')
+    .boundingBox();
   expect(previewBounds).not.toBeNull();
   expect(ruleCardBounds).not.toBeNull();
   expect(ruleBounds).not.toBeNull();
   expect(ruleHandleBounds).not.toBeNull();
-  expect(ruleCardBounds.width).toBeGreaterThan(previewBounds.width * .8);
-  expect(ruleBounds.width).toBeGreaterThan(previewBounds.width * .65);
+  expect(ruleCardBounds.width).toBeGreaterThan(previewBounds.width * 0.8);
+  expect(ruleBounds.width).toBeGreaterThan(previewBounds.width * 0.65);
   const cardCenterY = ruleCardBounds.y + ruleCardBounds.height / 2;
   expect(Math.abs(ruleBounds.y + ruleBounds.height / 2 - cardCenterY)).toBeLessThanOrEqual(1);
-  expect(Math.abs(ruleHandleBounds.y + ruleHandleBounds.height / 2 - cardCenterY)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(ruleHandleBounds.y + ruleHandleBounds.height / 2 - cardCenterY),
+  ).toBeLessThanOrEqual(1);
 
   const marker = preview.locator('.preview-list-marker').first();
   await expect(marker).toHaveText('13.');
-  expect(await marker.evaluate(element => ({height:element.clientHeight, lineHeight:parseFloat(getComputedStyle(element).lineHeight), wraps:element.scrollWidth > element.clientWidth}))).toMatchObject({wraps:false});
-  const markerMetrics = await marker.evaluate(element => ({height:element.clientHeight, lineHeight:parseFloat(getComputedStyle(element).lineHeight)}));
+  expect(
+    await marker.evaluate((element) => ({
+      height: element.clientHeight,
+      lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+      wraps: element.scrollWidth > element.clientWidth,
+    })),
+  ).toMatchObject({wraps: false});
+  const markerMetrics = await marker.evaluate((element) => ({
+    height: element.clientHeight,
+    lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+  }));
   expect(markerMetrics.height).toBeLessThanOrEqual(Math.ceil(markerMetrics.lineHeight));
 });

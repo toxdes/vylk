@@ -10,7 +10,9 @@ async function signIn(page) {
   await page.evaluate(async () => {
     if ('serviceWorker' in navigator) await navigator.serviceWorker.ready;
   });
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker?.controller))).toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => Boolean(navigator.serviceWorker?.controller)))
+    .toBe(true);
 }
 
 async function createNote(page, title = `Browser test ${Date.now()}`) {
@@ -27,13 +29,17 @@ async function createNote(page, title = `Browser test ${Date.now()}`) {
 test('restores a cached note when sync APIs are unavailable', async ({page}) => {
   await signIn(page);
   const title = await createNote(page);
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker?.controller))).toBe(true);
-  await page.route('**/api/**', route => route.abort());
+  await expect
+    .poll(() => page.evaluate(() => Boolean(navigator.serviceWorker?.controller)))
+    .toBe(true);
+  await page.route('**/api/**', (route) => route.abort());
   await page.reload({waitUntil: 'domcontentloaded'});
 
   await expect(page.locator('#dashboard')).toBeVisible();
   await expect(page.locator('.note-item').filter({hasText: title})).toBeVisible();
-  await expect(page.locator('#dashboard .offline-notice-message')).toContainText('Changes are saved on this device');
+  await expect(page.locator('#dashboard .offline-notice-message')).toContainText(
+    'Changes are saved on this device',
+  );
 });
 
 test('does not issue sync requests for unchanged dashboard navigation', async ({page}) => {
@@ -41,7 +47,7 @@ test('does not issue sync requests for unchanged dashboard navigation', async ({
   await createNote(page);
   await page.waitForTimeout(1500);
   const syncRequests = [];
-  const recordSync = request => {
+  const recordSync = (request) => {
     if (new URL(request.url()).pathname.startsWith('/api/sync')) syncRequests.push(request.url());
   };
   page.on('request', recordSync);
@@ -62,7 +68,7 @@ test('keeps warm dashboard display within the local startup budget', async ({pag
   const samples = [];
   for (let iteration = 0; iteration < 3; iteration++) {
     const samplePage = await context.newPage();
-    await samplePage.route('**/api/**', route => route.abort());
+    await samplePage.route('**/api/**', (route) => route.abort());
     const started = Date.now();
     await samplePage.goto('/', {waitUntil: 'domcontentloaded'});
     await expect(samplePage.locator('#dashboard')).toBeVisible();
@@ -76,12 +82,18 @@ test('keeps warm dashboard display within the local startup budget', async ({pag
   expect(p95, `warm dashboard samples: ${samples.join(', ')}`).toBeLessThan(budget);
 });
 
-test('keeps the typing caret and active preview block away from the viewport edge', async ({page}) => {
+test('keeps the typing caret and active preview block away from the viewport edge', async ({
+  page,
+}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
   await expect(page.locator('#editor')).toBeVisible();
 
-  const content = Array.from({length: 80}, (_, index) => `## Section ${index}\n\nA paragraph with enough text to create a useful rendered preview block.`).join('\n\n');
+  const content = Array.from(
+    {length: 80},
+    (_, index) =>
+      `## Section ${index}\n\nA paragraph with enough text to create a useful rendered preview block.`,
+  ).join('\n\n');
   const editor = page.locator('#note-content');
   await editor.fill(content);
   await editor.focus();
@@ -99,7 +111,9 @@ test('keeps the typing caret and active preview block away from the viewport edg
       editorScrollTop: textarea.scrollTop,
       previewHasScrollRoom: preview.scrollHeight > preview.clientHeight,
       previewScrollTop: preview.scrollTop,
-      activeVisible: Boolean(activeRect && activeRect.bottom > previewRect.top && activeRect.top < previewRect.bottom),
+      activeVisible: Boolean(
+        activeRect && activeRect.bottom > previewRect.top && activeRect.top < previewRect.bottom,
+      ),
     };
   });
 
