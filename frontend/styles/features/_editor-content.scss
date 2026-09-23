@@ -317,9 +317,7 @@
   --preview-action-size: 1.75rem;
   --preview-action-gap: 0.125rem;
   --preview-action-inset: 0.375rem;
-  --preview-action-lane: calc(
-    var(--preview-action-size) * 2 + var(--preview-action-gap) + var(--preview-action-inset)
-  );
+  --preview-action-lane: calc(var(--preview-action-size) + var(--preview-action-size) + var(--preview-action-gap) + var(--preview-action-inset));
 }
 
 .interactive-preview-card {
@@ -463,7 +461,23 @@
 }
 
 .interactive-preview-block-card {
-  margin-bottom: 0.125rem;
+  margin-bottom: 0;
+  padding-block: 0.125rem;
+}
+
+.interactive-preview-block-card + .interactive-preview-block-card {
+  margin-top: 0.75rem;
+}
+
+.interactive-preview-block-card:not(:first-child):has(
+    > .preview-block-content > :is(h1, h2, h3, h4, h5, h6)
+  ) {
+  margin-top: 1rem;
+}
+
+.interactive-preview-block-card:has(> .preview-block-content > :is(h1, h2, h3, h4, h5, h6))
+  + .interactive-preview-block-card {
+  margin-top: 0.5rem;
 }
 
 .interactive-preview-rule-card {
@@ -484,12 +498,6 @@
   margin: 0;
 }
 
-.interactive-preview-block-card:has(.preview-block-content > :is(h1, h2, h3, h4, h5, h6)):not(
-    :first-child
-  ) {
-  margin-top: 0.5rem;
-}
-
 .interactive-preview-active :is(ul, ol) {
   margin: 0;
   padding-left: 0;
@@ -505,11 +513,23 @@
 }
 
 .interactive-preview-list-item + .interactive-preview-list-item {
-  margin-top: 0.125rem;
+  margin-top: 0.375rem;
 }
 
 .interactive-preview-list-item > :is(ul, ol) {
-  margin-left: 1rem;
+  margin: 0.5rem 0 0.25rem 1.5rem;
+}
+
+.interactive-preview-list-card {
+  padding-block: 0.125rem;
+}
+
+.interactive-preview-active > :is(ul, ol) {
+  margin-bottom: 0.75rem;
+}
+
+.interactive-preview-active > .interactive-preview-block-card + :is(ul, ol) {
+  margin-top: 0.75rem;
 }
 
 .preview-list-content {
@@ -622,56 +642,89 @@
 
   .interactive-preview-active {
     --preview-action-size: 2.75rem;
-    --preview-action-inset: 0;
+    --preview-action-inset: 0px;
+    --preview-action-tray-left: 0px;
+    --preview-action-tray-top: 0px;
   }
 
   .interactive-preview-card {
-    padding-right: var(--preview-action-lane);
+    width: fit-content;
+    padding-right: 0;
   }
 
-  .preview-drag-handle {
-    width: var(--preview-action-size);
-    height: var(--preview-action-size);
-    margin: 0;
-  }
-
-  .preview-edit-button {
-    top: 0;
-    right: 0;
-    width: var(--preview-action-size);
-    height: var(--preview-action-size);
-    padding: 0.7rem;
+  .interactive-preview-list-item {
+    width: fit-content;
+    max-width: 100%;
   }
 
   .interactive-preview-list-item > :is(ul, ol) {
-    margin-left: 1rem;
-  }
-}
-
-@media (hover: none), (pointer: coarse) {
-  .interactive-preview-active {
-    --preview-action-size: 2.75rem;
-    --preview-action-inset: 0;
+    margin-left: 1.25rem;
   }
 
-  .interactive-preview-card {
-    padding-right: var(--preview-action-lane);
+  .interactive-preview-card.is-selected {
+    background: color-mix(in srgb, var(--accent) 5%, transparent);
+    outline-color: var(--border);
   }
 
-  .preview-drag-handle {
-    width: var(--preview-action-size);
-    min-height: var(--preview-action-size);
-    opacity: 0.72;
-  }
-
-  .preview-edit-button {
-    top: 0;
-    right: 0;
+  .interactive-preview-card > .preview-drag-handle,
+  .interactive-preview-card > .preview-edit-button {
     width: var(--preview-action-size);
     height: var(--preview-action-size);
-    padding: 0.7rem;
-    opacity: 0.72;
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  .interactive-preview-card.is-selected > .preview-drag-handle,
+  .interactive-preview-card.is-selected > .preview-edit-button {
+    position: fixed;
+    z-index: 8;
+    top: var(--preview-action-tray-top);
+    height: var(--preview-action-size);
+    padding: 0;
+    color: var(--fg);
+    opacity: 1;
+    border: 0;
+    background: transparent;
     pointer-events: auto;
+    visibility: visible;
+    transform: none;
+  }
+
+  .interactive-preview-card.is-selected > .preview-drag-handle {
+    right: auto;
+    left: var(--preview-action-tray-left);
+  }
+
+  .interactive-preview-card.is-selected > .preview-drag-handle::before {
+    position: absolute;
+    z-index: -1;
+    inset: 5px 0 5px 5px;
+    width: calc(var(--preview-action-size) * 2 - 10px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-micro);
+    background: var(--card-bg);
+    content: '';
+    pointer-events: none;
+  }
+
+  .interactive-preview-card.is-selected > .preview-edit-button {
+    right: auto;
+    left: calc(var(--preview-action-tray-left) + var(--preview-action-size));
+  }
+
+  .interactive-preview-card.is-selected > :is(.preview-drag-handle, .preview-edit-button):active {
+    color: var(--fg);
+  }
+
+  .preview-drag-ghost :is(.preview-drag-handle, .preview-edit-button) {
+    visibility: hidden;
+  }
+
+  .interactive-preview-card:not(.is-selected):is(:hover, :focus-within) > .preview-drag-handle,
+  .interactive-preview-card:not(.is-selected):is(:hover, :focus-within) > .preview-edit-button {
+    opacity: 0;
+    pointer-events: none;
   }
 }
 

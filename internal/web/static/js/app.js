@@ -1261,6 +1261,50 @@
     return true;
   }
 
+  let previewActionPositionFrame = null;
+
+  function updateInteractivePreviewActionPosition() {
+    previewActionPositionFrame = null;
+    const preview = $('#preview');
+    const panel = $('#preview-panel');
+    const selected = preview?.querySelector('.interactive-preview-card.is-selected');
+    if (!preview || !panel || !selected || !window.matchMedia('(max-width: 640px)').matches) return;
+    const panelRect = panel.getBoundingClientRect();
+    const cardRect = selected.getBoundingClientRect();
+    const previewRect = preview.getBoundingClientRect();
+    if (cardRect.bottom < previewRect.top || cardRect.top > previewRect.bottom) {
+      if (!previewDrag?.active()) selectInteractivePreviewCard(null);
+      return;
+    }
+    const trayWidth = 88;
+    const trayHeight = 44;
+    // The visible frame is inset 5px inside the touch targets.
+    const frameInset = 5;
+    const gap = 6;
+    const rightEdge = Math.min(panelRect.right - 1, window.innerWidth);
+    const leftEdge = Math.max(panelRect.left + 1, 0);
+    const beside = cardRect.right + gap - frameInset + trayWidth <= rightEdge;
+    const trayLeft = beside
+      ? cardRect.right + gap - frameInset
+      : Math.max(leftEdge, Math.min(cardRect.left - frameInset, rightEdge - trayWidth));
+    const desiredTop = beside
+      ? cardRect.top + (cardRect.height - trayHeight) / 2
+      : cardRect.bottom + gap - frameInset;
+    const trayTop = Math.max(
+      previewRect.top,
+      Math.min(desiredTop, previewRect.bottom - trayHeight),
+    );
+    preview.style.setProperty('--preview-action-tray-top', `${Math.round(trayTop)}px`);
+    preview.style.setProperty('--preview-action-tray-left', `${Math.round(trayLeft)}px`);
+  }
+
+  function scheduleInteractivePreviewActionPosition() {
+    if (previewActionPositionFrame !== null) return;
+    previewActionPositionFrame = window.requestAnimationFrame(
+      updateInteractivePreviewActionPosition,
+    );
+  }
+
   function selectInteractivePreviewCard(card) {
     $('#preview')
       .querySelectorAll('.interactive-preview-card.is-selected')
@@ -1268,12 +1312,25 @@
         if (current !== card) current.classList.remove('is-selected');
       });
     card?.classList.add('is-selected');
+    scheduleInteractivePreviewActionPosition();
+  }
+
+  window.addEventListener('resize', scheduleInteractivePreviewActionPosition, {passive: true});
+  $('#preview').addEventListener('scroll', scheduleInteractivePreviewActionPosition, {
+    passive: true,
+  });
+  if (typeof ResizeObserver === 'function') {
+    const previewActionObserver = new ResizeObserver(scheduleInteractivePreviewActionPosition);
+    previewActionObserver.observe($('#preview-panel'));
+    previewActionObserver.observe($('#preview-panel .panel-header'));
   }
 
   $('#preview').addEventListener('click', (event) => {
+    if (event.target.closest('.preview-drag-handle')) return;
     const editButton = event.target.closest('.preview-edit-button');
     if (interactivePreviewSession.active() && editButton) {
       event.preventDefault();
+      event.stopPropagation();
       editPreviewEntry(interactiveEntryForElement(editButton));
       return;
     }
@@ -1348,6 +1405,7 @@
     isActive: () => interactivePreviewSession.active(),
     isCurrent: interactivePreviewSourceIsCurrent,
     layout: previewDragLayout,
+    onDrop: () => selectInteractivePreviewCard(null),
     preview: $('#preview'),
     setLocked: setInteractiveSourceLocked,
     window,

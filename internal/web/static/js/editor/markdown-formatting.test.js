@@ -14,7 +14,9 @@ describe('Markdown formatting', () => {
 
   test('toggles headings and line prefixes', () => {
     expect(format('Heading', 7, 7, 'h2')).toEqual({value: '## Heading', cursor: 10});
-    expect(format('## Heading', 10, 10, 'h1')).toEqual({value: 'Heading', cursor: 7});
+    expect(format('## Heading', 10, 10, 'h1')).toEqual({value: '# Heading', cursor: 9});
+    expect(format('## Heading', 10, 10, 'h2')).toEqual({value: 'Heading', cursor: 7});
+    expect(format('## Heading', 10, 10, 'h5')).toEqual({value: '##### Heading', cursor: 13});
     expect(format('one\ntwo', 0, 7, 'ul')).toEqual({value: '- one\n- two', cursor: 11});
   });
 
