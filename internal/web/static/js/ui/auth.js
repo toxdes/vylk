@@ -11,6 +11,7 @@
     connectEvents,
     disconnectEvents,
     document,
+    handleServerIdentity,
     loadPreferences,
     localStorage,
     openModal,
@@ -31,6 +32,7 @@
         });
         document.querySelector('#login-error').textContent = '';
         cacheVersion(result);
+        await handleServerIdentity(result.instance_id);
         await loadPreferences();
         await restoreRoute();
         connectEvents();

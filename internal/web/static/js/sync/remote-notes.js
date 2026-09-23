@@ -7,6 +7,7 @@
     getCurrentNoteID,
     getLocalNote,
     getOfflineState,
+    handleServerIdentity,
     handleActiveDeletion,
     isDirty,
     putLocalNote,
@@ -195,6 +196,10 @@
       for (;;) {
         const page = await api(`/api/sync?since=${since}&limit=100`, {syncRequest: true});
         if (!page) throw new Error('could not fetch sync changes');
+        if (await handleServerIdentity(page.instance_id)) {
+          await reset(0);
+          return;
+        }
         if (page.resetRequired) {
           await reset(Number(page.nextSequence || 0));
           return;

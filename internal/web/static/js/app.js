@@ -226,8 +226,21 @@
 
   function requireAuthentication() {
     authenticationRequired = true;
+    syncCoordinator?.cancelScheduled();
+    serverEventClient?.disconnect();
     show(screens.login);
     $('#login-form input').focus();
+  }
+
+  async function handleServerIdentity(instanceID) {
+    if (!instanceID) return;
+    const previousInstanceID = await getOfflineState('serverInstanceID');
+    const changed = previousInstanceID !== instanceID;
+    // A replaced server database has a new sync history. Keep queued local
+    // operations so the normal push path can recover them after reconciliation.
+    if (changed) await setOfflineState('syncSequence', 0);
+    await setOfflineState('serverInstanceID', instanceID);
+    return changed;
   }
 
   function beginSyncNetworkRequest() {
@@ -277,6 +290,7 @@
     getCurrentNoteID: () => currentNoteId,
     getLocalNote,
     getOfflineState,
+    handleServerIdentity,
     handleActiveDeletion: async () => {
       clearCurrentNote();
       await loadDashboard({sync: false});
@@ -602,6 +616,7 @@
     connectEvents: connectServerEvents,
     disconnectEvents: disconnectServerEvents,
     document,
+    handleServerIdentity,
     loadPreferences: (...args) => loadPrefs(...args),
     localStorage,
     openModal,
@@ -1763,6 +1778,7 @@
       const res = await api('/api/check');
       if (res) {
         cacheAppVersion(res);
+        await handleServerIdentity(res.instance_id);
         // Apply the saved theme and appearance variables before restoring the
         // authenticated screen. Rendering the dashboard first caused a brief
         // fallback-theme paint where borders and surfaces could appear missing.

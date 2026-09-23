@@ -62,6 +62,10 @@ func Main() {
 	if err := store.InitDB(db, config.DatabasePath); err != nil {
 		log.Fatalf("init db: %v", err)
 	}
+	instanceID, err := store.InstanceID(db)
+	if err != nil {
+		log.Fatalf("read instance identity: %v", err)
+	}
 
 	sessions := auth.NewSessionStore(db)
 
@@ -84,6 +88,7 @@ func Main() {
 
 	app := &app{
 		db:         db,
+		instanceID: instanceID,
 		sessions:   sessions,
 		password:   config.Password,
 		notesDir:   notesDir,

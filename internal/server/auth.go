@@ -16,6 +16,7 @@ import (
 
 type app struct {
 	db         *sql.DB
+	instanceID string
 	noteMu     sync.Mutex
 	sessions   *auth.SessionStore
 	password   string
@@ -62,7 +63,12 @@ func (a *app) setSessionCookie(w http.ResponseWriter, r *http.Request, token str
 }
 
 func (a *app) handleCheck(w http.ResponseWriter, r *http.Request) {
-	httpx.WriteJSON(w, map[string]any{"ok": true, "version": version, "revision": appRevision})
+	httpx.WriteJSON(w, map[string]any{
+		"ok":          true,
+		"version":     version,
+		"revision":    appRevision,
+		"instance_id": a.instanceID,
+	})
 }
 
 func (a *app) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -116,5 +122,10 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.setSessionCookie(w, r, token)
-	httpx.WriteJSON(w, map[string]any{"ok": true, "version": version, "revision": appRevision})
+	httpx.WriteJSON(w, map[string]any{
+		"ok":          true,
+		"version":     version,
+		"revision":    appRevision,
+		"instance_id": a.instanceID,
+	})
 }

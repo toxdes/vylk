@@ -2,7 +2,9 @@
 package store
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -54,6 +56,7 @@ var Migrations = []Migration{
 	{Version: 15, Up: migratePreferenceRevisionSchema},
 	{Version: 16, Up: MigrateRepairSyncOperationStats},
 	{Version: 17, Up: migrateNotePinningSchema},
+	{Version: 18, Up: migrateInstanceMetadataSchema},
 }
 
 func InitDB(db *sql.DB, databasePaths ...string) error {
@@ -98,6 +101,38 @@ func InitDB(db *sql.DB, databasePaths ...string) error {
 		}
 	}
 	return nil
+}
+
+func migrateInstanceMetadataSchema(tx *sql.Tx) error {
+	instanceID, err := newInstanceID()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		CREATE TABLE instance_metadata (
+			id         INTEGER PRIMARY KEY CHECK (id = 1),
+			instance_id TEXT NOT NULL
+		);
+		INSERT INTO instance_metadata (id, instance_id) VALUES (1, ?);`, instanceID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func newInstanceID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func InstanceID(db *sql.DB) (string, error) {
+	var instanceID string
+	if err := db.QueryRow("SELECT instance_id FROM instance_metadata WHERE id = 1").Scan(&instanceID); err != nil {
+		return "", err
+	}
+	return instanceID, nil
 }
 
 func PendingMigrations(db *sql.DB) ([]Migration, error) {

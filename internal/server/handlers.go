@@ -96,6 +96,7 @@ func (a *app) handleSyncChanges(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "list_sync_changes_failed", "could not list sync changes")
 		return
 	}
+	page.InstanceID = a.instanceID
 	httpx.WriteJSON(w, page)
 }
 
