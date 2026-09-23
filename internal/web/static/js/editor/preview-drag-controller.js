@@ -11,6 +11,7 @@
     isActive,
     isCurrent,
     layout,
+    onDrop,
     preview,
     setLocked,
     window,
@@ -221,6 +222,7 @@
       if (event.type === 'pointerup' && drag.armed && drag.target) {
         if (!isCurrent()) {
           cancel({animateReturn: false});
+          onDrop?.();
           if (preview.hasPointerCapture?.(event.pointerId))
             preview.releasePointerCapture(event.pointerId);
           return;
@@ -236,17 +238,21 @@
           drag.target.placement,
         );
         cancel({animateReturn: false});
+        onDrop?.();
         if (preview.hasPointerCapture?.(event.pointerId))
           preview.releasePointerCapture(event.pointerId);
-        if (change)
+        if (change) {
           applySource(change.source, {
             start: change.start,
             removed: source.slice(change.start, change.end),
             inserted: change.inserted,
           });
+        }
         return;
       }
+      const wasArmed = drag.armed;
       cancel();
+      if (wasArmed) onDrop?.();
       if (preview.hasPointerCapture?.(event.pointerId))
         preview.releasePointerCapture(event.pointerId);
     }
