@@ -317,7 +317,10 @@
   --preview-action-size: 1.75rem;
   --preview-action-gap: 0.125rem;
   --preview-action-inset: 0.375rem;
-  --preview-action-lane: calc(var(--preview-action-size) + var(--preview-action-size) + var(--preview-action-gap) + var(--preview-action-inset));
+  --preview-action-lane: calc(
+    var(--preview-action-size) + var(--preview-action-size) + var(--preview-action-gap) +
+      var(--preview-action-inset)
+  );
 }
 
 .interactive-preview-card {
