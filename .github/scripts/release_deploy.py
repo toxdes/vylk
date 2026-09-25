@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Callable, Iterable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 TAG_PATTERN = re.compile(r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 HOOK_PREFIX = "VYLK_DEPLOY_HOOK_"
@@ -37,6 +37,35 @@ class ReleaseError(RuntimeError):
 
 class HookError(RuntimeError):
     """Raised when a deployment hook fails all attempts."""
+
+
+class HTTPSPostRedirectHandler(HTTPRedirectHandler):
+    """Follow only secure redirects that preserve the hook's POST request."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if code not in (307, 308):
+            return None
+        source = urlparse(req.full_url)
+        target = urlparse(newurl)
+        if (
+            source.scheme != "https"
+            or target.scheme != "https"
+            or not target.netloc
+        ):
+            return None
+        request_headers = {
+            name: value
+            for name, value in req.header_items()
+            if name.lower() not in {"content-length", "host"}
+        }
+        return Request(
+            newurl,
+            data=req.data,
+            headers=request_headers,
+            origin_req_host=req.origin_req_host,
+            unverifiable=True,
+            method=req.get_method(),
+        )
 
 
 @dataclass(frozen=True)
@@ -213,7 +242,8 @@ def post_json(url: str, payload: dict) -> int:
         headers={"Content-Type": "application/json", "Accept": "application/json"},
     )
     try:
-        with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
+        opener = build_opener(HTTPSPostRedirectHandler())
+        with opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             response.read(4096)
             return response.status
     except HTTPError as error:

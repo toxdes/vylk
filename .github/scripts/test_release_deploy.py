@@ -1,4 +1,5 @@
 import unittest
+from urllib.request import Request
 from unittest.mock import Mock
 
 import release_deploy
@@ -25,6 +26,48 @@ class ReleaseTagTests(unittest.TestCase):
 
 
 class HookTests(unittest.TestCase):
+    def test_follows_https_redirects_that_preserve_post(self):
+        handler = release_deploy.HTTPSPostRedirectHandler()
+        request = Request(
+            "https://hooks.example.test/start",
+            data=b'{"event":"release"}',
+            method="POST",
+        )
+
+        for status in (307, 308):
+            with self.subTest(status=status):
+                redirected = handler.redirect_request(
+                    request,
+                    None,
+                    status,
+                    "Temporary Redirect",
+                    {},
+                    "https://hooks.example.test/final",
+                )
+                self.assertIsNotNone(redirected)
+                self.assertEqual(redirected.get_method(), "POST")
+                self.assertEqual(redirected.data, request.data)
+
+    def test_rejects_redirects_that_downgrade_or_change_method(self):
+        handler = release_deploy.HTTPSPostRedirectHandler()
+        request = Request(
+            "https://hooks.example.test/start", data=b"{}", method="POST"
+        )
+
+        rejected_redirects = (
+            (307, "http://hooks.example.test/final"),
+            (301, "https://hooks.example.test/final"),
+            (302, "https://hooks.example.test/final"),
+            (303, "https://hooks.example.test/final"),
+            (308, "https:///final"),
+        )
+        for status, target in rejected_redirects:
+            with self.subTest(status=status, target=target):
+                redirected = handler.redirect_request(
+                    request, None, status, "Redirect", {}, target
+                )
+                self.assertIsNone(redirected)
+
     def test_discovers_named_hooks_without_exposing_values(self):
         hooks = release_deploy.configured_hooks(
             {
