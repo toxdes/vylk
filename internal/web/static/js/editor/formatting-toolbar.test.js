@@ -7,6 +7,7 @@ function setup() {
   const dom = new JSDOM(`
     <div class="fmt-bar">
       <button data-fmt="bold">Bold</button>
+      <button data-fmt="heading" aria-expanded="false">H</button>
       <button data-fmt="table" aria-expanded="false">Table</button>
     </div>
   `);
@@ -47,6 +48,21 @@ describe('formatting toolbar', () => {
     expect(context.writes).toEqual([{value: '3x2 table', cursor: 2}]);
     expect(context.notifications).toEqual([{immediate: false}]);
     expect(context.document.querySelector('#table-picker').classList.contains('hidden')).toBe(true);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('opens five heading choices and applies the selected level', () => {
+    const context = setup();
+    const trigger = context.document.querySelector('[data-fmt="heading"]');
+    trigger.click();
+    const picker = context.document.querySelector('#heading-picker');
+    expect(picker.classList.contains('hidden')).toBe(false);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(picker.querySelectorAll('[data-heading]').length).toBe(5);
+    picker.querySelector('[data-heading="h5"]').click();
+    expect(context.writes).toEqual([{value: 'h5 text', cursor: 4}]);
+    expect(context.notifications).toEqual([{immediate: true}]);
+    expect(picker.classList.contains('hidden')).toBe(true);
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
   });
 });

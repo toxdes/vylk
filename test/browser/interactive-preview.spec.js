@@ -119,6 +119,50 @@ test('interactive preview preserves selection and tracks drag reflow', async ({p
   await expect(page.locator('.preview-drag-ghost')).toHaveCount(0);
 });
 
+test('interactive preview keeps a readable rhythm across nested Markdown', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page
+    .locator('#note-content')
+    .fill(
+      '# Overview\n\nIntro paragraph.\n\n- Parent item\n  - Nested item one\n  - Nested item two\n- Sibling item\n\n## Next section\n\nClosing paragraph.',
+    );
+  await enableInteractivePreview(page);
+
+  const rhythm = await page.locator('#preview').evaluate((preview) => {
+    const cards = [...preview.querySelectorAll(':scope > .interactive-preview-block-card')];
+    const firstHeading = cards.find((card) =>
+      card.querySelector(':scope > .preview-block-content > h1'),
+    );
+    const firstParagraph = cards.find((card) =>
+      card.querySelector(':scope > .preview-block-content > p'),
+    );
+    const secondHeading = cards.find((card) =>
+      card.querySelector(':scope > .preview-block-content > h2'),
+    );
+    const list = preview.querySelector(':scope > ul');
+    const items = [...list.children].filter((item) => item.tagName === 'LI');
+    const nestedList = items[0].querySelector(':scope > ul');
+    const nestedItems = [...nestedList.children].filter((item) => item.tagName === 'LI');
+    const rect = (element) => element.getBoundingClientRect();
+    return {
+      headingToParagraph: rect(firstParagraph).top - rect(firstHeading).bottom,
+      paragraphToList: rect(list).top - rect(firstParagraph).bottom,
+      listItemGap: rect(items[1]).top - rect(items[0]).bottom,
+      nestedItemGap: rect(nestedItems[1]).top - rect(nestedItems[0]).bottom,
+      listToHeading: rect(secondHeading).top - rect(list).bottom,
+      nestedIndent: rect(nestedList).left - rect(items[0]).left,
+    };
+  });
+
+  expect(rhythm.headingToParagraph).toBeGreaterThanOrEqual(8);
+  expect(rhythm.paragraphToList).toBeGreaterThanOrEqual(8);
+  expect(rhythm.listItemGap).toBeGreaterThanOrEqual(4);
+  expect(rhythm.nestedItemGap).toBeGreaterThanOrEqual(4);
+  expect(rhythm.listToHeading).toBeGreaterThanOrEqual(8);
+  expect(rhythm.nestedIndent).toBeGreaterThanOrEqual(20);
+});
+
 test.describe('mobile interactive preview', () => {
   test.use({viewport: {width: 390, height: 844}, hasTouch: true, isMobile: true});
 
@@ -131,8 +175,55 @@ test.describe('mobile interactive preview', () => {
     await page.locator('#note-content').fill('- Alpha\n- Bravo\n- Charlie');
     await enableInteractivePreview(page);
 
+    const firstCard = page.locator('#preview .interactive-preview-list-card').first();
+    await expect(firstCard).toHaveCSS('padding-right', '0px');
+    const beforeSelection = await firstCard.boundingBox();
+    await firstCard.locator('.preview-list-item-body').click();
+    await expect(firstCard).toHaveClass(/is-selected/);
+    const afterSelection = await firstCard.boundingBox();
+    expect(beforeSelection).not.toBeNull();
+    expect(afterSelection).not.toBeNull();
+    expect(Math.abs(afterSelection.width - beforeSelection.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(afterSelection.height - beforeSelection.height)).toBeLessThanOrEqual(1);
+
     const handles = page.locator('#preview .preview-drag-handle');
     const editButtons = page.getByRole('button', {name: 'Edit this block in source'});
+    await expect
+      .poll(() =>
+        firstCard.evaluate((card) => {
+          const handle = card.querySelector('.preview-drag-handle');
+          const edit = card.querySelector('.preview-edit-button');
+          const handleRect = handle.getBoundingClientRect();
+          const editRect = edit.getBoundingClientRect();
+          const panelRect = card.closest('.panel-preview').getBoundingClientRect();
+          const cardRect = card.getBoundingClientRect();
+          const frameStyle = getComputedStyle(handle, '::before');
+          const frameLeft = handleRect.left + Number.parseFloat(frameStyle.left);
+          const frameTop = handleRect.top + Number.parseFloat(frameStyle.top);
+          const frameHeight =
+            handleRect.height -
+            Number.parseFloat(frameStyle.top) -
+            Number.parseFloat(frameStyle.bottom);
+          return {
+            editPosition: getComputedStyle(edit).position,
+            handlePosition: getComputedStyle(handle).position,
+            handleBeforeEdit: handleRect.right <= editRect.left,
+            trayInsidePanel:
+              handleRect.top >= panelRect.top && editRect.right <= panelRect.right + 2,
+            visibleGap: Math.abs(frameLeft - cardRect.right - 6) <= 1,
+            visibleCentered:
+              Math.abs(frameTop + frameHeight / 2 - (cardRect.top + cardRect.height / 2)) <= 1,
+          };
+        }),
+      )
+      .toMatchObject({
+        editPosition: 'fixed',
+        handlePosition: 'fixed',
+        handleBeforeEdit: true,
+        trayInsidePanel: true,
+        visibleGap: true,
+        visibleCentered: true,
+      });
     const sourceHandle = await handles.first().boundingBox();
     const targetHandle = await handles.nth(2).boundingBox();
     expect(sourceHandle).not.toBeNull();
@@ -148,7 +239,7 @@ test.describe('mobile interactive preview', () => {
           height: element.getBoundingClientRect().height,
         })),
       )
-      .toEqual({opacity: 0.72, pointerEvents: 'auto', width: 44, height: 44});
+      .toEqual({opacity: 1, pointerEvents: 'auto', width: 44, height: 44});
 
     const start = {
       x: sourceHandle.x + sourceHandle.width / 2,
@@ -175,8 +266,107 @@ test.describe('mobile interactive preview', () => {
     await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
 
     await expect(page.locator('#note-content')).toHaveValue('- Bravo\n- Charlie\n- Alpha');
+    await expect(page.locator('#preview .interactive-preview-list-card').first()).toHaveCSS(
+      'padding-right',
+      '0px',
+    );
     await expect(page.locator('.preview-drag-ghost')).toHaveCount(0);
+    await expect(page.locator('#preview .interactive-preview-card.is-selected')).toHaveCount(0);
+
+    const nextCard = page.locator('#preview .interactive-preview-list-card').first();
+    await nextCard.locator('.preview-list-item-body').click();
+    const nextHandle = await nextCard.locator('.preview-drag-handle').boundingBox();
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{x: nextHandle.x + 22, y: nextHandle.y + 22, id: 2}],
+    });
+    await expect(page.locator('.preview-drag-ghost')).toHaveCount(1, {timeout: 1000});
+    await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+    await expect(page.locator('#preview .interactive-preview-card.is-selected')).toHaveCount(0);
   });
+
+  test('selects nested content without shifting and edits it from the fixed tray', async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.locator('#new-note-btn').click();
+    await page
+      .locator('#note-content')
+      .fill('# Overview\n\n- Parent\n  - Nested child\n  - Another child\n- Sibling');
+    await enableInteractivePreview(page);
+    await page.locator('#view-controls [data-panel="preview"]').click();
+    await expect(page.locator('#editor-panel')).toBeHidden();
+
+    const nestedBody = page
+      .locator('#preview .preview-list-item-body')
+      .filter({hasText: 'Nested child'});
+    const nestedCard = nestedBody
+      .locator('xpath=ancestor::li[1]')
+      .locator(':scope > .interactive-preview-card');
+    const beforeSelection = await nestedCard.boundingBox();
+    expect(beforeSelection).not.toBeNull();
+    await nestedBody.click();
+    await expect(nestedCard).toHaveClass(/is-selected/);
+    const afterSelection = await nestedCard.boundingBox();
+    expect(afterSelection).not.toBeNull();
+    expect(Math.abs(afterSelection.width - beforeSelection.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(afterSelection.height - beforeSelection.height)).toBeLessThanOrEqual(1);
+
+    const editButton = nestedCard.getByRole('button', {name: 'Edit this block in source'});
+    await expect
+      .poll(() =>
+        editButton.evaluate((element) => ({
+          position: getComputedStyle(element).position,
+          visibility: getComputedStyle(element).visibility,
+          pointerEvents: getComputedStyle(element).pointerEvents,
+          width: element.getBoundingClientRect().width,
+          height: element.getBoundingClientRect().height,
+        })),
+      )
+      .toEqual({
+        position: 'fixed',
+        visibility: 'visible',
+        pointerEvents: 'auto',
+        width: 44,
+        height: 44,
+      });
+
+    const trayAlignment = await editButton.evaluate((element) => {
+      const panel = element.closest('.panel-preview').getBoundingClientRect();
+      const header = element.closest('.panel-preview').querySelector('.panel-header');
+      const button = element.getBoundingClientRect();
+      const card = element.parentElement.getBoundingClientRect();
+      return {
+        belowHeader: button.top >= header.getBoundingClientRect().bottom,
+        insidePanel: button.right <= panel.right + 2,
+        nearCard: button.top - card.bottom <= 7 && button.left - card.right <= 51,
+      };
+    });
+    expect(trayAlignment).toEqual({belowHeader: true, insidePanel: true, nearCard: true});
+
+    await editButton.click();
+    await expect(page.locator('#editor-panel')).toBeVisible();
+    await expect(page.locator('#note-content')).toBeFocused();
+    await expect(page.locator('#note-content')).toHaveValue(
+      '# Overview\n\n- Parent\n  - Nested child\n  - Another child\n- Sibling',
+    );
+  });
+});
+
+test('mobile preview content taps do not switch to the source editor', async ({page}) => {
+  await page.setViewportSize({width: 390, height: 844});
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-content').fill('- Alpha\n- Bravo');
+  await enableInteractivePreview(page);
+  await page.locator('#view-controls [data-panel="preview"]').click();
+  await expect(page.locator('#editor-panel')).toBeHidden();
+
+  const content = page.locator('#preview .preview-list-item-body').first();
+  const contentBox = await content.boundingBox();
+  expect(contentBox).not.toBeNull();
+  await content.click({position: {x: Math.max(1, contentBox.width - 2), y: contentBox.height / 2}});
+  await expect(page.locator('#editor-panel')).toBeHidden();
 });
 
 test('source caret cue follows wrapped visual rows', async ({page}) => {
