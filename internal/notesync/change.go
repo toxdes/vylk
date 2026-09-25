@@ -15,4 +15,5 @@ type ChangesPage struct {
 	NextSequence  int64    `json:"nextSequence"`
 	HasMore       bool     `json:"hasMore"`
 	ResetRequired bool     `json:"resetRequired,omitempty"`
+	InstanceID    string   `json:"instance_id,omitempty"`
 }

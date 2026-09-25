@@ -78,6 +78,31 @@ describe('sync scheduling while hidden', () => {
 });
 
 describe('server change invalidation', () => {
+  test('resets the sync cursor when the server database instance changes', async () => {
+    const requests = [];
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) => {
+          requests.push(String(path));
+          if (String(path).startsWith('/api/sync?'))
+            return response(200, {
+              changes: [],
+              nextSequence: 42,
+              hasMore: false,
+              instance_id: 'new-database-instance',
+            });
+          if (String(path) === '/api/notes') return response(200, []);
+          throw new Error(`unexpected request: ${path}`);
+        },
+      }),
+    );
+
+    await app.hooks.applyRemoteChangePage([], new Map(), 42);
+    await expect(app.hooks.syncNow()).resolves.toBe(true);
+    expect(requests).toContain('/api/sync?since=42&limit=100');
+    await expect(app.hooks.getOfflineState('syncSequence')).resolves.toBe(0);
+  });
+
   test('refreshes preferences without scheduling an unrelated note sync', async () => {
     const requests = [];
     const app = track(
