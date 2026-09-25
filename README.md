@@ -122,6 +122,36 @@ Protect `main` by requiring pull requests, requiring the `CI / checks` status ch
 
 The nightly workflow runs at 02:17 Asia/Kolkata and can also be started manually. It updates one moving `Nightly` pre-release containing Linux amd64 and arm64 tarballs plus `SHA256SUMS`. Set the repository variable `NIGHTLY_ENABLED` to `false` to disable scheduled publication; manual runs remain available. The release assets are deliberately separate from normal Yesb releases.
 
+### Stable releases and deployment hooks
+
+Create a `release/vX.Y.Z` branch from the current `main`, update `VERSION`, and
+open a pull request. After the pull request is squash-merged, create and push
+`vX.Y.Z` on the resulting `main` commit. The release workflow verifies that the
+tag is a strict `vX.Y.Z` tag, that its `VERSION` matches, and that the commit is
+reachable from `main` before doing anything else.
+
+The workflow creates the GitHub Release without build artifacts. It uses the
+latest earlier stable `vX.Y.Z` tag as the previous-tag boundary for GitHub's
+generated release notes and prepends:
+
+```markdown
+## Installation
+Check [install instructions](https://vylk.toxdes.com/docs/#install).
+```
+
+Deployment hooks are HTTPS `POST` endpoints configured as GitHub Actions
+repository secrets named `VYLK_DEPLOY_HOOK_<DESTINATION>_URL`, for example
+`VYLK_DEPLOY_HOOK_LANDER_URL`. Each configured secret must also be mapped to
+the same environment variable in `.github/workflows/release.yml`. Hook values
+are secret URLs and are validated as HTTPS before any request; they are not
+printed in workflow logs. A hook receives release metadata as JSON and
+succeeds on any `2xx` response. Failed hooks retry five times at five-minute
+intervals, independently of the other hooks, and the workflow fails if any
+hook remains unsuccessful.
+
+The release workflow does not invoke Yesb. Yesb remains responsible for
+building and publishing release artifacts separately.
+
 ## Docker
 
 The published image supports Linux amd64 and arm64. Use a versioned tag for
