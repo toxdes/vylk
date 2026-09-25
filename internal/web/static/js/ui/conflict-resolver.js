@@ -136,9 +136,9 @@
       openModal(select('#conflict-modal'));
     }
 
-    async function showFor(noteID) {
+    async function showFor(noteID, shouldShow = () => true) {
       const conflict = await getConflict(noteID);
-      if (!conflict) return false;
+      if (!conflict || !shouldShow()) return false;
       if (conflict.kind === 'remote-deleted') showDeleted(conflict);
       else showEdit(conflict);
       return true;

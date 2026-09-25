@@ -101,19 +101,30 @@ test('editor offline notice follows the configured content rail', async ({page})
   await page.setViewportSize({width: 1440, height: 960});
   await signIn(page);
   await page.locator('#new-note-btn').click();
-  await page
-    .locator('#editor > .offline-notice')
-    .evaluate((notice) => notice.classList.remove('hidden'));
 
   const alignment = await page.evaluate(() => {
-    const notice = document.querySelector('#editor > .offline-notice');
-    const body = document.querySelector('#editor .editor-body');
+    const editor = document.querySelector('#editor');
+    const notice = editor.querySelector('.offline-notice').cloneNode(true);
+    notice.classList.remove('hidden');
+    notice.setAttribute('aria-hidden', 'true');
+    Object.assign(notice.style, {
+      left: '0',
+      position: 'absolute',
+      top: '0',
+      visibility: 'hidden',
+    });
+    editor.append(notice);
+
+    const body = editor.querySelector('.editor-body');
     const bodyRect = body.getBoundingClientRect();
-    return {
-      noticeContentLeft: notice.querySelector('.offline-notice-message').getBoundingClientRect()
-        .left,
+    const result = {
+      noticeContentLeft: notice
+        .querySelector('.offline-notice-message')
+        .getBoundingClientRect().left,
       editorContentLeft: bodyRect.left + Number.parseFloat(getComputedStyle(body).paddingLeft),
     };
+    notice.remove();
+    return result;
   });
   expect(Math.abs(alignment.noticeContentLeft - alignment.editorContentLeft)).toBeLessThanOrEqual(
     1,
