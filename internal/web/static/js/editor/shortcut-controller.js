@@ -3,14 +3,17 @@
 
   function create({
     commandCanRun,
-    defaultPrefix,
+    closeModal,
     document,
     escapeHTML,
     getPreferences,
     hasOpenModal,
     onIntrusive,
     onUnhandledEscape,
+    openModal,
+    restoreShortcuts,
     savePreference,
+    showToast,
     shortcuts,
   }) {
     const select = (selector) => document.querySelector(selector);
@@ -357,11 +360,28 @@
       if (record) startRecording(record.dataset.shortcutCommand);
     });
     select('#shortcut-prefix').addEventListener('click', startPrefixRecording);
+    const resetModal = select('#shortcut-reset-modal');
+    const closeResetModal = () => closeModal(resetModal);
     select('#shortcut-reset').addEventListener('click', () => {
-      setStatus('Restoring default shortcuts…');
-      void savePreference('shortcutPrefix', defaultPrefix)
-        .then(() => savePreference('keyboardShortcuts', {}))
-        .then(() => setStatus('Default shortcuts restored.'));
+      stopRecording();
+      setStatus();
+      openModal(resetModal);
+    });
+    select('#shortcut-reset-close').addEventListener('click', closeResetModal);
+    select('#shortcut-reset-cancel').addEventListener('click', closeResetModal);
+    resetModal.querySelector('.modal-backdrop').addEventListener('click', closeResetModal);
+    select('#shortcut-reset-confirm').addEventListener('click', async function () {
+      this.disabled = true;
+      try {
+        await restoreShortcuts();
+        setStatus();
+        closeResetModal();
+        showToast('Default shortcuts restored.', 'success');
+      } catch (_) {
+        showToast('Could not restore shortcuts. Please try again.', 'warning');
+      } finally {
+        this.disabled = false;
+      }
     });
 
     return {bindingFor, commands, commandsByID, execute, prefixBinding, register, render};

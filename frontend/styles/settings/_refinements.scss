@@ -1,12 +1,3 @@
-/* Preferences uses a level-two heading under the app shell heading. */
-.modal-body h2 {
-  margin: 0 0 1.1rem;
-  font-size: 1.125rem;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  line-height: 1.25;
-}
-
 .prefs-content-header h2 {
   margin: 0;
   font-size: 1.2rem;
@@ -17,6 +8,7 @@
 /* Keep full-width borders, but align each shell to the same responsive content rail. */
 :root {
   --content-max-width: 76.25rem;
+  --page-gutter: 1.25rem;
   --font-size: 1rem;
   --editor-font-size: 1rem;
   --preview-font-size: 1rem;
@@ -69,7 +61,7 @@ header {
   width: min(100%, var(--content-max-width));
   min-height: 3.25rem;
   margin-inline: auto;
-  padding: 0.65rem 1.25rem;
+  padding: 0.65rem var(--page-gutter);
 }
 
 .dashboard-body {
@@ -83,8 +75,14 @@ header {
 
 #dashboard > .offline-notice,
 #editor:not(.zen-mode) > .offline-notice {
-  padding-right: max(1.25rem, calc((100% - var(--content-max-width)) / 2 + 1.25rem));
-  padding-left: max(1.25rem, calc((100% - var(--content-max-width)) / 2 + 1.25rem));
+  padding-right: max(
+    var(--page-gutter),
+    calc((100% - var(--content-max-width)) / 2 + var(--page-gutter))
+  );
+  padding-left: max(
+    var(--page-gutter),
+    calc((100% - var(--content-max-width)) / 2 + var(--page-gutter))
+  );
 }
 
 #editor .panels-single .panel {
@@ -103,35 +101,9 @@ header {
   color: var(--fg);
 }
 
-.sync-indicator {
-  min-height: 1.75rem;
-  padding: 0.3rem 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--sync-color) 24%, var(--border));
-  border-radius: var(--radius-action);
-  background: color-mix(in srgb, var(--sync-color) 5%, var(--card-bg));
-  gap: 0.375rem;
-  color: var(--sync-color);
-  font-size: 0.75rem;
-  font-weight: 680;
-  line-height: 1.25;
-}
-
-.sync-indicator-dot {
-  width: 0.45rem;
-  height: 0.45rem;
-  box-shadow: 0 0 0 2px color-mix(in srgb, currentcolor 13%, transparent);
-}
-
-:root[data-status-display='compact'] .sync-indicator {
-  width: 1.75rem;
-  padding-inline: 0;
-  justify-content: center;
-}
-
 @media (max-width: 640px) {
-  .header-inner {
-    padding-right: 0.75rem;
-    padding-left: 0.75rem;
+  :root {
+    --page-gutter: 0.75rem;
   }
 }
 
@@ -183,12 +155,9 @@ header {
   border-radius: var(--radius-action);
 }
 
-#login-form input,
-#login-form button,
-#note-title,
-#note-tags,
-.pref-control select,
-.font-control input[type='text'] {
+#login-form .label-input__control,
+#login-form > button[type='submit'],
+.pref-control select {
   border-radius: var(--radius-field);
 }
 
@@ -197,7 +166,6 @@ header {
 .fmt-bar button,
 .panel-switch,
 .prefs-nav,
-.modal-close,
 .offline-retry,
 .toast-action {
   border-radius: var(--radius-micro);
@@ -220,8 +188,7 @@ header {
   border-radius: var(--radius-micro);
 }
 
-.prefs-nav,
-.modal-close {
+.prefs-nav {
   border-radius: var(--radius-action);
 }
 
@@ -263,11 +230,11 @@ header h1 {
   font-size: 1.5em;
 }
 
-#login-form input {
+#login-form .label-input__control {
   font-size: 1em;
 }
 
-#login-form button {
+#login-form > button[type='submit'] {
   font-size: 0.9375em;
 }
 
@@ -307,22 +274,8 @@ header h1 {
   font-size: 0.75em;
 }
 
-#note-title {
-  font-size: 0.875em;
-  font-weight: 500;
-}
-
-#note-tags {
-  font-size: 0.875em;
-}
-
 .panel-header {
   font-size: 0.6875em;
-}
-
-.modal-body h2,
-.modal-body h3 {
-  font-size: 1.125em;
 }
 
 .pref-row {
@@ -342,30 +295,22 @@ header h1 {
   font-size: 1.2em;
 }
 
-.prefs-section-intro {
-  font-size: 0.875em;
-}
-
 .pref-control {
   font-size: 0.9375em;
 }
 
 .pref-control small,
 .pref-row small {
-  font-size: 0.75em;
+  font-size: 0.875rem;
 }
 
 .font-fetch-toggle,
 .font-error {
-  font-size: 0.75em;
+  font-size: 0.875rem;
 }
 
 .app-version {
   font-size: 0.875em;
-}
-
-.sync-indicator {
-  font-size: 0.75em;
 }
 
 .offline-notice,
@@ -399,7 +344,6 @@ header h1 {
   gap: 0.55rem;
 }
 
-.font-control input[type='text'],
 .font-control select {
   height: 2.5rem;
   min-height: 2.5rem;
@@ -413,10 +357,6 @@ header h1 {
 
 .meta-actions .btn-text {
   font-size: 0.8125em;
-}
-
-.conflict-intro {
-  font-size: 0.875em;
 }
 
 .conflict-metadata-compare section {
@@ -445,5 +385,5 @@ header h1 {
 }
 
 .about-row small {
-  font-size: 0.75em;
+  font-size: 0.875rem;
 }

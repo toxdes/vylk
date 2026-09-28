@@ -31,35 +31,7 @@
   justify-content: center;
 }
 
-#login-form input {
-  width: 100%;
-  margin-bottom: 0.875rem;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--card-bg);
-  color: var(--fg);
-  font-size: 1rem;
-  line-height: 1.4;
-  outline: none;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
-}
-
-#login-form input:focus,
-#note-title:focus,
-#note-tags:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
-}
-
-#login-form input:-webkit-autofill {
-  box-shadow: 0 0 0 30px var(--card-bg) inset;
-  -webkit-text-fill-color: var(--fg);
-}
-
-#login-form button {
+#login-form > button[type='submit'] {
   width: 100%;
   padding: 0.72rem;
   border: 0;
@@ -72,8 +44,132 @@
   transition: background 0.15s;
 }
 
-#login-form button:hover {
+#login-form > button[type='submit']:hover {
   background: var(--accent-hover);
+}
+
+#login-form .login-forgot-password {
+  display: block;
+  width: fit-content;
+  min-height: 2.25rem;
+  margin: 0.5rem 0 0 auto;
+  padding: 0.25rem 0.125rem;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+#login-form .login-forgot-password[hidden] {
+  display: none;
+}
+
+#login-form .login-forgot-password:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+#login-form .login-forgot-password:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+body:has(
+    #login-recovery-modal:not(.hidden),
+    #login-recovery-entry-modal:not(.hidden),
+    #login-recovery-lost-modal:not(.hidden)
+  )
+  #toast-region {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.recovery-signin-notice[hidden] {
+  display: none;
+}
+
+#login-recovery-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.login-recovery-word-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.login-recovery-word-row .label-input {
+  flex: 1;
+}
+
+.login-recovery-word-row button {
+  flex: none;
+}
+
+.login-recovery-count {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.login-recovery-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.login-recovery-chip {
+  min-height: 2rem;
+  padding: 0.3rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.login-recovery-chip:hover {
+  border-color: var(--accent);
+}
+
+.recovery-signin-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: calc(100% - var(--page-gutter) - var(--page-gutter));
+  max-width: calc(var(--content-max-width) - var(--page-gutter) - var(--page-gutter));
+  margin: 1rem auto 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--fg);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.recovery-signin-notice > div {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+.recovery-signin-notice .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+@media (max-width: 640px) {
+  .recovery-signin-notice {
+    align-items: flex-start;
+    flex-direction: column;
+    margin-inline: 1rem;
+    width: auto;
+  }
 }
 
 .error {

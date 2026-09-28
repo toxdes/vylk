@@ -3,6 +3,8 @@ package server
 import (
 	"testing"
 	"time"
+
+	"vylk/internal/store"
 )
 
 func TestLoadRuntimeConfigAppliesDefaults(t *testing.T) {
@@ -48,10 +50,66 @@ func TestLoadRuntimeConfigReadsOperationalSettings(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeConfigParsesStrongPasswordPolicy(t *testing.T) {
+	for value, want := range map[string]bool{"true": true, "1": true, "false": false, "0": false, "": false} {
+		t.Run(value, func(t *testing.T) {
+			config, err := loadRuntimeConfig(nil, func(key string) string {
+				if key == "VYLK_REQUIRE_STRONG_PASSWORDS" {
+					return value
+				}
+				return ""
+			}, func(string) (string, error) { return "", nil })
+			if err != nil {
+				t.Fatalf("loadRuntimeConfig: %v", err)
+			}
+			if config.RequireStrongPasswords != want {
+				t.Fatalf("RequireStrongPasswords = %t, want %t", config.RequireStrongPasswords, want)
+			}
+		})
+	}
+	if _, err := loadRuntimeConfig(nil, func(key string) string {
+		if key == "VYLK_REQUIRE_STRONG_PASSWORDS" {
+			return "yes"
+		}
+		return ""
+	}, func(string) (string, error) { return "", nil }); err == nil {
+		t.Fatal("accepted an invalid VYLK_REQUIRE_STRONG_PASSWORDS value")
+	}
+}
+
+func TestValidateRuntimeCredentialsAppliesStrongPasswordPolicy(t *testing.T) {
+	ready := &store.VaultConfig{Mode: store.VaultReady}
+	if err := validateRuntimeCredentials(runtimeConfig{
+		Password: "password", RequireStrongPasswords: true,
+	}, ready); err == nil {
+		t.Fatal("accepted a weak VYLK_PASSWORD")
+	}
+	if err := validateRuntimeCredentials(runtimeConfig{
+		Password: "correct horse battery staple!", RequireStrongPasswords: true,
+	}, ready); err != nil {
+		t.Fatalf("rejected a strong VYLK_PASSWORD: %v", err)
+	}
+	if err := validateRuntimeCredentials(runtimeConfig{
+		Password: "correct horse battery staple!", EncryptionPassword: "password", RequireStrongPasswords: true,
+	}, ready); err == nil {
+		t.Fatal("accepted a weak VYLK_ENCRYPTION_PASSWORD")
+	}
+	if err := validateRuntimeCredentials(runtimeConfig{Password: "password"}, ready); err != nil {
+		t.Fatalf("default policy rejected a weak VYLK_PASSWORD: %v", err)
+	}
+}
+
 func TestLoadRuntimeConfigRequiresPassword(t *testing.T) {
-	_, err := loadRuntimeConfig(nil, func(string) string { return "" }, func(string) (string, error) { return "", nil })
+	config, err := loadRuntimeConfig(nil, func(string) string { return "" }, func(string) (string, error) { return "", nil })
+	if err != nil {
+		t.Fatalf("loadRuntimeConfig: %v", err)
+	}
+	err = validateRuntimeCredentials(config, nil)
 	if err == nil {
-		t.Fatal("loadRuntimeConfig() accepted an empty password")
+		t.Fatal("legacy vault accepted an empty password")
+	}
+	if err := validateRuntimeCredentials(config, &store.VaultConfig{Mode: store.VaultReady}); err != nil {
+		t.Fatalf("encrypted vault rejected empty password: %v", err)
 	}
 }
 

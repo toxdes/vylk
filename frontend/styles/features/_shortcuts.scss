@@ -12,7 +12,11 @@
 
 .shortcut-prefix-row {
   margin-bottom: 1.5rem;
-  border-top: 1px solid var(--border);
+}
+
+.shortcut-reset-row {
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .shortcut-groups {
@@ -136,21 +140,15 @@
   color: var(--accent);
 }
 
-.shortcut-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-top: 0.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border);
+.shortcut-recorder-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
 }
 
-.shortcut-recorder-status {
-  min-height: 1.25rem;
-  color: var(--muted);
-  font-size: 0.8125rem;
-  line-height: 1.45;
+.shortcut-recorder-status:not(:empty) {
+  margin: 0.5rem 0;
 }
 
 .shortcut-recorder-status.is-error {
@@ -186,11 +184,6 @@
   .shortcut-binding {
     min-width: 8rem;
   }
-
-  .shortcut-footer {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 }
 
 .shortcut-binding {
@@ -223,33 +216,12 @@
   text-align: left;
 }
 
-#prefs-panel-shortcuts .shortcut-footer {
-  margin: 0 0 1rem;
-  padding: 0 0 0.9rem;
-  border-top: 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.shortcut-confirm-copy {
-  margin: -0.25rem 0 1rem;
-  color: var(--muted);
-  font-size: 0.875rem;
-  line-height: 1.5;
-}
-
 .shortcut-confirm-skip {
   margin-top: 0.25rem;
 }
 
 .shortcut-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
   margin-top: 1rem;
-}
-
-.shortcut-confirm-actions button {
-  min-height: 2.25rem;
 }
 
 .shortcut-sequence-hint {
@@ -388,7 +360,7 @@
   max-width: 60ch;
   margin: 0.25rem 0 0.7rem;
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   line-height: 1.45;
 }
 

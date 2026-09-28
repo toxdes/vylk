@@ -1,0 +1,184 @@
+/* Shared dialog shell. Content-specific layouts live with their features. */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  padding: 1rem;
+  place-items: center;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgb(15 23 42 / 0.38);
+}
+
+.modal-body {
+  position: relative;
+  width: min(100%, 28rem);
+  max-height: calc(100dvh - 2rem);
+  padding: 1.5rem;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  background: var(--card-bg);
+  border: 0;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 0.2);
+}
+
+.modal-body--standard {
+  width: min(100%, 34rem);
+}
+
+.modal-body--form {
+  width: min(100%, 36rem);
+  max-height: min(90dvh, 52rem);
+}
+
+.modal-body--wide {
+  width: min(100%, 68rem);
+}
+
+.modal-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.modal-heading :is(h2, h3) {
+  margin: 0;
+  font-size: 1.125em;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+
+.modal-close {
+  display: grid;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0.5rem;
+  place-items: center;
+  border-radius: var(--radius-action);
+  background: transparent;
+  color: var(--muted);
+}
+
+.modal-close:hover {
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.modal-close .icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.modal-copy {
+  margin: -0.25rem 0 1.25rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.modal-copy + .modal-copy {
+  margin-top: 0;
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.modal-actions button {
+  min-height: 2.25rem;
+}
+
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-backdrop-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35rem) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes modal-panel-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(0.2rem) scale(0.99);
+  }
+}
+
+.modal:not(.hidden) .modal-backdrop {
+  animation: modal-backdrop-in 0.16s ease both;
+  will-change: opacity;
+}
+
+.modal:not(.hidden) .modal-body {
+  animation: modal-panel-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  backface-visibility: hidden;
+  will-change: opacity, transform;
+}
+
+.modal.is-closing .modal-backdrop {
+  animation: modal-backdrop-out 0.16s ease both;
+  will-change: opacity;
+}
+
+.modal.is-closing .modal-body {
+  animation: modal-panel-out 0.18s ease both;
+  backface-visibility: hidden;
+  will-change: opacity, transform;
+}
+
+@media (max-width: 640px) {
+  .modal-body--form {
+    max-height: calc(100dvh - 1rem);
+    padding: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal:not(.hidden) .modal-backdrop,
+  .modal:not(.hidden) .modal-body,
+  .modal.is-closing .modal-backdrop,
+  .modal.is-closing .modal-body {
+    animation: none;
+    will-change: auto;
+  }
+}

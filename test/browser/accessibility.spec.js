@@ -32,22 +32,36 @@ test('dashboard and preferences have no serious accessibility violations', async
   ).toEqual([]);
 });
 
-test('preferences can be opened, navigated, trapped, and closed from the keyboard', async ({
-  page,
-}) => {
+test('preferences use a modal with a nested encryption dialog', async ({page}) => {
   await signIn(page);
 
   await page.locator('#prefs-btn').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#prefs-modal')).toBeVisible();
-  await expect(page.locator('#prefs-modal')).toHaveAttribute('aria-hidden', 'false');
-  await expect(page.locator('#prefs-close')).toBeFocused();
+  await expect(page.locator('#prefs-title')).toBeFocused();
 
   await page.locator('#prefs-tab-appearance').focus();
-  await page.keyboard.press('Shift+Tab');
-  await expect(page.locator('#pref-font-google')).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(page.locator('#prefs-tab-appearance')).toBeFocused();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#prefs-tab-editor')).toBeFocused();
+  await expect(page.locator('#prefs-tab-editor')).toHaveAttribute('aria-selected', 'true');
+  await expect(page).toHaveURL(/\/preferences\/editor$/);
+
+  await page.locator('#prefs-tab-encryption').click();
+  await page.locator('#vault-open-setup').click();
+  await expect(page).toHaveURL(/\/preferences\/encryption\/setup$/);
+  await expect(page.locator('#vault-setup-modal')).toBeVisible();
+  await expect(page.locator('#prefs-modal')).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.locator('#prefs-modal')).toHaveAttribute('inert', '');
+  await expect(page.locator('#vault-setup-modal')).toHaveAttribute('aria-hidden', 'false');
+  await expect(page.locator('#prefs-modal .prefs-content-header #prefs-close')).toBeVisible();
+  await expect(page.locator('#prefs-modal #prefs-btn')).toHaveCount(0);
+  await expect(page.locator('#prefs-title')).toHaveText('Encryption');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#vault-setup-modal')).toBeHidden();
+  await expect(page.locator('#prefs-modal')).toBeVisible();
+  await expect(page.locator('#prefs-modal')).toHaveAttribute('aria-hidden', 'false');
+  await expect(page.locator('#vault-open-setup')).toBeFocused();
+  await expect(page).toHaveURL(/\/preferences\/encryption$/);
 
   await page.keyboard.press('Escape');
   await expect(page.locator('#prefs-modal')).toBeHidden();

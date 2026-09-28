@@ -17,6 +17,14 @@ const dashboardControllerSource = fs.readFileSync(
   'utf8',
 );
 const authSource = fs.readFileSync(path.join(staticDirectory, 'js', 'ui', 'auth.js'), 'utf8');
+const recoveryEntrySource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'recovery-entry.js'),
+  'utf8',
+);
+const labeledInputSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'labeled-input.js'),
+  'utf8',
+);
 const preferencesSource = fs.readFileSync(
   path.join(staticDirectory, 'js', 'ui', 'preferences.js'),
   'utf8',
@@ -64,6 +72,22 @@ const indexedDBSource = fs.readFileSync(
 );
 const offlineStoreSource = fs.readFileSync(
   path.join(staticDirectory, 'js', 'core', 'offline-store.js'),
+  'utf8',
+);
+const vaultCryptoSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'core', 'vault-crypto.js'),
+  'utf8',
+);
+const vaultLocalSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'core', 'vault-local.js'),
+  'utf8',
+);
+const vaultSessionSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'core', 'vault-session.js'),
+  'utf8',
+);
+const vaultSetupSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'vault-setup.js'),
   'utf8',
 );
 const syncBatchSource = fs.readFileSync(
@@ -301,6 +325,7 @@ async function defaultFetch(path, options = {}) {
   const value = String(path);
   if (value.startsWith('/api/sync?'))
     return response(200, {changes: [], nextSequence: 0, hasMore: false});
+  if (value === '/api/vault/bootstrap') return response(200, {mode: 'legacy'});
   if (value === '/api/sync/push') {
     const request = JSON.parse(options.body || '{}');
     const operations = Array.isArray(request.operations) ? request.operations : [];
@@ -344,6 +369,8 @@ export async function createApp({
   window.__vylkDependencies = {};
   window.indexedDB = indexedDB;
   window.IDBKeyRange = IDBKeyRange;
+  window.TextEncoder = TextEncoder;
+  window.TextDecoder = TextDecoder;
   window.fetch = fetchImpl;
   if (serviceWorker)
     Object.defineProperty(window.navigator, 'serviceWorker', {
@@ -356,6 +383,9 @@ export async function createApp({
   window.eval(routesSource);
   window.eval(indexedDBSource);
   window.eval(offlineStoreSource);
+  window.eval(vaultCryptoSource);
+  window.eval(vaultLocalSource);
+  window.eval(vaultSessionSource);
   window.eval(syncBatchSource);
   window.eval(serverEventsSource);
   window.eval(conflictActionsSource);
@@ -391,7 +421,10 @@ export async function createApp({
   window.eval(caretControllerSource);
   window.eval(dashboardSource);
   window.eval(dashboardControllerSource);
+  window.eval(recoveryEntrySource);
   window.eval(authSource);
+  window.eval(labeledInputSource);
+  window.eval(vaultSetupSource);
   window.eval(preferencesSource);
   window.eval(preferencesDialogSource);
   window.eval(preferencesStoreSource);

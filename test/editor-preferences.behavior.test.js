@@ -300,6 +300,14 @@ describe('keyboard shortcuts', () => {
       {key: 't', modifiers: []},
     ]);
     app.window.document.querySelector('#shortcut-reset').click();
+    expect(
+      app.window.document.querySelector('#shortcut-reset-modal').classList.contains('hidden'),
+    ).toBe(false);
+    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]);
+    app.window.document.querySelector('#shortcut-reset-cancel').click();
+    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]);
+    app.window.document.querySelector('#shortcut-reset').click();
+    app.window.document.querySelector('#shortcut-reset-confirm').click();
     await vi.waitFor(() =>
       expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: '/', modifiers: ['Mod']}]),
     );
@@ -458,11 +466,12 @@ describe('font preferences', () => {
     expect(styleSource).toContain(
       'grid-template-columns:minmax(0,1fr) 10rem;align-items:end;gap:0.75rem',
     );
+    expect(styleSource).toContain('.prefs-page-body{display:flex;width:100%;height:100%');
     expect(styleSource).toContain(
-      '.prefs-modal-body{display:flex;width:min(92vw,62rem);height:min(42rem,100dvh - 2rem)',
+      '.font-control select{height:2.5rem;min-height:2.5rem;box-sizing:border-box;padding:0.55rem 0.7rem}',
     );
     expect(styleSource).toContain(
-      '.font-control input[type="text"],.font-control select{height:2.5rem;min-height:2.5rem;box-sizing:border-box;padding:0.55rem 0.7rem}',
+      '.label-input__control{display:block;width:100%;min-height:2.5rem;height:2.5rem',
     );
   });
 
@@ -718,7 +727,9 @@ describe('editor display preferences', () => {
     const root = app.window.document.documentElement;
 
     expect(root.dataset.contentWidth).toBe('standard');
-    expect(styleSource).toContain(':root{--content-max-width:76.25rem;--font-size:1rem;');
+    expect(styleSource).toContain(
+      ':root{--content-max-width:76.25rem;--page-gutter:1.25rem;--font-size:1rem;',
+    );
     expect(styleSource).toContain(':root[data-content-width="compact"]{--content-max-width:54rem}');
     expect(styleSource).toContain(':root[data-content-width="wide"]{--content-max-width:90rem}');
     expect(styleSource).toContain(':root[data-content-width="full"]{--content-max-width:100%}');

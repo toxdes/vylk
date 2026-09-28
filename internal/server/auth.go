@@ -1,8 +1,10 @@
 package server
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/base64"
 	"net/http"
 	"strconv"
 	"sync"
@@ -12,19 +14,21 @@ import (
 	"vylk/internal/httpx"
 	notepkg "vylk/internal/note"
 	"vylk/internal/notecrypt"
+	"vylk/internal/store"
 )
 
 type app struct {
-	db         *sql.DB
-	instanceID string
-	noteMu     sync.Mutex
-	sessions   *auth.SessionStore
-	password   string
-	notesDir   string
-	encryption *notecrypt.Config
-	noteCache  *notepkg.Cache
-	rl         *auth.RateLimiter
-	events     *event.Broker
+	db                     *sql.DB
+	instanceID             string
+	noteMu                 sync.Mutex
+	sessions               *auth.SessionStore
+	password               string
+	requireStrongPasswords bool
+	notesDir               string
+	encryption             *notecrypt.Config
+	noteCache              *notepkg.Cache
+	rl                     *auth.RateLimiter
+	events                 *event.Broker
 }
 
 func (a *app) isSecureRequest(r *http.Request) bool {
@@ -63,11 +67,23 @@ func (a *app) setSessionCookie(w http.ResponseWriter, r *http.Request, token str
 }
 
 func (a *app) handleCheck(w http.ResponseWriter, r *http.Request) {
+	config, err := store.GetVaultConfig(a.db)
+	if err != nil {
+		httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_status_failed", "could not read vault status")
+		return
+	}
+	mode := "legacy"
+	var epoch int64
+	if config != nil {
+		mode, epoch = config.Mode, config.Epoch
+	}
 	httpx.WriteJSON(w, map[string]any{
 		"ok":          true,
 		"version":     version,
 		"revision":    appRevision,
 		"instance_id": a.instanceID,
+		"vault_mode":  mode,
+		"vault_epoch": epoch,
 	})
 }
 
@@ -105,12 +121,37 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Password string `json:"password"`
+		Password      string `json:"password"`
+		Proof         string `json:"proof"`
+		RecoveryProof string `json:"recovery_proof"`
 	}
 	if !httpx.DecodeJSON(w, r, &body, 16<<10) {
 		return
 	}
-	if subtle.ConstantTimeCompare([]byte(body.Password), []byte(a.password)) != 1 {
+	// Keep proof verification and session creation atomic with credential
+	// replacement and migration cutover, which revoke all existing sessions.
+	a.noteMu.Lock()
+	defer a.noteMu.Unlock()
+	config, err := store.GetVaultConfig(a.db)
+	if err != nil {
+		httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_status_failed", "could not read vault status")
+		return
+	}
+	valid := false
+	if config == nil || config.Mode == store.VaultPreparing {
+		valid = a.password != "" && subtle.ConstantTimeCompare([]byte(body.Password), []byte(a.password)) == 1
+	} else if body.Password == "" {
+		proof := body.Proof
+		expected := config.AuthHash
+		if body.RecoveryProof != "" {
+			proof, expected = body.RecoveryProof, config.RecoveryHash
+		}
+		if decoded, decodeErr := base64.RawURLEncoding.Strict().DecodeString(proof); decodeErr == nil && len(decoded) == 32 {
+			sum := sha256.Sum256(decoded)
+			valid = subtle.ConstantTimeCompare(sum[:], expected) == 1
+		}
+	}
+	if !valid {
 		a.rl.RecordLoginAttempt(ip, false)
 		httpx.WriteAPIError(w, http.StatusUnauthorized, "invalid_credentials", "wrong password")
 		return

@@ -26,16 +26,35 @@ func SessionTokenHash(token string) string {
 }
 
 func (s *SessionStore) Create() (string, error) {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
+	token, err := newSessionToken()
+	if err != nil {
 		return "", err
 	}
-	token := hex.EncodeToString(b)
-	_, err := s.db.Exec("INSERT INTO sessions (token_hash, expires_at) VALUES (?, ?)", SessionTokenHash(token), time.Now().UTC().Add(SessionLifetime).Format(time.RFC3339))
+	_, err = s.db.Exec("INSERT INTO sessions (token_hash, expires_at) VALUES (?, ?)", SessionTokenHash(token), time.Now().UTC().Add(SessionLifetime).Format(time.RFC3339))
 	if err != nil {
 		return "", err
 	}
 	return token, nil
+}
+
+func (s *SessionStore) CreateTx(tx *sql.Tx) (string, error) {
+	token, err := newSessionToken()
+	if err != nil {
+		return "", err
+	}
+	_, err = tx.Exec("INSERT INTO sessions (token_hash, expires_at) VALUES (?, ?)", SessionTokenHash(token), time.Now().UTC().Add(SessionLifetime).Format(time.RFC3339))
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func newSessionToken() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func (s *SessionStore) Valid(token string) bool {

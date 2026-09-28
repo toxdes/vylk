@@ -3,7 +3,7 @@
 
   function create({
     databaseName = 'vylk-offline',
-    databaseVersion = 4,
+    databaseVersion = 5,
     indexedDB: configuredIndexedDB,
     createID,
     onBlocked = () => {},
@@ -12,12 +12,16 @@
     beforeClear = () => {},
   }) {
     const operationIDPattern = /^[A-Za-z0-9_-]{1,128}$/;
-    const {requestValue, transactionComplete, withTransaction} = root.VylkIndexedDB;
+    const {encryptedStores, requestValue, transactionComplete, withTransaction} =
+      root.VylkIndexedDB;
     let databasePromise;
+    let localCryptor = null;
+    let encryptedOnDisk = false;
     const databaseAPI = () => configuredIndexedDB || root.indexedDB;
 
     function openOfflineDB() {
       if (databasePromise) return databasePromise;
+      let repairRequired = false;
       databasePromise = new Promise((resolve, reject) => {
         // Do not request a fixed database version here. A browser may have a
         // newer local schema from a prior build; opening it with an older version
@@ -25,6 +29,7 @@
         const request = databaseAPI().open(databaseName, databaseVersion);
         request.onupgradeneeded = (event) => {
           const db = request.result;
+          repairRequired = event.oldVersion > 0 && event.oldVersion < 5;
           if (event.oldVersion < 1 && !db.objectStoreNames.contains('notes')) {
             db.createObjectStore('notes', {keyPath: 'id'});
           }
@@ -42,6 +47,9 @@
             if (!queue.indexNames.contains('client_sequence'))
               queue.createIndex('client_sequence', 'client_sequence', {unique: false});
           }
+          if (event.oldVersion < 5 && !db.objectStoreNames.contains('keys')) {
+            db.createObjectStore('keys', {keyPath: 'id'});
+          }
         };
         request.onsuccess = async () => {
           request.result.onversionchange = () => {
@@ -49,7 +57,14 @@
             databasePromise = undefined;
           };
           try {
-            await repairOfflineQueue(request.result);
+            const marker = await requestValue(
+              request.result
+                .transaction('state', 'readonly')
+                .objectStore('state')
+                .get('vault-local-format'),
+            );
+            encryptedOnDisk = marker?.value === 1;
+            if (!encryptedOnDisk && repairRequired) await repairOfflineQueue(request.result);
             resolve(request.result);
           } catch (error) {
             request.result.close();
@@ -159,7 +174,11 @@
 
     async function withOfflineStore(names, mode, work) {
       try {
-        return await withTransaction(openOfflineDB, names, mode, work);
+        await openOfflineDB();
+        if (encryptedOnDisk && !localCryptor) throw new Error('local vault is locked');
+        return await withTransaction(openOfflineDB, names, mode, work, (stores, transaction) =>
+          localCryptor ? encryptedStores(stores, localCryptor, transaction) : stores,
+        );
       } catch (error) {
         if (
           error?.name === 'QuotaExceededError' ||
@@ -170,6 +189,132 @@
         }
         throw error;
       }
+    }
+
+    async function vaultLocalFormat() {
+      const db = await openOfflineDB();
+      const marker = await requestValue(
+        db.transaction('state', 'readonly').objectStore('state').get('vault-local-format'),
+      );
+      return marker?.value === 1;
+    }
+
+    async function vaultLocalMetadata() {
+      const db = await openOfflineDB();
+      return requestValue(
+        db.transaction('state', 'readonly').objectStore('state').get('vault-local-format'),
+      );
+    }
+
+    async function forgetRememberedVaultRoot() {
+      await withTransaction(openOfflineDB, ['keys'], 'readwrite', (stores) =>
+        requestValue(stores.keys.delete('root')),
+      );
+    }
+
+    async function cachedVaultBootstrap() {
+      const db = await openOfflineDB();
+      const saved = await requestValue(
+        db.transaction('keys', 'readonly').objectStore('keys').get('bootstrap'),
+      );
+      return saved?.value || null;
+    }
+
+    async function cacheVaultBootstrap(value) {
+      const db = await openOfflineDB();
+      const tx = db.transaction('keys', 'readwrite');
+      const complete = transactionComplete(tx);
+      tx.objectStore('keys').put({id: 'bootstrap', value});
+      await complete;
+    }
+
+    async function cachedVaultWrappers() {
+      const db = await openOfflineDB();
+      const saved = await requestValue(
+        db.transaction('keys', 'readonly').objectStore('keys').get('wrappers'),
+      );
+      return saved?.value || null;
+    }
+
+    async function cacheVaultWrappers(value) {
+      const db = await openOfflineDB();
+      const tx = db.transaction('keys', 'readwrite');
+      const complete = transactionComplete(tx);
+      tx.objectStore('keys').put({id: 'wrappers', value});
+      await complete;
+    }
+
+    async function migrateVaultLocal(cryptor) {
+      const db = await openOfflineDB();
+      for (const name of ['notes', 'queue', 'state']) {
+        const transaction = db.transaction(name, 'readwrite');
+        const complete = transactionComplete(transaction);
+        await new Promise((resolve, reject) => {
+          const cursorRequest = transaction.objectStore(name).openCursor();
+          cursorRequest.onerror = () => reject(cursorRequest.error);
+          cursorRequest.onsuccess = () => {
+            const cursor = cursorRequest.result;
+            if (!cursor) {
+              resolve();
+              return;
+            }
+            try {
+              if (
+                !cursor.value.vault_ciphertext &&
+                !(name === 'state' && cursor.value.key === 'vault-local-format')
+              ) {
+                cursor.update(cryptor.encryptRecord(name, cursor.value));
+              }
+              cursor.continue();
+            } catch (error) {
+              transaction.abort();
+              reject(error);
+            }
+          };
+        });
+        await complete;
+      }
+      await withTransaction(openOfflineDB, ['state'], 'readwrite', (stores) =>
+        requestValue(stores.state.put({key: 'vault-local-format', value: 1})),
+      );
+      encryptedOnDisk = true;
+    }
+
+    async function unlockVaultLocal(rootKey, vaultID, remember = false, epoch = 1) {
+      let marker = await vaultLocalMetadata();
+      let encrypted = marker?.value === 1;
+      if (
+        encrypted &&
+        ((marker.vaultID && marker.vaultID !== vaultID) || (epoch > 1 && marker.epoch !== epoch))
+      ) {
+        await discardVaultLocalData();
+        marker = null;
+        encrypted = false;
+      }
+      const cryptor = await root.VylkVaultLocal.fromRoot(rootKey, vaultID, {
+        allowPlaintext: !encrypted,
+      });
+      try {
+        if (!encrypted) await migrateVaultLocal(cryptor);
+        cryptor.setAllowPlaintext(false);
+        localCryptor?.close();
+        localCryptor = cryptor;
+        const db = await openOfflineDB();
+        const tx = db.transaction(['keys', 'state'], 'readwrite');
+        const complete = transactionComplete(tx);
+        if (remember) tx.objectStore('keys').put({id: 'root', vaultID, epoch, key: rootKey});
+        else tx.objectStore('keys').delete('root');
+        tx.objectStore('state').put({key: 'vault-local-format', value: 1, vaultID, epoch});
+        await complete;
+      } catch (error) {
+        cryptor.close();
+        throw error;
+      }
+    }
+
+    function lockVaultLocal() {
+      localCryptor?.close();
+      localCryptor = null;
     }
 
     function getLocalNote(id) {
@@ -569,6 +714,15 @@
 
     async function clearOfflineData() {
       beforeClear();
+      if (await vaultLocalFormat()) {
+        lockVaultLocal();
+        const db = await openOfflineDB();
+        const tx = db.transaction('keys', 'readwrite');
+        const complete = transactionComplete(tx);
+        tx.objectStore('keys').delete('root');
+        await complete;
+        return;
+      }
       const dbPromise = databasePromise;
       databasePromise = undefined;
       if (dbPromise) {
@@ -593,7 +747,22 @@
       });
     }
 
+    async function discardVaultLocalData() {
+      beforeClear();
+      lockVaultLocal();
+      const db = await openOfflineDB();
+      const stores = ['notes', 'queue', 'state', 'keys'].filter((name) =>
+        db.objectStoreNames.contains(name),
+      );
+      const tx = db.transaction(stores, 'readwrite');
+      const complete = transactionComplete(tx);
+      for (const name of stores) tx.objectStore(name).clear();
+      await complete;
+      encryptedOnDisk = false;
+    }
+
     async function closeOfflineDatabaseConnection() {
+      lockVaultLocal();
       const dbPromise = databasePromise;
       databasePromise = undefined;
       if (!dbPromise) return;
@@ -604,7 +773,12 @@
 
     return Object.freeze({
       claimQueueOperation,
+      cachedVaultBootstrap,
+      cachedVaultWrappers,
+      cacheVaultBootstrap,
+      cacheVaultWrappers,
       clearOfflineData,
+      discardVaultLocalData,
       closeOfflineDatabaseConnection,
       getAllLocalNotes,
       getLocalNote,
@@ -614,6 +788,7 @@
       getUnresolvedConflict,
       hasPendingOperation,
       latestLaterOperation,
+      lockVaultLocal,
       nextLocalPinOrder,
       openOfflineDB,
       pendingOperations,
@@ -636,6 +811,9 @@
       supersedeQueuedNoteOperations,
       syncDeviceID,
       unresolvedConflictKey,
+      unlockVaultLocal,
+      forgetRememberedVaultRoot,
+      vaultLocalFormat,
       withOfflineStore,
     });
   }

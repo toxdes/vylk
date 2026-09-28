@@ -5,6 +5,7 @@ go 1.27
 tool honnef.co/go/tools/cmd/staticcheck
 
 require (
+	github.com/ccojocar/zxcvbn-go v1.0.4
 	golang.org/x/crypto v0.54.0
 	modernc.org/sqlite v1.54.0
 )

@@ -4,6 +4,9 @@ playwright-report/
 test-results/
 yesb/
 internal/web/static/vendor/marked.min.js
+internal/web/static/vendor/libsodium-sumo.min.js
+internal/web/static/vendor/bip39.min.js
+internal/web/static/vendor/zxcvbn.js
 bun.lock
 LICENSE
 README.md

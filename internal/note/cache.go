@@ -83,3 +83,11 @@ func (c *Cache) Delete(id string) {
 	delete(c.items, id)
 	c.lru.Remove(e)
 }
+
+func (c *Cache) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.items = make(map[string]*list.Element)
+	c.lru.Init()
+	c.bytes = 0
+}

@@ -6,6 +6,16 @@
 
   function create({document, onEscape, window}) {
     const stateByModal = new WeakMap();
+    const openModals = [];
+
+    function syncActiveModal() {
+      const active = openModals.at(-1);
+      for (const modal of openModals) {
+        const isActive = modal === active;
+        modal.toggleAttribute('inert', !isActive);
+        modal.setAttribute('aria-hidden', String(!isActive));
+      }
+    }
 
     function stateFor(modal) {
       let state = stateByModal.get(modal);
@@ -61,8 +71,11 @@
         document.activeElement && typeof document.activeElement.focus === 'function'
           ? document.activeElement
           : null;
+      const existing = openModals.indexOf(modal);
+      if (existing !== -1) openModals.splice(existing, 1);
+      openModals.push(modal);
       modal.classList.remove('hidden', 'is-closing');
-      modal.setAttribute('aria-hidden', 'false');
+      syncActiveModal();
       const initialFocus =
         modal.querySelector('[autofocus]') ||
         modal.querySelector('.modal-close') ||
@@ -79,9 +92,14 @@
       const finish = () => {
         modal.classList.remove('is-closing');
         modal.classList.add('hidden');
+        modal.removeAttribute('inert');
         modal.setAttribute('aria-hidden', 'true');
+        const index = openModals.indexOf(modal);
+        if (index !== -1) openModals.splice(index, 1);
+        syncActiveModal();
         state.opener = null;
-        if (opener?.isConnected) opener.focus();
+        if (opener?.isConnected && (!openModals.length || openModals.at(-1).contains(opener)))
+          opener.focus();
       };
       if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         finish();

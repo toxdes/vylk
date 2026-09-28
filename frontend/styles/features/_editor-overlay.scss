@@ -159,6 +159,10 @@
   scrollbar-width: thin;
 }
 
+#editor:not(.zen-mode) .fmt-bar button:focus-visible {
+  outline-offset: -2px;
+}
+
 #editor:not(.zen-mode) .panel-editor .fmt-bar:not(.hidden) ~ .editor-source-wrap #note-content {
   padding-top: var(--editor-writing-inset);
 }
@@ -204,6 +208,8 @@
 
   #editor:not(.zen-mode) .panel-editor .fmt-bar {
     padding-right: 0.4rem;
+    padding-bottom: 0.5rem;
+    scrollbar-gutter: stable;
   }
 
   #editor:not(.zen-mode) .editor-panels:not(.panels-single) .panel-preview .preview,

@@ -66,6 +66,13 @@ func Main() {
 	if err != nil {
 		log.Fatalf("read instance identity: %v", err)
 	}
+	vaultConfig, err := store.GetVaultConfig(db)
+	if err != nil {
+		log.Fatalf("vault config: %v", err)
+	}
+	if err := validateRuntimeCredentials(config, vaultConfig); err != nil {
+		log.Fatal(err)
+	}
 
 	sessions := auth.NewSessionStore(db)
 
@@ -74,9 +81,12 @@ func Main() {
 		log.Fatalf("rate limiter: %v", err)
 	}
 
-	encryption, err := notecrypt.New(notesDir, config.EncryptionPassword, config.EncryptionKey)
-	if err != nil {
-		log.Fatalf("encryption: %v", err)
+	var encryption *notecrypt.Config
+	if vaultConfig == nil || vaultConfig.Mode == store.VaultPreparing {
+		encryption, err = notecrypt.New(notesDir, config.EncryptionPassword, config.EncryptionKey)
+		if err != nil {
+			log.Fatalf("encryption: %v", err)
+		}
 	}
 	if encryption != nil {
 		if encryption.LegacyWrite() {
@@ -87,20 +97,30 @@ func Main() {
 	}
 
 	app := &app{
-		db:         db,
-		instanceID: instanceID,
-		sessions:   sessions,
-		password:   config.Password,
-		notesDir:   notesDir,
-		encryption: encryption,
-		noteCache:  notepkg.NewCache(),
-		rl:         rl,
-		events:     event.NewBroker(),
+		db:                     db,
+		instanceID:             instanceID,
+		sessions:               sessions,
+		password:               config.Password,
+		requireStrongPasswords: config.RequireStrongPasswords,
+		notesDir:               notesDir,
+		encryption:             encryption,
+		noteCache:              notepkg.NewCache(),
+		rl:                     rl,
+		events:                 event.NewBroker(),
 	}
 	if err := app.recoverFileOperations(); err != nil {
 		log.Fatalf("recover pending file operations: %v", err)
 	}
-	if config.MigrateEncryption {
+	if err := app.resumeVaultCleanup(); err != nil {
+		log.Fatalf("resume encrypted vault cleanup: %v", err)
+	}
+	if err := app.recoverVaultFileOperations(); err != nil {
+		log.Fatalf("recover encrypted file operations: %v", err)
+	}
+	if err := app.cleanupVaultArchives(time.Now().UTC()); err != nil {
+		log.Printf("clean expired vault archives: %v", err)
+	}
+	if config.MigrateEncryption && (vaultConfig == nil || vaultConfig.Mode == store.VaultPreparing) {
 		count, err := migrateEncryption(app)
 		if err != nil {
 			log.Fatalf("encryption migration: %v", err)
@@ -109,6 +129,7 @@ func Main() {
 	}
 
 	go sessions.CleanupLoop()
+	go app.vaultArchiveCleanupLoop()
 
 	if config.ArtificialDelay > 0 {
 		log.Printf("artificial request delay enabled: %s per request", config.ArtificialDelay)

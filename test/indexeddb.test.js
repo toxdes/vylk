@@ -46,4 +46,25 @@ describe('IndexedDB transaction helpers', () => {
       ),
     ).rejects.toBeInstanceOf(Error);
   });
+
+  test('rolls back queued writes when work fails', async () => {
+    await expect(
+      globalThis.VylkIndexedDB.withTransaction(
+        async () => database,
+        ['records'],
+        'readwrite',
+        async ({records}) => {
+          await globalThis.VylkIndexedDB.requestValue(records.put({name: 'unsafe'}, 'key'));
+          throw new Error('verification failed');
+        },
+      ),
+    ).rejects.toThrow('verification failed');
+    const record = await globalThis.VylkIndexedDB.withTransaction(
+      async () => database,
+      ['records'],
+      'readonly',
+      ({records}) => globalThis.VylkIndexedDB.requestValue(records.get('key')),
+    );
+    expect(record).toBeUndefined();
+  });
 });

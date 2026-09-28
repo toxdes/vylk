@@ -57,6 +57,58 @@ var Migrations = []Migration{
 	{Version: 16, Up: MigrateRepairSyncOperationStats},
 	{Version: 17, Up: migrateNotePinningSchema},
 	{Version: 18, Up: migrateInstanceMetadataSchema},
+	{Version: 19, Up: migrateVaultSchema},
+}
+
+func migrateVaultSchema(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		CREATE TABLE vault_config (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			mode TEXT NOT NULL CHECK (mode IN ('preparing', 'cleaning', 'encrypted')),
+			vault_id TEXT NOT NULL,
+			kdf_salt TEXT NOT NULL,
+			kdf_memory_kib INTEGER NOT NULL,
+			kdf_iterations INTEGER NOT NULL,
+			auth_hash BLOB NOT NULL,
+			recovery_hash BLOB NOT NULL,
+			wrapped_key TEXT NOT NULL,
+			wrapped_recovery_key TEXT NOT NULL,
+			epoch INTEGER NOT NULL,
+			backup_path TEXT NOT NULL DEFAULT '',
+			backup_ready INTEGER NOT NULL DEFAULT 0
+		);
+		CREATE TABLE vault_notes (
+			id TEXT PRIMARY KEY,
+			summary TEXT NOT NULL,
+			filename TEXT NOT NULL,
+			pinned INTEGER NOT NULL DEFAULT 0,
+			pin_order INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			revision INTEGER NOT NULL,
+			epoch INTEGER NOT NULL
+		);
+		CREATE INDEX idx_vault_notes_updated ON vault_notes(updated_at DESC, id DESC);
+		CREATE TABLE vault_staged_notes (
+			id TEXT PRIMARY KEY,
+			summary TEXT NOT NULL,
+			filename TEXT NOT NULL,
+			body_hash TEXT NOT NULL,
+			source_revision INTEGER NOT NULL,
+			epoch INTEGER NOT NULL,
+			verified INTEGER NOT NULL DEFAULT 0
+		);
+		CREATE TABLE vault_file_operations (
+			id TEXT PRIMARY KEY,
+			action TEXT NOT NULL,
+			note_id TEXT NOT NULL,
+			stage_name TEXT NOT NULL,
+			target_name TEXT NOT NULL,
+			expected_hash TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);
+	`)
+	return err
 }
 
 func InitDB(db *sql.DB, databasePaths ...string) error {

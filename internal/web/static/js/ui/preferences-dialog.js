@@ -3,11 +3,14 @@
 
   function create({
     appearance,
+    beforeOpen,
     close,
+    closeEncryptionDetail,
     closeModal,
     document,
     getPreferences,
     openModal,
+    openEncryptionDetail,
     renderShortcuts,
     restoreDefaults,
     save,
@@ -15,6 +18,8 @@
   }) {
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => document.querySelectorAll(selector);
+    const vaultDetails = new Set(['setup', 'passphrase', 'recovery']);
+    let suppressSectionRoute = false;
 
     function updateManualSaveControl() {
       const preferences = getPreferences();
@@ -53,10 +58,44 @@
       renderShortcuts();
     }
 
-    function open({route = 'push'} = {}) {
+    function selectSection(section) {
+      const tab = $(`#prefs-tab-${section}`);
+      if (tab) tab.click();
+    }
+
+    function selectDetail(detail, {push = false, updateRoute = true} = {}) {
+      if (!vaultDetails.has(detail)) detail = null;
+      if (updateRoute) setRoute({section: 'encryption', detail, push, replace: !push});
+      if (detail) openEncryptionDetail(detail);
+      else closeEncryptionDetail();
+    }
+
+    function open({route = 'push', section, detail = null} = {}) {
+      if (route === 'push') {
+        const ready = beforeOpen();
+        if (ready?.then) {
+          return ready.then((allowed) => {
+            if (allowed) show({route, section, detail});
+          });
+        }
+        if (!ready) return;
+      }
+      show({route, section, detail});
+    }
+
+    function show({route, section, detail}) {
       render();
-      if (route === 'push') setRoute();
-      openModal($('#prefs-modal'));
+      section ||= 'appearance';
+      if (route === 'push') setRoute({section, detail});
+      else if (route === 'replace') setRoute({section, detail, replace: true});
+      const modal = $('#prefs-modal');
+      const wasHidden = modal.classList.contains('hidden');
+      if (wasHidden) openModal(modal);
+      suppressSectionRoute = true;
+      selectSection(section);
+      suppressSectionRoute = false;
+      if (section === 'encryption') selectDetail(detail, {updateRoute: false});
+      if (wasHidden && !detail) $('#prefs-title').focus({preventScroll: true});
     }
 
     function closeRestoreDefaults() {
@@ -138,8 +177,12 @@
           const active = panel.dataset.prefPanel === section;
           panel.classList.toggle('active', active);
           panel.hidden = !active;
+          if (active && section === 'encryption') panel.scrollTop = 0;
         });
         $('#prefs-title').textContent = button.textContent;
+        if (!suppressSectionRoute) closeEncryptionDetail();
+        if (!suppressSectionRoute) setRoute({section, detail: null, replace: true});
+        button.scrollIntoView?.({block: 'nearest', inline: 'center'});
       }),
     );
     $$('.prefs-nav').forEach((button) =>
@@ -159,7 +202,15 @@
       }),
     );
 
-    return {open, updateManualSaveControl};
+    $('#vault-open-setup').addEventListener('click', () => selectDetail('setup', {push: true}));
+    $('#vault-open-passphrase').addEventListener('click', () =>
+      selectDetail('passphrase', {push: true}),
+    );
+    $('#vault-open-recovery').addEventListener('click', () =>
+      selectDetail('recovery', {push: true}),
+    );
+
+    return {open, selectDetail, selectSection, updateManualSaveControl};
   }
 
   global.VylkPreferencesDialog = {create};
