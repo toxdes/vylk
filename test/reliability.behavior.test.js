@@ -590,12 +590,16 @@ describe('logout storage cleanup', () => {
     const first = track(await createApp());
     const originalIndexedDB = first.window.indexedDB;
     let deleteRequest;
+    let blocked = false;
     Object.defineProperty(first.window, 'indexedDB', {
       configurable: true,
       value: {
         deleteDatabase: () => {
           deleteRequest = {};
-          setTimeout(() => deleteRequest.onblocked?.(), 0);
+          queueMicrotask(() => {
+            blocked = true;
+            deleteRequest.onblocked?.();
+          });
           return deleteRequest;
         },
       },
@@ -605,7 +609,7 @@ describe('logout storage cleanup', () => {
     const cleanup = first.hooks.clearOfflineData().then(() => {
       completed = true;
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await vi.waitFor(() => expect(blocked).toBe(true));
     expect(completed).toBe(false);
 
     deleteRequest.onsuccess();

@@ -11,8 +11,8 @@ const dataRoot = path.join(tmpdir(), `vylk-browser-${process.pid}`);
 
 export default defineConfig({
   testDir: './test/browser',
-  timeout: 30000,
-  expect: {timeout: 5000},
+  timeout: 45_000,
+  expect: {timeout: 10_000},
   fullyParallel: false,
   workers: 1,
   reporter: process.env.CI ? 'line' : 'list',

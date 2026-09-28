@@ -230,7 +230,6 @@ describe('keyboard shortcuts', () => {
         app.window.document.querySelector('[data-shortcut-command="editor.title"]').textContent,
       ).toBe('Not set'),
     );
-    await new Promise((resolve) => app.window.setTimeout(resolve, 200));
   });
 
   test('records direct shortcuts or Prefix sequences for every command', async () => {
@@ -278,7 +277,6 @@ describe('keyboard shortcuts', () => {
         {key: 't', modifiers: []},
       ]),
     );
-    await new Promise((resolve) => app.window.setTimeout(resolve, 200));
   });
 
   test('updates every sequence command when the prefix changes', async () => {
@@ -309,7 +307,6 @@ describe('keyboard shortcuts', () => {
       {key: '/', modifiers: ['Mod']},
       {key: 't', modifiers: []},
     ]);
-    await new Promise((resolve) => app.window.setTimeout(resolve, 200));
   });
 });
 

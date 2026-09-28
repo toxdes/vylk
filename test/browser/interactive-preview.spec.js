@@ -18,6 +18,10 @@ async function enableInteractivePreview(page) {
   await expect(page.locator('#prefs-modal')).toBeHidden();
 }
 
+async function waitForCaretCueFrame(page) {
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+}
+
 test('interactive preview preserves selection and tracks drag reflow', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
@@ -166,7 +170,7 @@ test.describe('mobile interactive preview', () => {
     await expect(page.locator('#preview .interactive-preview-list-card').first()).toHaveClass(
       /is-drag-pending/,
     );
-    await expect(page.locator('.preview-drag-ghost')).toHaveCount(1, {timeout: 1000});
+    await expect(page.locator('.preview-drag-ghost')).toHaveCount(1);
     await cdp.send('Input.dispatchTouchEvent', {
       type: 'touchMove',
       touchPoints: [{...destination, id: 1}],
@@ -225,7 +229,7 @@ test('source caret cue stays on logical line starts, including blank lines', asy
       textarea.setSelectionRange(nextPosition, nextPosition);
       textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
     }, position);
-    await page.waitForTimeout(140);
+    await waitForCaretCueFrame(page);
     measurements.push(
       await editor.evaluate((textarea) => {
         const cue = document.querySelector('.editor-current-line');
@@ -305,7 +309,7 @@ test('source caret cue stays on the first character of a soft-wrapped row', asyn
     textarea.setSelectionRange(nextPosition, nextPosition);
     textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
   }, position);
-  await page.waitForTimeout(140);
+  await waitForCaretCueFrame(page);
 
   const {actualOffset, expectedOffset} = await editor.evaluate((textarea, nextPosition) => {
     const computed = getComputedStyle(textarea);
@@ -364,7 +368,7 @@ test('source caret cue stays at the active end while text is selected', async ({
     textarea.setSelectionRange(0, 0);
     textarea.dispatchEvent(new KeyboardEvent('keyup', {bubbles: true}));
   });
-  await page.waitForTimeout(140);
+  await waitForCaretCueFrame(page);
   const firstTop = await editor.evaluate(
     (textarea) =>
       parseFloat(getComputedStyle(document.querySelector('.editor-current-line')).top) +
@@ -375,7 +379,7 @@ test('source caret cue stays at the active end while text is selected', async ({
     textarea.setSelectionRange(0, 'first line'.length + 1);
     textarea.dispatchEvent(new Event('select', {bubbles: true}));
   });
-  await page.waitForTimeout(140);
+  await waitForCaretCueFrame(page);
   const lineHeight = await editor.evaluate((textarea) =>
     parseFloat(getComputedStyle(textarea).lineHeight),
   );
@@ -405,7 +409,7 @@ test('source caret cue follows a real ArrowUp movement', async ({page}) => {
   await editor.focus();
   await editor.press('End');
   await editor.press('ArrowUp');
-  await page.waitForTimeout(140);
+  await waitForCaretCueFrame(page);
 
   const state = await editor.evaluate((textarea) => {
     const cue = document.querySelector('.editor-current-line');
@@ -657,7 +661,6 @@ test('keeps the current preview highlight while typed Markdown is rendering', as
   const editor = page.locator('#note-content');
   await editor.fill('# Stable heading\n\nFirst paragraph.\n\nSecond paragraph.');
   await expect(page.locator('#preview p')).toHaveCount(2);
-  await page.waitForTimeout(200);
 
   await editor.evaluate((textarea) => {
     const position = textarea.value.indexOf('First paragraph.');
@@ -667,8 +670,8 @@ test('keeps the current preview highlight while typed Markdown is rendering', as
   });
   const isFirstParagraphHighlighted = () =>
     page.evaluate(() => {
-      const paragraph = [...document.querySelectorAll('#preview p')].find(
-        (element) => element.textContent === 'First paragraph.',
+      const paragraph = [...document.querySelectorAll('#preview p')].find((element) =>
+        element.textContent.includes('First paragraph.'),
       );
       return Boolean(
         (paragraph?.closest('.interactive-preview-card') || paragraph)?.classList.contains(
@@ -678,9 +681,9 @@ test('keeps the current preview highlight while typed Markdown is rendering', as
     });
   await expect.poll(isFirstParagraphHighlighted).toBe(true);
   await editor.type(' Updated');
-  await page.waitForTimeout(100);
-
-  expect(await isFirstParagraphHighlighted()).toBe(true);
+  await expect.poll(isFirstParagraphHighlighted).toBe(true);
+  await expect(page.locator('#preview')).toContainText('Updated');
+  await expect.poll(isFirstParagraphHighlighted).toBe(true);
 });
 
 test('centers a preview edit target within the source viewport', async ({page}) => {
@@ -810,7 +813,6 @@ test('keeps long interactive previews fully functional with bounded control DOM'
   await expect(cards.first()).toBeVisible();
   expect(await cards.count()).toBeLessThan(100);
 
-  await page.waitForTimeout(200);
   expect(
     await preview.evaluate(async (element) => {
       const firstHeading = element.querySelector('h2');

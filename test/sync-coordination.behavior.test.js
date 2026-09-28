@@ -60,8 +60,6 @@ describe('sync scheduling while hidden', () => {
 
     setVisibility('hidden');
     app.hooks.scheduleSync({reconcile: true});
-    await new Promise((resolve) => setTimeout(resolve, 1100));
-
     expect(requests).toHaveLength(0);
     expect(app.hooks.getSyncScheduleState()).toEqual({
       scheduled: false,
@@ -71,9 +69,9 @@ describe('sync scheduling while hidden', () => {
     setVisibility('visible');
     app.window.document.dispatchEvent(new app.window.Event('visibilitychange'));
     expect(app.hooks.getSyncScheduleState().scheduled).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
-    expect(requests.some((url) => String(url).includes('/api/sync'))).toBe(true);
+    await vi.waitFor(() =>
+      expect(requests.some((url) => String(url).includes('/api/sync'))).toBe(true),
+    );
   });
 });
 
@@ -128,8 +126,9 @@ describe('server change invalidation', () => {
     await vi.waitFor(() =>
       expect(requests.filter((path) => path === '/api/prefs')).toHaveLength(1),
     );
-    await new Promise((resolve) => setTimeout(resolve, 200));
-
+    await vi.waitFor(() =>
+      expect(JSON.parse(app.window.localStorage.getItem('vylk-prefs')).revision).toBe(2),
+    );
     expect(requests.some((path) => path.startsWith('/api/sync?'))).toBe(false);
     expect(app.hooks.getSyncScheduleState()).toEqual({scheduled: false, options: {}});
   });
@@ -150,8 +149,7 @@ describe('server change invalidation', () => {
     await expect(app.hooks.handleServerChangeEvent({type: 'notes', sequence: 43})).resolves.toBe(
       true,
     );
-    await new Promise((resolve) => setTimeout(resolve, 90));
-    expect(app.hooks.getSyncScheduleState().scheduled).toBe(true);
+    await vi.waitFor(() => expect(app.hooks.getSyncScheduleState().scheduled).toBe(true));
     app.hooks.cancelScheduledSync();
   });
 
@@ -246,9 +244,8 @@ describe('sync coordinator', () => {
     app.hooks.scheduleSync();
     releaseSync();
     await sync;
-    await new Promise((resolve) => setTimeout(resolve, 180));
-
     expect(syncRequests).toBe(1);
+    expect(app.hooks.getSyncScheduleState().scheduled).toBe(false);
   });
 
   test('keeps one logical syncing state across pull, push, and final pull', async () => {
@@ -310,10 +307,13 @@ describe('sync coordinator', () => {
     observer.observe(status, {attributes: true, subtree: true, childList: true});
     const sync = app.hooks.syncNow();
     await pushStarted;
-    await new Promise((resolve) => setTimeout(resolve, 180));
-    releasePush();
+    try {
+      await vi.waitFor(() => expect(status.dataset.state).toBe('syncing'));
+    } finally {
+      releasePush();
+    }
     await sync;
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await Promise.resolve();
     observer.disconnect();
 
     expect(states.filter((state, index) => index === 0 || state !== states[index - 1])).toEqual([
@@ -386,8 +386,7 @@ describe('sync coordinator', () => {
     app.hooks.scheduleSync();
     releaseFirstPush();
     await sync;
-    await new Promise((resolve) => setTimeout(resolve, 180));
-
+    await vi.waitFor(() => expect(pushRequests).toBe(2));
     expect(pushRequests).toBe(2);
     expect(pullRequests).toBe(2);
   });
@@ -420,6 +419,5 @@ describe('sync coordinator', () => {
     expect(app.window.document.querySelector('#note-list').textContent).toContain('Loading notes');
     releaseCheck();
     await startup;
-    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 });

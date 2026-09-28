@@ -34,9 +34,11 @@
   }) {
     let restoringHistoryRoute = false;
     let backNavigationInFlight = false;
+    let routeRestoreGeneration = 0;
     const pendingHistoryRestoreResolvers = [];
 
-    async function openNote(id, {route = 'push'} = {}) {
+    async function openNote(id, {route = 'push', isCurrent = () => true} = {}) {
+      if (route !== 'none') routeRestoreGeneration++;
       noteSaver.cancelScheduled();
       cancelPreviewDelay();
       if (
@@ -45,15 +47,15 @@
         (isDirty() || noteSaver.hasPendingSave())
       ) {
         const saved = await saveCurrentNote(false);
-        if (saved === false) return false;
+        if (saved === false || !isCurrent()) return false;
       }
       const data = await getLocalNote(id);
-      if (!data) return false;
+      if (!data || !isCurrent()) return false;
       showNoteInEditor(data);
       if (route === 'push') routes.setNote(id);
       else if (route === 'replace') routes.setNote(id, {replace: true});
-      await showConflictResolverFor(id);
-      return true;
+      await showConflictResolverFor(id, isCurrent);
+      return isCurrent();
     }
 
     function normalizeWikiTitle(title) {
@@ -77,11 +79,14 @@
       scheduleSync();
     }
 
-    async function restoreNote(noteID, fetchRemote) {
+    async function restoreNote(noteID, fetchRemote, isCurrent) {
       if (!noteID) return 'missing';
-      if (await getLocalNote(noteID)) {
-        await openNote(noteID, {route: 'none'});
-        return 'loaded';
+      if (!isCurrent()) return 'stale';
+      const localNote = await getLocalNote(noteID);
+      if (!isCurrent()) return 'stale';
+      if (localNote) {
+        const opened = await openNote(noteID, {route: 'none', isCurrent});
+        return opened && isCurrent() ? 'loaded' : 'stale';
       }
       if (
         !fetchRemote ||
@@ -95,6 +100,7 @@
           syncRequest: true,
           throwOnError: true,
         });
+        if (!isCurrent()) return 'stale';
         await putLocalNote({
           ...remote,
           pending: false,
@@ -103,14 +109,16 @@
           base_title: null,
           base_tags: null,
         });
-        await openNote(noteID, {route: 'none'});
-        return 'loaded';
+        const opened = await openNote(noteID, {route: 'none', isCurrent});
+        return opened && isCurrent() ? 'loaded' : 'stale';
       } catch (error) {
         return error?.responseStatus === 404 ? 'missing' : 'failed';
       }
     }
 
     async function restoreRoute({fetchRemote = false} = {}) {
+      const generation = ++routeRestoreGeneration;
+      const isCurrent = () => generation === routeRestoreGeneration;
       if (
         !routes.isPreferences() &&
         !document.querySelector('#prefs-modal').classList.contains('hidden')
@@ -130,22 +138,25 @@
       if (routes.isPreferences()) {
         const returnRoute = window.history.state?.returnRoute;
         const noteID = returnRoute?.screen === 'note' ? returnRoute.noteID : null;
-        const result = await restoreNote(noteID, fetchRemote);
+        const result = await restoreNote(noteID, fetchRemote, isCurrent);
+        if (!isCurrent() || result === 'stale') return;
         if (result === 'loaded') {
-          openPreferences({route: 'none'});
+          if (isCurrent()) openPreferences({route: 'none'});
           return;
         }
         if (result === 'failed') return;
         if (noteID) routes.setDashboard({replace: true});
         clearCurrentNote();
         await loadDashboard({sync: false});
-        if (!noteID) openPreferences({route: 'none'});
+        if (isCurrent() && !noteID) openPreferences({route: 'none'});
         return;
       }
 
       const noteID = routes.noteID();
       if (isEditorVisible() && isDirty()) await saveCurrentNote(false);
-      const result = await restoreNote(noteID, fetchRemote);
+      if (!isCurrent()) return;
+      const result = await restoreNote(noteID, fetchRemote, isCurrent);
+      if (!isCurrent() || result === 'stale') return;
       if (result === 'loaded' || result === 'failed') return;
       if (noteID) {
         routes.setDashboard({replace: true});
@@ -156,16 +167,29 @@
     }
 
     async function restoreCachedStartup() {
+      const generation = ++routeRestoreGeneration;
+      const isCurrent = () => generation === routeRestoreGeneration;
       const noteID = routes.noteID();
-      if (noteID && (await getLocalNote(noteID))) {
-        await openNote(noteID, {route: 'none'});
-        return;
+      if (noteID) {
+        const note = await getLocalNote(noteID);
+        if (!isCurrent()) return;
+        if (note) {
+          await openNote(noteID, {route: 'none', isCurrent});
+          return;
+        }
       }
+      if (!isCurrent()) return;
       setDashboardHydrationState((await getLocalNotes()).length ? 'ready' : 'loading');
       await loadDashboard({sync: false});
+      if (!isCurrent()) return;
       const conflicts = await unresolvedConflictIDs();
       for (const conflictID of conflicts) {
-        if ((await getLocalNote(conflictID)) && (await showConflictResolverFor(conflictID))) break;
+        if (!isCurrent()) return;
+        if (
+          (await getLocalNote(conflictID)) &&
+          (await showConflictResolverFor(conflictID, isCurrent))
+        )
+          break;
       }
     }
 
@@ -177,7 +201,10 @@
         .catch((error) => console.warn('could not inspect pending sync operations', error));
     }
 
-    document.querySelector('#new-note-btn').addEventListener('click', () => startNewNote());
+    document.querySelector('#new-note-btn').addEventListener('click', () => {
+      routeRestoreGeneration++;
+      startNewNote();
+    });
     document.querySelector('#back-btn').addEventListener('click', async () => {
       if (backNavigationInFlight) return;
       backNavigationInFlight = true;

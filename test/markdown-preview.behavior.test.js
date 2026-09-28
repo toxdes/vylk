@@ -453,7 +453,6 @@ describe('markdown preview policy', () => {
       sourceLocked: false,
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 240));
     await vi.waitFor(() =>
       expect(app.hooks.getInteractivePreviewState()).toMatchObject({
         pending: true,
