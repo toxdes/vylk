@@ -128,7 +128,10 @@ Create a `release/vX.Y.Z` branch from the current `main`, update `VERSION`, and
 open a pull request. After the pull request is squash-merged, create and push
 `vX.Y.Z` on the resulting `main` commit. The release workflow verifies that the
 tag is a strict `vX.Y.Z` tag, that its `VERSION` matches, and that the commit is
-reachable from `main` before doing anything else.
+reachable from `main` before doing anything else. It also rejects versions
+older than the highest stable tag on `main`. To deliberately redeploy an older
+version, run the workflow manually from `main`, enter its stable tag, and type
+`ROLLBACK <tag>` in the confirmation field.
 
 The workflow creates the GitHub Release without build artifacts. It uses the
 latest earlier stable `vX.Y.Z` tag as the previous-tag boundary for GitHub's
@@ -147,7 +150,10 @@ are secret URLs and are validated as HTTPS before any request; they are not
 printed in workflow logs. A hook receives release metadata as JSON and
 succeeds on any `2xx` response. Failed hooks retry five times at five-minute
 intervals, independently of the other hooks, and the workflow fails if any
-hook remains unsuccessful.
+hook remains unsuccessful. Every delivery includes the same `Idempotency-Key`
+header and `idempotency_key` JSON field for a given tag and commit, including
+retries and workflow reruns. Hook receivers must deduplicate on this key to
+avoid repeating side effects when a request succeeds but its response is lost.
 
 The release workflow does not invoke Yesb. Yesb remains responsible for
 building and publishing release artifacts separately.

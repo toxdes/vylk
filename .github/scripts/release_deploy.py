@@ -105,17 +105,33 @@ def select_previous_tag(current_tag: str, candidates: Iterable[str]) -> str | No
     return max(previous, default=(None, None))[1]
 
 
-def previous_release_tag(commit: str) -> str | None:
-    tags = run_git(
-        "for-each-ref",
-        f"--merged={commit}",
-        "--format=%(refname:strip=2)",
-        "refs/tags/v*",
-    ).splitlines()
-    return select_previous_tag(os.environ["GITHUB_REF_NAME"], tags)
+def latest_stable_tag(candidates: Iterable[str]) -> str | None:
+    stable = []
+    for candidate in candidates:
+        try:
+            stable.append((parse_release_tag(candidate), candidate))
+        except ReleaseError:
+            continue
+    return max(stable, default=(None, None))[1]
 
 
-def validate_tag(tag: str, commit: str) -> tuple[str, str | None]:
+def ensure_not_older_than_latest(tag: str, candidates: Iterable[str]) -> None:
+    latest = latest_stable_tag(candidates)
+    if latest and parse_release_tag(tag) < parse_release_tag(latest):
+        raise ReleaseError(
+            f"tag {tag} is older than stable tag {latest}; "
+            "use the deliberate rollback workflow to redeploy an older version"
+        )
+
+
+def previous_release_tag(tag: str, commit: str) -> str | None:
+    tags = run_git("tag", "--merged", commit, "--list", "v*").splitlines()
+    return select_previous_tag(tag, tags)
+
+
+def validate_tag(
+    tag: str, commit: str, *, allow_rollback: bool = False
+) -> tuple[str, str | None]:
     version = parse_release_tag(tag)
     try:
         run_git("merge-base", "--is-ancestor", commit, "origin/main")
@@ -128,7 +144,10 @@ def validate_tag(tag: str, commit: str) -> tuple[str, str | None]:
         raise ReleaseError(
             f"tag {tag} expects VERSION {expected_version}, found {committed_version}"
         )
-    return committed_version, previous_release_tag(commit)
+    if not allow_rollback:
+        main_tags = run_git("tag", "--merged", "origin/main", "--list", "v*")
+        ensure_not_older_than_latest(tag, main_tags.splitlines())
+    return committed_version, previous_release_tag(tag, commit)
 
 
 class GitHubAPI:
@@ -195,7 +214,7 @@ class GitHubAPI:
                 "draft": False,
                 "prerelease": False,
                 "generate_release_notes": False,
-                "make_latest": "true",
+                "make_latest": "legacy",
             },
         )
         if status != 201:
@@ -241,6 +260,9 @@ def post_json(url: str, payload: dict) -> int:
         method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json"},
     )
+    idempotency_key = payload.get("idempotency_key")
+    if idempotency_key:
+        request.add_header("Idempotency-Key", idempotency_key)
     try:
         opener = build_opener(HTTPSPostRedirectHandler())
         with opener.open(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
@@ -301,10 +323,37 @@ def dispatch_hooks(
         raise HookError("; ".join(sorted(failures)))
 
 
+def release_target(environment: dict[str, str]) -> tuple[str, str, bool]:
+    event_name = environment.get("GITHUB_EVENT_NAME", "push")
+    if event_name == "workflow_dispatch":
+        if environment.get("GITHUB_REF") != "refs/heads/main":
+            raise ReleaseError("manual rollback must be dispatched from main")
+        tag = environment.get("VYLK_ROLLBACK_TAG", "").strip()
+        confirmation = environment.get("VYLK_ROLLBACK_CONFIRMATION", "")
+        if not tag or confirmation != f"ROLLBACK {tag}":
+            raise ReleaseError(
+                "manual rollback requires the exact ROLLBACK <tag> confirmation"
+            )
+        parse_release_tag(tag)
+        commit = run_git("rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}")
+        return tag, commit, True
+    if event_name == "push":
+        return (
+            environment.get("GITHUB_REF_NAME", ""),
+            environment.get("GITHUB_SHA", ""),
+            False,
+        )
+    raise ReleaseError(f"unsupported release event {event_name}")
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    tag = os.environ.get("GITHUB_REF_NAME", "")
-    commit = os.environ.get("GITHUB_SHA", "")
+    try:
+        tag, commit, allow_rollback = release_target(os.environ)
+    except ReleaseError as error:
+        logger.error("%s", error)
+        return 1
+
     token = os.environ.get("GITHUB_TOKEN", "")
     repository = os.environ.get("GITHUB_REPOSITORY", "")
     if not tag or not commit or not token or not repository:
@@ -312,7 +361,7 @@ def main() -> int:
         return 1
 
     try:
-        version, previous_tag = validate_tag(tag, commit)
+        version, previous_tag = validate_tag(tag, commit, allow_rollback=allow_rollback)
         hooks = configured_hooks()
         if not hooks:
             raise ReleaseError("no VYLK_DEPLOY_HOOK_<NAME>_URL secrets are configured")
@@ -331,6 +380,7 @@ def main() -> int:
                 "commit": commit,
                 "repository": repository,
                 "ref": f"refs/tags/{tag}",
+                "idempotency_key": f"release:{tag}:{commit}",
             },
         )
     except (ReleaseError, HookError) as error:

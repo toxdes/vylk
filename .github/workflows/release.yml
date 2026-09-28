@@ -4,9 +4,19 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      rollback_tag:
+        description: Stable tag to redeploy (for example, v3.0.2)
+        required: true
+        type: string
+      confirm_rollback:
+        description: Type ROLLBACK followed by the exact tag to confirm
+        required: true
+        type: string
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ github.event.inputs.rollback_tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -19,6 +29,8 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       VYLK_DEPLOY_HOOK_LANDER_URL: ${{ secrets.VYLK_DEPLOY_HOOK_LANDER_URL }}
+      VYLK_ROLLBACK_TAG: ${{ github.event.inputs.rollback_tag }}
+      VYLK_ROLLBACK_CONFIRMATION: ${{ github.event.inputs.confirm_rollback }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
