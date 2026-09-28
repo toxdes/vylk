@@ -37,9 +37,10 @@
       const heading = /^#{1,6}\s/;
       if (heading.test(line.trim())) {
         const stripped = line.trim().replace(heading, '');
+        const insertion = line.trim().startsWith(markers[0]) ? stripped : markers[0] + stripped;
         return {
-          value: value.slice(0, lineStart) + stripped + value.slice(start),
-          cursor: lineStart + stripped.length,
+          value: value.slice(0, lineStart) + insertion + value.slice(start),
+          cursor: lineStart + insertion.length,
         };
       }
       insertion = markers[0] + line.trimStart();

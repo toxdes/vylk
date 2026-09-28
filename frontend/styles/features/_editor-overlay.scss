@@ -103,20 +103,19 @@
    duplicated information already conveyed by the split layout and are hidden. */
 #editor:not(.zen-mode) {
   --editor-content-gutter: 1.25rem;
-  --editor-overlay-inset: 0.55rem;
   --editor-control-size: 1.5rem;
-  --editor-writing-top: calc(var(--editor-overlay-inset) + var(--editor-control-size) + 0.55rem);
-  --editor-toolbar-height: 2.6rem;
-  --editor-toolbar-writing-inset: calc(var(--editor-toolbar-height) + 0.4rem);
+  --editor-action-row-height: 1.8125rem;
+  --editor-preview-measure: 72ch;
+  --editor-writing-inset: 0.75rem;
+  --editor-toolbar-height: 1.8125rem;
+  --editor-toolbar-writing-inset: calc(var(--editor-toolbar-height) + var(--editor-writing-inset));
 }
 
 #editor:not(.zen-mode) .panel-header {
-  position: absolute;
+  position: relative;
   z-index: 6;
-  top: var(--editor-overlay-inset);
-  right: var(--editor-content-gutter);
-  width: auto;
-  min-height: 0;
+  width: 100%;
+  min-height: var(--editor-action-row-height);
   padding: 0;
   border: 0;
   background: transparent;
@@ -128,34 +127,64 @@
 }
 
 #editor:not(.zen-mode) .panel-header-actions {
-  border-radius: var(--radius-micro);
+  align-self: flex-start;
+  margin-left: auto;
+  padding: 0.125rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  border-radius: 0 0 0 var(--radius);
   background: var(--card-bg);
   pointer-events: auto;
+}
+
+#editor:not(.zen-mode) .view-control,
+#editor:not(.zen-mode) .panel-header-actions #save-btn {
+  width: var(--editor-control-size);
+  height: var(--editor-control-size);
+  min-height: var(--editor-control-size);
+  border-radius: var(--radius-micro);
+}
+
+#editor:not(.zen-mode) .panel-header-actions #save-btn .icon {
+  width: 1rem;
+  height: 1rem;
 }
 
 #editor:not(.zen-mode) .panel-editor .fmt-bar {
   flex-wrap: nowrap;
   min-height: var(--editor-toolbar-height);
   overflow-x: auto;
-  padding-right: 9.25rem;
+  padding-right: 0.4rem;
   scrollbar-width: thin;
 }
 
 #editor:not(.zen-mode) .panel-editor .fmt-bar:not(.hidden) ~ .editor-source-wrap #note-content {
-  padding-top: 0.4rem;
+  padding-top: var(--editor-writing-inset);
 }
 
 #editor:not(.zen-mode) .panel-editor .fmt-bar.hidden ~ .editor-source-wrap #note-content {
-  padding-top: var(--editor-writing-top);
+  padding-top: var(--editor-writing-inset);
 }
 
 #editor:not(.zen-mode) .panel-preview .preview {
   padding-inline: var(--editor-content-gutter);
+  padding-top: var(--editor-writing-inset);
+}
+
+#editor:not(.zen-mode) .panels-single .panel-preview .preview > * {
+  max-width: min(100%, var(--editor-preview-measure));
+}
+
+#editor:not(.zen-mode) .editor-panels:not(.panels-single) .panel-preview .preview {
   padding-top: var(--editor-toolbar-writing-inset);
 }
 
-#editor:not(.zen-mode) .editor-panels:has(.fmt-bar.hidden) .panel-preview .preview {
-  padding-top: var(--editor-writing-top);
+#editor:not(.zen-mode)
+  .editor-panels:not(.panels-single):has(.fmt-bar.hidden)
+  .panel-preview
+  .preview {
+  padding-top: var(--editor-writing-inset);
 }
 
 /* Keep a forgiving, unobtrusive resize target between the two panels. */
@@ -164,14 +193,25 @@
 }
 
 @media (max-width: 640px) {
-  #editor:not(.zen-mode) .panel-header {
-    top: auto;
-    right: var(--editor-content-gutter);
-    bottom: 0.75rem;
+  #editor:not(.zen-mode) {
+    --editor-content-gutter: 1rem;
+    --editor-writing-inset: 0.75rem;
+  }
+
+  #editor:not(.zen-mode) .panel-preview .panel-header:not(:has(.view-controls, #save-btn)) {
+    display: none;
   }
 
   #editor:not(.zen-mode) .panel-editor .fmt-bar {
     padding-right: 0.4rem;
+  }
+
+  #editor:not(.zen-mode) .editor-panels:not(.panels-single) .panel-preview .preview,
+  #editor:not(.zen-mode)
+    .editor-panels:not(.panels-single):has(.fmt-bar.hidden)
+    .panel-preview
+    .preview {
+    padding-top: var(--editor-writing-inset);
   }
 
   #editor:not(.zen-mode) .panel-preview .preview {
