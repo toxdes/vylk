@@ -92,7 +92,7 @@ test('large documents keep editor input and preview transitions responsive', asy
       new InputEvent('input', {bubbles: true, data: null, inputType: 'insertText'}),
     );
   }, source);
-  await page.waitForTimeout(800);
+  await expect(editor).toHaveValue(source);
 
   const editorLatency = await editor.evaluate(async (textarea) => {
     textarea.focus({preventScroll: true});

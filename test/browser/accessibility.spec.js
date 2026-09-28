@@ -21,6 +21,9 @@ test('dashboard and preferences have no serious accessibility violations', async
   ).toEqual([]);
 
   await page.locator('#prefs-btn').click();
+  await page.locator('#prefs-modal .modal-body').evaluate(async (modal) => {
+    await Promise.all(modal.getAnimations().map((animation) => animation.finished));
+  });
   const preferencesResults = await new AxeBuilder({page}).include('#prefs-modal').analyze();
   expect(
     preferencesResults.violations.filter((violation) =>

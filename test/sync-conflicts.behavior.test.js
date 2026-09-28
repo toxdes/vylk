@@ -93,7 +93,7 @@ describe('F-01 editor save coordination', () => {
           );
           expect(app.window.location.pathname).toBe('/');
         },
-        {timeout: 250},
+        {timeout: 2000},
       );
     } catch (error) {
       navigationError = error;
@@ -777,13 +777,10 @@ describe('conflict deletion recovery', () => {
 
     await app.hooks.flushPendingChanges();
     app.window.document.querySelector('#conflict-copy').click();
-    let pending = [];
-    for (let attempt = 0; attempt < 20 && !pending.length; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      pending = await app.hooks.pendingOperations();
-    }
+    await vi.waitFor(async () => expect(await app.hooks.pendingOperations()).toHaveLength(1));
     app.hooks.cancelScheduledSync();
 
+    const pending = await app.hooks.pendingOperations();
     expect(pending).toHaveLength(1);
     expect(pending[0].note_id).not.toBe('note-a');
     expect(pending[0].note).toMatchObject({
@@ -799,15 +796,9 @@ describe('conflict deletion recovery', () => {
 
     await app.hooks.flushPendingChanges();
     app.window.document.querySelector('#conflict-save').click();
-    let localNote;
-    for (let attempt = 0; attempt < 20; attempt++) {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      localNote = await app.hooks.getLocalNote('note-a');
-      if (!localNote) break;
-    }
+    await vi.waitFor(async () => expect(await app.hooks.getLocalNote('note-a')).toBeUndefined());
     app.hooks.cancelScheduledSync();
 
-    expect(localNote).toBeUndefined();
     expect(await app.hooks.getOfflineState('unresolvedConflict:note-a')).toBeUndefined();
     expect(await app.hooks.pendingOperations()).toHaveLength(0);
   });

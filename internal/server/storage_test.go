@@ -393,7 +393,7 @@ func TestNoteContentReadWaitsForNoteWriteLock(t *testing.T) {
 		if read.err != nil || read.data.Revision != 1 || read.data.Content != "consistent content" {
 			t.Fatalf("note read = %#v, %v", read.data, read.err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("note content read did not complete after releasing the lock")
 	}
 }

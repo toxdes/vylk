@@ -30,7 +30,7 @@ async function openZenMode(page) {
   await expect(page.locator('#editor')).toHaveClass(/zen-mode/);
   await page.locator('#zen-source-editor').press('Control+End');
   await page.keyboard.type('!');
-  await page.waitForTimeout(80);
+  await expect(page.locator('#zen-source-editor')).toContainText('!');
 }
 
 async function replaceZenSource(page, source, lineIndex = 0) {
@@ -474,7 +474,6 @@ test('Zen mode keeps actionable connection feedback visible without showing rout
 }) => {
   await signIn(page);
   await openZenMode(page);
-  await page.waitForTimeout(1200);
 
   await page.evaluate(() => {
     document.querySelector('#editor > .offline-notice').classList.remove('hidden');

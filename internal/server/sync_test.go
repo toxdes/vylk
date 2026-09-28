@@ -184,7 +184,7 @@ func TestSyncPushPublishesOneCoalescedNoteEventPerBatch(t *testing.T) {
 		if event.Type != "notes" || event.Sequence != 2 {
 			t.Fatalf("batch event = %#v", event)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for batch event")
 	}
 	select {
@@ -936,7 +936,7 @@ func TestDirectPreferencePatchUsesRevisionAndPublishesChange(t *testing.T) {
 		if event.Type != "preferences" || event.Revision != 3 {
 			t.Fatalf("preference event = %#v", event)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for preference event")
 	}
 	updated, err := getPrefs(db)
