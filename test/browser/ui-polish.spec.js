@@ -118,9 +118,8 @@ test('editor offline notice follows the configured content rail', async ({page})
     const body = editor.querySelector('.editor-body');
     const bodyRect = body.getBoundingClientRect();
     const result = {
-      noticeContentLeft: notice
-        .querySelector('.offline-notice-message')
-        .getBoundingClientRect().left,
+      noticeContentLeft: notice.querySelector('.offline-notice-message').getBoundingClientRect()
+        .left,
       editorContentLeft: bodyRect.left + Number.parseFloat(getComputedStyle(body).paddingLeft),
     };
     notice.remove();
