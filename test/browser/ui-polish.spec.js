@@ -130,6 +130,8 @@ test('editor offline notice follows the configured content rail', async ({page})
   await page.setViewportSize({width: 1440, height: 960});
   await signIn(page);
   await page.locator('#new-note-btn').click();
+  await page.locator('#view-controls [data-panel="both"]').click();
+  await expect(page.locator('#editor-panels')).not.toHaveClass(/panels-single/);
 
   const readAlignment = () =>
     page.evaluate(() => {
