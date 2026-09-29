@@ -152,7 +152,7 @@ func (a *app) applyVaultSyncOperation(deviceID string, operation vaultSyncOperat
 	var fileOperation *vaultFileOperation
 	committed := false
 	defer func() {
-		if !committed && stageRelative != "" {
+		if stageRelative != "" && (!committed || fileOperation == nil) {
 			_ = os.Remove(filepath.Join(a.notesDir, stageRelative))
 		}
 	}()

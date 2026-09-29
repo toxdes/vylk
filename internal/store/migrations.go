@@ -61,8 +61,10 @@ var Migrations = []Migration{
 }
 
 func migrateVaultSchema(tx *sql.Tx) error {
-	_, err := tx.Exec(`
-		CREATE TABLE vault_config (
+	objects := []struct {
+		kind, name, ddl string
+	}{
+		{"table", "vault_config", `CREATE TABLE vault_config (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			mode TEXT NOT NULL CHECK (mode IN ('preparing', 'cleaning', 'encrypted')),
 			vault_id TEXT NOT NULL,
@@ -76,8 +78,8 @@ func migrateVaultSchema(tx *sql.Tx) error {
 			epoch INTEGER NOT NULL,
 			backup_path TEXT NOT NULL DEFAULT '',
 			backup_ready INTEGER NOT NULL DEFAULT 0
-		);
-		CREATE TABLE vault_notes (
+		)`},
+		{"table", "vault_notes", `CREATE TABLE vault_notes (
 			id TEXT PRIMARY KEY,
 			summary TEXT NOT NULL,
 			filename TEXT NOT NULL,
@@ -87,9 +89,9 @@ func migrateVaultSchema(tx *sql.Tx) error {
 			updated_at TEXT NOT NULL,
 			revision INTEGER NOT NULL,
 			epoch INTEGER NOT NULL
-		);
-		CREATE INDEX idx_vault_notes_updated ON vault_notes(updated_at DESC, id DESC);
-		CREATE TABLE vault_staged_notes (
+		)`},
+		{"index", "idx_vault_notes_updated", `CREATE INDEX idx_vault_notes_updated ON vault_notes(updated_at DESC, id DESC)`},
+		{"table", "vault_staged_notes", `CREATE TABLE vault_staged_notes (
 			id TEXT PRIMARY KEY,
 			summary TEXT NOT NULL,
 			filename TEXT NOT NULL,
@@ -97,8 +99,8 @@ func migrateVaultSchema(tx *sql.Tx) error {
 			source_revision INTEGER NOT NULL,
 			epoch INTEGER NOT NULL,
 			verified INTEGER NOT NULL DEFAULT 0
-		);
-		CREATE TABLE vault_file_operations (
+		)`},
+		{"table", "vault_file_operations", `CREATE TABLE vault_file_operations (
 			id TEXT PRIMARY KEY,
 			action TEXT NOT NULL,
 			note_id TEXT NOT NULL,
@@ -106,9 +108,52 @@ func migrateVaultSchema(tx *sql.Tx) error {
 			target_name TEXT NOT NULL,
 			expected_hash TEXT NOT NULL,
 			created_at TEXT NOT NULL
-		);
-	`)
-	return err
+		)`},
+	}
+
+	// The pre-merge E2EE branch used v18 for these exact tables, while main
+	// later used v18 for instance metadata. Preserve either history at v19.
+	existing := 0
+	for _, object := range objects {
+		var actual string
+		err := tx.QueryRow("SELECT sql FROM sqlite_master WHERE type = ? AND name = ?", object.kind, object.name).Scan(&actual)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if strings.Join(strings.Fields(actual), " ") != strings.Join(strings.Fields(object.ddl), " ") {
+			return fmt.Errorf("incompatible vault schema object %s", object.name)
+		}
+		existing++
+	}
+	if existing != 0 && existing != len(objects) {
+		return fmt.Errorf("incomplete vault schema: found %d of %d objects", existing, len(objects))
+	}
+	if existing == 0 {
+		for _, object := range objects {
+			if _, err := tx.Exec(object.ddl); err != nil {
+				return fmt.Errorf("create %s: %w", object.name, err)
+			}
+		}
+	}
+	var metadata string
+	err := tx.QueryRow("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'instance_metadata'").Scan(&metadata)
+	if errors.Is(err, sql.ErrNoRows) {
+		return migrateInstanceMetadataSchema(tx)
+	}
+	if err != nil {
+		return err
+	}
+	var instanceID string
+	if err := tx.QueryRow("SELECT instance_id FROM instance_metadata WHERE id = 1").Scan(&instanceID); err != nil {
+		return fmt.Errorf("instance metadata is incomplete: %w", err)
+	}
+	if instanceID == "" {
+		return errors.New("instance metadata is incomplete: empty instance ID")
+	}
+	return nil
 }
 
 func InitDB(db *sql.DB, databasePaths ...string) error {

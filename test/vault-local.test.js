@@ -52,6 +52,69 @@ afterEach(async () => {
 });
 
 describe('encrypted offline store', () => {
+  test('rejects a stale plaintext tab after another tab enables the local vault', async () => {
+    const databaseName = `vault-tabs-test-${crypto.randomUUID()}`;
+    databases.push(databaseName);
+    const migratingTab = makeStore(databaseName);
+    const staleTab = makeStore(databaseName);
+    try {
+      await staleTab.getOfflineDatabaseInfo();
+      await migratingTab.putLocalNote({id: 'existing', title: 'Before migration'});
+      await migratingTab.unlockVaultLocal(rootKey, vaultID, false, 1);
+
+      await expect(
+        staleTab.putLocalNote({id: 'late', title: 'Must not become plaintext'}),
+      ).rejects.toThrow(/local vault is locked|migration in progress/);
+      expect(await raw(databaseName, 'notes', 'late')).toBeUndefined();
+      expect(await migratingTab.getLocalNote('existing')).toMatchObject({
+        title: 'Before migration',
+      });
+    } finally {
+      await staleTab.closeOfflineDatabaseConnection();
+      await migratingTab.closeOfflineDatabaseConnection();
+    }
+  });
+
+  test('blocks other tabs during an interrupted conversion and resumes mixed records', async () => {
+    const databaseName = `vault-resume-tabs-${crypto.randomUUID()}`;
+    databases.push(databaseName);
+    const migratingTab = makeStore(databaseName);
+    const staleTab = makeStore(databaseName);
+    try {
+      await staleTab.getOfflineDatabaseInfo();
+      await migratingTab.putLocalNote({id: 'converted', title: 'Already encrypted'});
+      await migratingTab.putLocalNote({id: 'pending', title: 'Still plaintext'});
+      const db = await migratingTab.openOfflineDB();
+      const cryptor = await globalThis.VylkVaultLocal.fromRoot(rootKey, vaultID, {
+        allowPlaintext: true,
+      });
+      const transaction = db.transaction(['notes', 'state'], 'readwrite');
+      const complete = globalThis.VylkIndexedDB.transactionComplete(transaction);
+      transaction
+        .objectStore('notes')
+        .put(cryptor.encryptRecord('notes', {id: 'converted', title: 'Already encrypted'}));
+      transaction
+        .objectStore('state')
+        .put({key: 'vault-local-format', value: 2, vaultID, epoch: 1});
+      await complete;
+      cryptor.close();
+
+      await expect(staleTab.putLocalNote({id: 'late', title: 'Blocked'})).rejects.toThrow(
+        'migration in progress',
+      );
+      await migratingTab.unlockVaultLocal(rootKey, vaultID, false, 1);
+      expect(await migratingTab.getLocalNote('converted')).toMatchObject({
+        title: 'Already encrypted',
+      });
+      expect(await migratingTab.getLocalNote('pending')).toMatchObject({title: 'Still plaintext'});
+      expect(await raw(databaseName, 'notes', 'late')).toBeUndefined();
+      expect(await raw(databaseName, 'notes', 'pending')).toHaveProperty('vault_ciphertext');
+    } finally {
+      await staleTab.closeOfflineDatabaseConnection();
+      await migratingTab.closeOfflineDatabaseConnection();
+    }
+  });
+
   test('converts existing notes, queue and state and encrypts subsequent writes', async () => {
     const databaseName = `vault-test-${crypto.randomUUID()}`;
     databases.push(databaseName);
@@ -114,8 +177,8 @@ describe('encrypted offline store', () => {
 
     await store.discardVaultLocalData();
 
-    expect(await store.getAllLocalNotes()).toEqual([]);
-    expect(await store.pendingOperations()).toEqual([]);
+    await expect(store.getAllLocalNotes()).rejects.toThrow('migration in progress');
+    expect(await raw(databaseName, 'notes', 'old-note')).toBeUndefined();
     expect(await store.cachedVaultWrappers()).toBeNull();
     expect(await store.cachedVaultBootstrap()).toBeNull();
     await store.closeOfflineDatabaseConnection();
@@ -138,5 +201,27 @@ describe('encrypted offline store', () => {
 
     expect(await store.getAllLocalNotes()).toEqual([]);
     await store.closeOfflineDatabaseConnection();
+  });
+
+  test('keeps fresh bootstrap metadata while unlocking after a local vault reset', async () => {
+    const databaseName = `vault-reset-bootstrap-${crypto.randomUUID()}`;
+    databases.push(databaseName);
+    const store = makeStore(databaseName);
+    try {
+      await store.unlockVaultLocal(rootKey, vaultID, false, 1);
+      await store.discardVaultLocalData();
+      const nextVaultID = globalThis.VylkVaultCrypto.toBase64(
+        crypto.getRandomValues(new Uint8Array(16)),
+      );
+      const bootstrap = {vault_id: nextVaultID, epoch: 2};
+      await store.cacheVaultBootstrap(bootstrap);
+      const nextRoot = await globalThis.VylkVaultCrypto.importRoot(
+        crypto.getRandomValues(new Uint8Array(32)),
+      );
+      await store.unlockVaultLocal(nextRoot, nextVaultID, false, 2);
+      expect(await store.cachedVaultBootstrap()).toEqual(bootstrap);
+    } finally {
+      await store.closeOfflineDatabaseConnection();
+    }
   });
 });

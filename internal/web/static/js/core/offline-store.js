@@ -16,7 +16,8 @@
       root.VylkIndexedDB;
     let databasePromise;
     let localCryptor = null;
-    let encryptedOnDisk = false;
+    let localVaultID = null;
+    let localVaultEpoch = null;
     const databaseAPI = () => configuredIndexedDB || root.indexedDB;
 
     function openOfflineDB() {
@@ -63,8 +64,7 @@
                 .objectStore('state')
                 .get('vault-local-format'),
             );
-            encryptedOnDisk = marker?.value === 1;
-            if (!encryptedOnDisk && repairRequired) await repairOfflineQueue(request.result);
+            if (!marker?.value && repairRequired) await repairOfflineQueue(request.result);
             resolve(request.result);
           } catch (error) {
             request.result.close();
@@ -174,10 +174,32 @@
 
     async function withOfflineStore(names, mode, work) {
       try {
-        await openOfflineDB();
-        if (encryptedOnDisk && !localCryptor) throw new Error('local vault is locked');
-        return await withTransaction(openOfflineDB, names, mode, work, (stores, transaction) =>
-          localCryptor ? encryptedStores(stores, localCryptor, transaction) : stores,
+        // Include the format marker in the same transaction as every operation.
+        // IndexedDB then serializes it with migration's marker write, so a tab
+        // opened before cutover cannot write plaintext after conversion starts.
+        return await withTransaction(
+          openOfflineDB,
+          [...new Set([...names, 'state'])],
+          mode,
+          async (stores, transaction) => {
+            const marker = await requestValue(stores.state.get('vault-local-format'));
+            if (marker?.value === 2) throw new Error('local vault migration in progress');
+            if (marker?.value === 1) {
+              if (
+                !localCryptor ||
+                (marker.vaultID && marker.vaultID !== localVaultID) ||
+                (marker.epoch && marker.epoch !== localVaultEpoch)
+              ) {
+                throw new Error('local vault is locked');
+              }
+            } else if (localCryptor) {
+              throw new Error('local vault has changed');
+            }
+            const selected = Object.fromEntries(names.map((name) => [name, stores[name]]));
+            return work(
+              localCryptor ? encryptedStores(selected, localCryptor, transaction) : selected,
+            );
+          },
         );
       } catch (error) {
         if (
@@ -196,7 +218,7 @@
       const marker = await requestValue(
         db.transaction('state', 'readonly').objectStore('state').get('vault-local-format'),
       );
-      return marker?.value === 1;
+      return marker?.value === 1 || marker?.value === 2;
     }
 
     async function vaultLocalMetadata() {
@@ -244,48 +266,79 @@
       await complete;
     }
 
-    async function migrateVaultLocal(cryptor) {
-      const db = await openOfflineDB();
-      for (const name of ['notes', 'queue', 'state']) {
-        const transaction = db.transaction(name, 'readwrite');
-        const complete = transactionComplete(transaction);
-        await new Promise((resolve, reject) => {
-          const cursorRequest = transaction.objectStore(name).openCursor();
-          cursorRequest.onerror = () => reject(cursorRequest.error);
-          cursorRequest.onsuccess = () => {
-            const cursor = cursorRequest.result;
-            if (!cursor) {
-              resolve();
-              return;
-            }
-            try {
-              if (
-                !cursor.value.vault_ciphertext &&
-                !(name === 'state' && cursor.value.key === 'vault-local-format')
-              ) {
-                cursor.update(cryptor.encryptRecord(name, cursor.value));
-              }
-              cursor.continue();
-            } catch (error) {
-              transaction.abort();
-              reject(error);
-            }
-          };
-        });
-        await complete;
-      }
-      await withTransaction(openOfflineDB, ['state'], 'readwrite', (stores) =>
-        requestValue(stores.state.put({key: 'vault-local-format', value: 1})),
+    async function migrateVaultLocal(cryptor, vaultID, epoch) {
+      const matchesVault = (marker) => marker.vaultID === vaultID && marker.epoch === epoch;
+      const needsMigration = await withTransaction(
+        openOfflineDB,
+        ['state'],
+        'readwrite',
+        async (stores) => {
+          const marker = await requestValue(stores.state.get('vault-local-format'));
+          if (marker?.value === 1 && matchesVault(marker)) return false;
+          if (
+            marker?.value === 1 ||
+            (marker?.value === 2 && marker.vaultID && !matchesVault(marker))
+          )
+            throw new Error('local vault changed during migration');
+          await requestValue(
+            stores.state.put({key: 'vault-local-format', value: 2, vaultID, epoch}),
+          );
+          return true;
+        },
       );
-      encryptedOnDisk = true;
+      if (!needsMigration) return;
+      for (const name of ['notes', 'queue', 'state']) {
+        await withTransaction(
+          openOfflineDB,
+          [...new Set([name, 'state'])],
+          'readwrite',
+          async (stores) => {
+            const marker = await requestValue(stores.state.get('vault-local-format'));
+            if (marker?.value === 1 && matchesVault(marker)) return;
+            if (marker?.value !== 2 || !matchesVault(marker))
+              throw new Error('local vault changed during migration');
+            await new Promise((resolve, reject) => {
+              const cursorRequest = stores[name].openCursor();
+              cursorRequest.onerror = () => reject(cursorRequest.error);
+              cursorRequest.onsuccess = () => {
+                const cursor = cursorRequest.result;
+                if (!cursor) {
+                  resolve();
+                  return;
+                }
+                try {
+                  if (
+                    !cursor.value.vault_ciphertext &&
+                    !(name === 'state' && cursor.value.key === 'vault-local-format')
+                  ) {
+                    cursor.update(cryptor.encryptRecord(name, cursor.value));
+                  }
+                  cursor.continue();
+                } catch (error) {
+                  reject(error);
+                }
+              };
+            });
+          },
+        );
+      }
+      await withTransaction(openOfflineDB, ['state'], 'readwrite', async (stores) => {
+        const marker = await requestValue(stores.state.get('vault-local-format'));
+        if (marker?.value === 1 && matchesVault(marker)) return;
+        if (marker?.value !== 2 || !matchesVault(marker))
+          throw new Error('local vault changed during migration');
+        await requestValue(stores.state.put({key: 'vault-local-format', value: 1, vaultID, epoch}));
+      });
     }
 
     async function unlockVaultLocal(rootKey, vaultID, remember = false, epoch = 1) {
       let marker = await vaultLocalMetadata();
       let encrypted = marker?.value === 1;
+      const previousEpochDiffers =
+        marker?.epoch === undefined ? encrypted && epoch > 1 : marker.epoch !== epoch;
       if (
-        encrypted &&
-        ((marker.vaultID && marker.vaultID !== vaultID) || (epoch > 1 && marker.epoch !== epoch))
+        (encrypted || marker?.value === 2) &&
+        ((marker.vaultID && marker.vaultID !== vaultID) || previousEpochDiffers)
       ) {
         await discardVaultLocalData();
         marker = null;
@@ -295,17 +348,28 @@
         allowPlaintext: !encrypted,
       });
       try {
-        if (!encrypted) await migrateVaultLocal(cryptor);
+        if (!encrypted) await migrateVaultLocal(cryptor, vaultID, epoch);
         cryptor.setAllowPlaintext(false);
+        await withTransaction(openOfflineDB, ['keys', 'state'], 'readwrite', async (stores) => {
+          const current = await requestValue(stores.state.get('vault-local-format'));
+          if (
+            current?.value !== 1 ||
+            (current.vaultID && current.vaultID !== vaultID) ||
+            (current.epoch && current.epoch !== epoch)
+          ) {
+            throw new Error('local vault changed during unlock');
+          }
+          if (remember)
+            await requestValue(stores.keys.put({id: 'root', vaultID, epoch, key: rootKey}));
+          else await requestValue(stores.keys.delete('root'));
+          await requestValue(
+            stores.state.put({key: 'vault-local-format', value: 1, vaultID, epoch}),
+          );
+        });
         localCryptor?.close();
         localCryptor = cryptor;
-        const db = await openOfflineDB();
-        const tx = db.transaction(['keys', 'state'], 'readwrite');
-        const complete = transactionComplete(tx);
-        if (remember) tx.objectStore('keys').put({id: 'root', vaultID, epoch, key: rootKey});
-        else tx.objectStore('keys').delete('root');
-        tx.objectStore('state').put({key: 'vault-local-format', value: 1, vaultID, epoch});
-        await complete;
+        localVaultID = vaultID;
+        localVaultEpoch = epoch;
       } catch (error) {
         cryptor.close();
         throw error;
@@ -315,6 +379,8 @@
     function lockVaultLocal() {
       localCryptor?.close();
       localCryptor = null;
+      localVaultID = null;
+      localVaultEpoch = null;
     }
 
     function getLocalNote(id) {
@@ -757,8 +823,8 @@
       const tx = db.transaction(stores, 'readwrite');
       const complete = transactionComplete(tx);
       for (const name of stores) tx.objectStore(name).clear();
+      tx.objectStore('state').put({key: 'vault-local-format', value: 2});
       await complete;
-      encryptedOnDisk = false;
     }
 
     async function closeOfflineDatabaseConnection() {

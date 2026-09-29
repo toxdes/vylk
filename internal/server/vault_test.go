@@ -146,6 +146,10 @@ func TestVaultMigrationCutoverRemovesActivePlaintext(t *testing.T) {
 		!strings.Contains(w.Body.String(), `"current_revision":2`) {
 		t.Fatalf("conflicting encrypted push = %d: %s", w.Code, w.Body.String())
 	}
+	staged, err := filepath.Glob(filepath.Join(notesDir, ".vylk-vault", "epoch-1", notepkg.StageFilePrefix+"*"))
+	if err != nil || len(staged) != 0 {
+		t.Fatalf("conflicting encrypted push left staged files: %v, %v", staged, err)
+	}
 	note, err = a.readVaultNote("note-a")
 	if err != nil || note.Revision != 2 {
 		t.Fatalf("conflicting push changed note: %#v, %v", note, err)
