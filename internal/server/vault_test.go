@@ -4,18 +4,61 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"vylk/internal/auth"
+	"vylk/internal/event"
 	notepkg "vylk/internal/note"
 	"vylk/internal/store"
 	"vylk/internal/web"
 )
+
+type heldVaultBody struct {
+	io.Reader
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (b *heldVaultBody) Read(p []byte) (int, error) {
+	b.once.Do(func() {
+		close(b.entered)
+		<-b.release
+	})
+	return b.Reader.Read(p)
+}
+
+func vaultTestMaxSummary(t *testing.T) json.RawMessage {
+	t.Helper()
+	metadata, err := json.Marshal(map[string]string{"title": strings.Repeat("\x00", notepkg.MaxTitleBytes), "tags": strings.Repeat("\x00", notepkg.MaxTagsBytes)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope, err := json.Marshal(map[string]any{"v": 1, "nonce": "AAAAAAAAAAAAAAAA", "ciphertext": base64.RawURLEncoding.EncodeToString(make([]byte, len(metadata)+16))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return envelope
+}
+
+func TestVaultSummaryAllowsWorstCaseLegacyMetadata(t *testing.T) {
+	envelope := vaultTestMaxSummary(t)
+	if !validVaultSummary(envelope) {
+		t.Fatalf("valid legacy metadata rejected: %d envelope bytes", len(envelope))
+	}
+	oversized := append(append(json.RawMessage{}, envelope...), []byte(strings.Repeat(" ", 1024))...)
+	if validVaultSummary(oversized) {
+		t.Fatal("oversized summary accepted")
+	}
+}
 
 func vaultTestEnvelope() json.RawMessage {
 	return json.RawMessage(`{"v":1,"nonce":"AAAAAAAAAAAAAAAA","ciphertext":"AAAAAAAAAAAAAAAAAAAAAA"}`)
@@ -115,6 +158,32 @@ func TestVaultMigrationCutoverRemovesActivePlaintext(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.noteCache.Set("note-a", "Private body")
+	tokenBeforeMigration, err := a.sessions.Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := &heldVaultBody{Reader: strings.NewReader(`{"device_id":"held_device","operations":[{"client_sequence":1,"op_id":"held_save","type":"note.save","note_id":"unknown-note","base_revision":1,"title":"held","content":"post-cutover-plaintext"}]}`), entered: make(chan struct{}), release: make(chan struct{})}
+	heldRequest := httptest.NewRequest(http.MethodPost, "/api/sync/push", held)
+	heldRequest.AddCookie(&http.Cookie{Name: "session", Value: tokenBeforeMigration})
+	heldResponse := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		a.vaultRoute(a.handleSyncPush, a.handleVaultSyncPush, true)(heldResponse, heldRequest)
+	}()
+	select {
+	case <-held.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request did not reach body decoding")
+	}
+	t.Cleanup(func() {
+		select {
+		case <-held.release:
+		default:
+			close(held.release)
+		}
+		<-done
+	})
 	id := base64.RawURLEncoding.EncodeToString(make([]byte, 16))
 	proof := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
 	start := vaultMigrationStart{OldPassword: "old-password", VaultID: id, KDFSalt: id,
@@ -124,11 +193,29 @@ func TestVaultMigrationCutoverRemovesActivePlaintext(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("start = %d: %s", w.Code, w.Body.String())
 	}
+	for _, mutation := range []struct {
+		name    string
+		method  string
+		path    string
+		body    any
+		handler http.HandlerFunc
+	}{
+		{"save", http.MethodPost, "/api/notes", map[string]any{"title": "held", "content": "held"}, a.handleSaveNote},
+		{"delete", http.MethodDelete, "/api/notes/note-a?base_revision=1", nil, a.handleDeleteNote},
+		{"push", http.MethodPost, "/api/sync/push", map[string]any{"device_id": "held_device", "operations": []any{}}, a.handleSyncPush},
+	} {
+		t.Run("preparing_rejects_"+mutation.name, func(t *testing.T) {
+			response := vaultTestRequest(t, mutation.method, mutation.path, mutation.body, mutation.handler)
+			if response.Code != http.StatusLocked {
+				t.Fatalf("mutation = %d: %s", response.Code, response.Body.String())
+			}
+		})
+	}
 	w = vaultTestRequest(t, http.MethodGet, "/api/vault/migration/next", nil, a.handleVaultMigrationNext)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "note-a") {
 		t.Fatalf("next = %d: %s", w.Code, w.Body.String())
 	}
-	stage := vaultStagedRequest{ID: "note-a", Revision: 1, Summary: vaultTestEnvelope(), Body: vaultTestEnvelope()}
+	stage := vaultStagedRequest{ID: "note-a", Revision: 1, Summary: vaultTestMaxSummary(t), Body: vaultTestEnvelope()}
 	w = vaultTestRequest(t, http.MethodPost, "/api/vault/migration/stage", stage, a.handleVaultMigrationStage)
 	if w.Code != http.StatusOK {
 		t.Fatalf("stage = %d: %s", w.Code, w.Body.String())
@@ -141,6 +228,15 @@ func TestVaultMigrationCutoverRemovesActivePlaintext(t *testing.T) {
 	w = vaultTestRequest(t, http.MethodPost, "/api/vault/migration/commit", map[string]any{}, a.handleVaultMigrationCommit)
 	if w.Code != http.StatusOK {
 		t.Fatalf("commit = %d: %s", w.Code, w.Body.String())
+	}
+	close(held.release)
+	<-done
+	if heldResponse.Code != http.StatusUpgradeRequired {
+		t.Fatalf("held legacy write = %d: %s", heldResponse.Code, heldResponse.Body.String())
+	}
+	var heldOperations int
+	if err := db.QueryRow("SELECT COUNT(*) FROM sync_operations WHERE device_id = 'held_device'").Scan(&heldOperations); err != nil || heldOperations != 0 {
+		t.Fatalf("held plaintext operation persisted: %d, %v", heldOperations, err)
 	}
 	config, err := store.GetVaultConfig(db)
 	if err != nil || config.Mode != store.VaultReady {
@@ -167,10 +263,24 @@ func TestVaultMigrationCutoverRemovesActivePlaintext(t *testing.T) {
 	operation := vaultSyncOperation{ClientSequence: 1, OpID: "operation_1", Type: "note.save",
 		NoteID: "note-a", BaseRevision: &base, Epoch: 1,
 		Summary: vaultTestEnvelope(), Body: vaultTestEnvelope()}
+	a.events = event.NewBroker()
+	changes := a.events.Subscribe()
+	defer a.events.Unsubscribe(changes)
+	gap := operation
+	gap.ClientSequence = 3
+	gap.OpID = "gap_operation"
 	w = vaultTestRequest(t, http.MethodPost, "/api/sync/push",
-		vaultSyncPushRequest{DeviceID: "device_a", Operations: []vaultSyncOperation{operation}}, a.handleVaultSyncPush)
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"status":"applied"`) {
+		vaultSyncPushRequest{DeviceID: "device_a", Operations: []vaultSyncOperation{operation, gap}}, a.handleVaultSyncPush)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), `"status":"applied"`) {
 		t.Fatalf("encrypted sync push = %d: %s", w.Code, w.Body.String())
+	}
+	select {
+	case change := <-changes:
+		if change.Type != "notes" {
+			t.Fatalf("unexpected change: %#v", change)
+		}
+	default:
+		t.Fatal("partial encrypted push did not publish its committed note")
 	}
 	var storedOperation string
 	if err := db.QueryRow("SELECT operation FROM sync_operations WHERE device_id = ? AND client_sequence = 1", "device_a").Scan(&storedOperation); err != nil {

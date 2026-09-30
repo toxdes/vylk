@@ -103,6 +103,15 @@ func (a *app) handleVaultSyncPush(w http.ResponseWriter, r *http.Request) {
 	}
 	response := syncPushResponse{Acknowledged: make([]syncOperationResult, 0, len(request.Operations)), ExpectedSequence: lastSequence + 1}
 	var notesChanged, prefsChanged bool
+	// Earlier operations remain committed if a later one fails or has a gap.
+	defer func() {
+		if notesChanged {
+			a.publishChange("notes")
+		}
+		if prefsChanged {
+			a.publishChange("preferences")
+		}
+	}()
 	for _, operation := range request.Operations {
 		if operation.ClientSequence <= lastSequence {
 			stored, err := storedSyncOperation(a.db, request.DeviceID, operation.ClientSequence, operation.OpID)
@@ -136,12 +145,6 @@ func (a *app) handleVaultSyncPush(w http.ResponseWriter, r *http.Request) {
 		response.Acknowledged = append(response.Acknowledged, result)
 		lastSequence = operation.ClientSequence
 		response.ExpectedSequence = lastSequence + 1
-	}
-	if notesChanged {
-		a.publishChange("notes")
-	}
-	if prefsChanged {
-		a.publishChange("preferences")
 	}
 	httpx.WriteJSON(w, response)
 }

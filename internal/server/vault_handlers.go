@@ -191,7 +191,7 @@ func (a *app) handleVaultSaveNote(w http.ResponseWriter, r *http.Request) {
 	a.noteMu.Lock()
 	defer a.noteMu.Unlock()
 	config, err := store.GetVaultConfig(a.db)
-	if err != nil || config == nil || config.Epoch != request.Epoch {
+	if err != nil || config == nil || config.Mode != store.VaultReady || config.Epoch != request.Epoch {
 		httpx.WriteAPIError(w, http.StatusConflict, "stale_vault_epoch", "refresh vault keys before saving")
 		return
 	}
@@ -221,6 +221,11 @@ func (a *app) handleVaultDeleteNote(w http.ResponseWriter, r *http.Request) {
 	}
 	a.noteMu.Lock()
 	defer a.noteMu.Unlock()
+	config, err := store.GetVaultConfig(a.db)
+	if err != nil || config == nil || config.Mode != store.VaultReady {
+		httpx.WriteAPIError(w, http.StatusLocked, "vault_unavailable", "encrypted vault is unavailable")
+		return
+	}
 	if err := a.recoverVaultFileOperations(); err != nil {
 		httpx.WriteAPIError(w, http.StatusServiceUnavailable, "note_file_recovery_blocked", "encrypted file recovery is pending")
 		return

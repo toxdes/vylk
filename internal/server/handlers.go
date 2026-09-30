@@ -292,6 +292,9 @@ func (a *app) handleSaveNote(w http.ResponseWriter, r *http.Request) {
 
 	a.noteMu.Lock()
 	defer a.noteMu.Unlock()
+	if !a.requireLegacyWrite(w) {
+		return
+	}
 	if !a.prepareNoteFileOperation(w, id) {
 		return
 	}
@@ -327,6 +330,9 @@ func (a *app) handleDeleteNote(w http.ResponseWriter, r *http.Request) {
 	}
 	a.noteMu.Lock()
 	defer a.noteMu.Unlock()
+	if !a.requireLegacyWrite(w) {
+		return
+	}
 	if !a.prepareNoteFileOperation(w, id) {
 		return
 	}

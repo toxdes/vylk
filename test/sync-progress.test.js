@@ -102,6 +102,54 @@ test('coalesces requests while leadership is being acquired and retains their in
   expect(reconcileLocal).toHaveBeenCalledOnce();
 });
 
+test('retains follow-up work until leadership cleanup finishes', async () => {
+  let release;
+  let completed;
+  const cleanupGate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const workCompleted = new Promise((resolve) => {
+    completed = resolve;
+  });
+  const timers = [];
+  const reconcileLocal = vi.fn(async () => {});
+  let first = true;
+  const {coordinator} = createCoordinator({
+    serverWorkRemains: () => false,
+    reconcileLocal,
+    window: {
+      setTimeout: (callback) => {
+        timers.push(callback);
+        return timers.length;
+      },
+      clearTimeout: () => {},
+    },
+    beforeCompletion: async () => {
+      if (first) coordinator.schedule({reconcile: true}, 0);
+    },
+    leadership: async (work) => {
+      const result = await work();
+      if (first) {
+        first = false;
+        completed();
+        await cleanupGate;
+      }
+      return result;
+    },
+  });
+  const initial = coordinator.now();
+  await workCompleted;
+  // Execute any prematurely scheduled timer while the leadership lease is held.
+  if (timers.length) await timers.shift()();
+  release();
+  await initial;
+  expect(timers).toHaveLength(1);
+  await timers.shift()();
+  await coordinator.waitForIdle();
+  expect(reconcileLocal).toHaveBeenCalledOnce();
+  expect(timers).toHaveLength(0);
+});
+
 test.each([409, 200])('bounds repeated identical push batches after HTTP %s', async (status) => {
   let requests = 0;
   const operation = {op_id: 'edit-1', client_sequence: 1, type: 'note.save', base_revision: 0};

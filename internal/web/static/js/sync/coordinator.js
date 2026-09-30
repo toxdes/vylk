@@ -66,7 +66,7 @@
     function schedule(options = {}, delayMs = 75) {
       if (!canSync() || progressPaused) return;
       mergeOptions(options);
-      if (inFlight) {
+      if (inFlight || lifecyclePromise) {
         pendingWhileInFlight = true;
         return;
       }
@@ -77,7 +77,7 @@
         if (document.visibilityState === 'hidden') return;
         const requested = scheduleOptions;
         scheduleOptions = {};
-        if (inFlight) {
+        if (inFlight || lifecyclePromise) {
           scheduleOptions = {...scheduleOptions, ...requested};
           pendingWhileInFlight = true;
           return;
@@ -215,7 +215,6 @@
       } finally {
         inFlight = false;
         feedback.cancelStatusPresentation();
-        if (pendingWhileInFlight) schedule(takePendingIntent(), 0);
       }
     }
 
@@ -237,7 +236,12 @@
       try {
         return await lifecycle;
       } finally {
-        if (lifecyclePromise === lifecycle) lifecyclePromise = null;
+        if (lifecyclePromise === lifecycle) {
+          lifecyclePromise = null;
+          // The lease release may be asynchronous. Schedule follow-up work only
+          // once it finishes, so its timer cannot be consumed by the old owner.
+          if (pendingWhileInFlight) schedule(takePendingIntent(), 0);
+        }
       }
     }
 

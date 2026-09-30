@@ -7,6 +7,27 @@ import (
 	"vylk/internal/store"
 )
 
+// requireLegacyWrite must run under noteMu: migration can change the route's
+// mode while a previously admitted request is still decoding its body.
+func (a *app) requireLegacyWrite(w http.ResponseWriter) bool {
+	config, err := store.GetVaultConfig(a.db)
+	if err != nil {
+		httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_status_failed", "could not read vault status")
+		return false
+	}
+	if config == nil {
+		return true
+	}
+	if config.Mode == store.VaultReady {
+		httpx.WriteAPIError(w, http.StatusUpgradeRequired, "encrypted_client_required", "update Vylk to sync this encrypted vault")
+	} else if config.Mode == store.VaultPreparing {
+		httpx.WriteAPIError(w, http.StatusLocked, "vault_migration_in_progress", "note writes are paused for encryption")
+	} else {
+		httpx.WriteAPIError(w, http.StatusLocked, "vault_maintenance_in_progress", "vault maintenance is in progress")
+	}
+	return false
+}
+
 // vaultRoute keeps the legacy and encrypted API contracts disjoint. In
 // particular, a missing encrypted handler fails closed rather than reaching a
 // plaintext-capable legacy handler after cutover.

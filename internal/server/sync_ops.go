@@ -48,6 +48,9 @@ func (a *app) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 
 	a.noteMu.Lock()
 	defer a.noteMu.Unlock()
+	if !a.requireLegacyWrite(w) {
+		return
+	}
 	if err := a.recoverFileOperations(); err != nil {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "recover_file_operations_failed", "could not recover pending file operations")
 		return

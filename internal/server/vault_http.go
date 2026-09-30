@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"vylk/internal/httpx"
+	notepkg "vylk/internal/note"
 	"vylk/internal/store"
 )
 
@@ -78,7 +79,8 @@ func validVaultEnvelope(raw json.RawMessage) bool {
 }
 
 func validVaultSummary(raw json.RawMessage) bool {
-	// Legacy titles and tags are capped at 512 and 4096 bytes respectively.
-	// Leave room for JSON escaping and the authenticated encryption envelope.
-	return len(raw) <= 16<<10 && validVaultEnvelope(raw)
+	// Each legacy metadata byte can expand to six JSON escape bytes. Account
+	// for base64 expansion, the authentication tag, and envelope/field overhead.
+	const maxSummaryBytes = (notepkg.MaxTitleBytes+notepkg.MaxTagsBytes)*6*4/3 + 1024
+	return len(raw) <= maxSummaryBytes && validVaultEnvelope(raw)
 }

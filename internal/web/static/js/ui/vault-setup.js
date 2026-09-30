@@ -6,8 +6,8 @@
   function loadEstimator() {
     if (root.zxcvbn) return Promise.resolve(root.zxcvbn);
     if (!estimatorPromise) {
+      const script = document.createElement('script');
       estimatorPromise = new Promise((resolve, reject) => {
-        const script = document.createElement('script');
         script.src = '/vendor/zxcvbn.js';
         script.onload = () =>
           root.zxcvbn
@@ -15,7 +15,17 @@
             : reject(new Error('Passphrase strength could not be checked.'));
         script.onerror = () => reject(new Error('could not load passphrase strength checker'));
         document.head.append(script);
-      });
+      })
+        .catch((error) => {
+          // A failed resource fetch must not poison later checks after reconnect.
+          estimatorPromise = null;
+          throw error;
+        })
+        .finally(() => {
+          script.onload = null;
+          script.onerror = null;
+          script.remove();
+        });
     }
     return estimatorPromise;
   }
