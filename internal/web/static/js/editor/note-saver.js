@@ -10,6 +10,7 @@
     isRestoringRoute,
     newNoteID,
     noteIDFromLocation,
+    onSaveFailed,
     persistConflict,
     persistLocalNote,
     readEditor,
@@ -95,6 +96,7 @@
           await persistConflict(snapshot.noteID, unresolved, conflictLocal);
         } catch (error) {
           console.error('local conflict update failed', error);
+          if (snapshotIsCurrent(snapshot)) onSaveFailed();
           showToast('Could not save locally. Free browser storage and try again.', 'warning');
           return false;
         }
@@ -110,6 +112,7 @@
         });
       } catch (error) {
         console.error('local save failed', error);
+        if (snapshotIsCurrent(snapshot)) onSaveFailed();
         showToast('Could not save locally. Free browser storage and try again.', 'warning');
         return false;
       }

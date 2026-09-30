@@ -213,6 +213,7 @@ textarea:focus-visible {
 /* Shared controls */
 .btn-text,
 .btn-primary,
+.btn-secondary,
 .prefs-btn {
   display: inline-flex;
   align-items: center;
@@ -268,6 +269,29 @@ textarea:focus-visible {
 .btn-primary:active {
   box-shadow: none;
   transform: translateY(1px);
+}
+
+.btn-primary.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--danger) 28%, transparent);
+}
+
+.btn-primary.danger:hover {
+  border-color: var(--danger-hover);
+  background: var(--danger-hover);
+}
+
+.btn-secondary {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border-strong);
+  background: var(--card-bg);
+  color: var(--fg);
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  background: var(--surface-hover);
 }
 
 .prefs-btn {
@@ -526,7 +550,12 @@ textarea:focus-visible {
   justify-content: center;
 }
 
-#login-form > button[type='submit'] {
+#login-credentials[hidden],
+#login-secure-context-notice[hidden] {
+  display: none;
+}
+
+#login-credentials > button[type='submit'] {
   width: 100%;
   padding: 0.72rem;
   border: 0;
@@ -539,8 +568,27 @@ textarea:focus-visible {
   transition: background 0.15s;
 }
 
-#login-form > button[type='submit']:hover {
+#login-credentials > button[type='submit']:hover {
   background: var(--accent-hover);
+}
+
+#login-secure-context-notice {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+#login-secure-context-notice a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+#login-secure-context-notice a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 #login-form .login-forgot-password {
@@ -591,16 +639,11 @@ body:has(
 }
 
 .login-recovery-word-row {
-  display: flex;
-  gap: 0.5rem;
+  display: block;
 }
 
-.login-recovery-word-row .label-input {
-  flex: 1;
-}
-
-.login-recovery-word-row button {
-  flex: none;
+.login-recovery-word-row[hidden] {
+  display: none;
 }
 
 .login-recovery-count {
@@ -611,23 +654,89 @@ body:has(
 .login-recovery-words {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 0.5rem;
+  height: calc(10.5rem + 2px);
+  padding: 0.5rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-action);
+  background: var(--surface);
+  scrollbar-gutter: stable;
+}
+
+.login-recovery-words[hidden] {
+  display: none;
+}
+
+.login-recovery-words:empty::before {
+  content: 'Entered words appear here';
+  color: var(--muted);
+  font-size: 0.875rem;
 }
 
 .login-recovery-chip {
-  min-height: 2rem;
-  padding: 0.3rem 0.625rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  height: 2rem;
+  padding: 0.125rem 0.25rem 0.125rem 0.625rem;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--surface);
+  background: var(--card-bg);
   color: var(--fg);
   font: inherit;
   font-size: 0.875rem;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
 .login-recovery-chip:hover {
   border-color: var(--accent);
+}
+
+.login-recovery-placeholder {
+  box-sizing: border-box;
+  flex: none;
+  border: 1px dashed color-mix(in srgb, var(--accent) 58%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  pointer-events: none;
+}
+
+.login-recovery-ghost {
+  position: fixed;
+  z-index: 140;
+  margin: 0;
+  opacity: 0.96;
+  box-shadow: 0 0.6rem 1.4rem rgba(15, 23, 42, 0.16);
+  pointer-events: none;
+  cursor: grabbing;
+  will-change: transform;
+}
+
+.login-recovery-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.login-recovery-chip-remove {
+  display: grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  place-items: center;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.login-recovery-chip-remove:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
 }
 
 .recovery-signin-notice {
@@ -1958,6 +2067,20 @@ header h1 {
 }
 
 /* Preferences */
+.device-row {
+  cursor: default;
+}
+
+.device-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.device-row > button {
+  flex: none;
+  white-space: nowrap;
+}
+
 .pref-row {
   display: flex;
   align-items: center;
@@ -2061,6 +2184,25 @@ header h1 {
   line-height: 1.45;
 }
 
+.vault-secure-context-note {
+  margin: 0 0 1.15rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.vault-secure-context-note a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.vault-secure-context-note a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .vault-info summary {
   position: absolute;
   top: 0;
@@ -2106,23 +2248,6 @@ header h1 {
 
 .vault-info-copy p:first-child {
   margin-top: 0;
-}
-
-.vault-info-copy a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 2rem;
-  margin-top: 0.25rem;
-  color: var(--accent);
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 0.18em;
-}
-
-.vault-info-copy a:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .vault-option {
@@ -2171,6 +2296,15 @@ header h1 {
 
 .vault-option:is(:hover, :focus-visible) strong {
   color: var(--accent);
+}
+
+.vault-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.vault-option:disabled:hover strong {
+  color: inherit;
 }
 
 .vault-master-methods p {
@@ -2303,13 +2437,43 @@ header h1 {
   font-size: 0.875rem;
 }
 
-.vault-recovery code {
-  display: block;
-  padding: 0.85rem;
+.vault-recovery-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vault-recovery-words li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  min-width: 6.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card-bg);
-  overflow-wrap: anywhere;
-  user-select: all;
+  color: var(--fg);
+  font-size: 0.875rem;
+}
+
+.vault-recovery-number {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.vault-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.vault-recovery-entry-step {
+  display: grid;
+  gap: 0.75rem;
 }
 
 .vault-recovery-hint {
@@ -3283,15 +3447,18 @@ body {
 }
 
 .sync-indicator[data-state='local'],
+.sync-indicator[data-state='saving'],
 .sync-indicator[data-state='syncing'] {
   --sync-color: var(--status-syncing);
 }
 
-.sync-indicator[data-state='offline'] {
+.sync-indicator[data-state='offline'],
+.sync-indicator[data-state='unsaved'] {
   --sync-color: var(--status-offline);
 }
 
-.sync-indicator[data-state='syncing'] .sync-indicator-dot {
+.sync-indicator[data-state='syncing'] .sync-indicator-dot,
+.sync-indicator[data-state='saving'] .sync-indicator-dot {
   animation: sync-pulse 1s ease-in-out infinite;
 }
 
@@ -3624,12 +3791,13 @@ header {
 
 .btn-text,
 .btn-primary,
+.btn-secondary,
 .prefs-btn {
   border-radius: var(--radius-action);
 }
 
 #login-form .label-input__control,
-#login-form > button[type='submit'],
+#login-credentials > button[type='submit'],
 .pref-control select {
   border-radius: var(--radius-field);
 }
@@ -3686,6 +3854,7 @@ body {
 
 .btn-text,
 .btn-primary,
+.btn-secondary,
 .prefs-btn {
   font-size: 0.875em;
 }
@@ -3706,7 +3875,7 @@ header h1 {
   font-size: 1em;
 }
 
-#login-form > button[type='submit'] {
+#login-credentials > button[type='submit'] {
   font-size: 0.9375em;
 }
 
@@ -4901,7 +5070,8 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   transform: translateY(-50%) scale(0.8);
 }
 
-.label-input__toggle {
+.label-input__toggle,
+.label-input__action {
   position: absolute;
   top: 0;
   right: 0;
@@ -4921,17 +5091,20 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
     box-shadow 0.15s;
 }
 
-.label-input__toggle:hover {
+.label-input__toggle:hover,
+.label-input__action:hover {
   color: var(--fg);
 }
 
-.label-input__toggle:focus-visible {
+.label-input__toggle:focus-visible,
+.label-input__action:focus-visible {
   z-index: 2;
   outline: 2px solid var(--accent);
   outline-offset: -4px;
 }
 
-.label-input__toggle .icon {
+.label-input__toggle .icon,
+.label-input__action .icon {
   width: 1rem;
   height: 1rem;
 }
@@ -4940,7 +5113,7 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   display: none;
 }
 
-.label-input:has(.label-input__toggle) .label-input__control {
+.label-input:has(.label-input__toggle, .label-input__action) .label-input__control {
   padding-right: 2.75rem;
 }
 

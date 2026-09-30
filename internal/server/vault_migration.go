@@ -350,7 +350,6 @@ func (a *app) handleVaultMigrationCommit(w http.ResponseWriter, r *http.Request)
 		"DELETE FROM notes",
 		"DELETE FROM sync_operations",
 		"UPDATE sync_operation_stats SET operation_count = 0, payload_bytes = 0 WHERE id = 1",
-		"DELETE FROM sessions",
 		"UPDATE vault_config SET mode = 'cleaning' WHERE id = 1",
 	}
 	for _, statement := range statements {
@@ -358,6 +357,10 @@ func (a *app) handleVaultMigrationCommit(w http.ResponseWriter, r *http.Request)
 			httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_commit_failed", "could not complete cutover")
 			return
 		}
+	}
+	if err := a.sessions.RevokeAllTx(tx, "vault_encrypted"); err != nil {
+		httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_commit_failed", "could not revoke old sessions")
+		return
 	}
 	if err := tx.Commit(); err != nil {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_commit_failed", "could not commit cutover")

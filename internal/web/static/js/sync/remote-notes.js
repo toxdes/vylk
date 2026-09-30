@@ -212,9 +212,18 @@
           .map((change) => change.note_id);
         const downloaded = await download([...new Set(downloadIDs)]);
         downloaded.forEach((remote, id) => fetchedNotes.set(id, remote));
-        const nextSince = Number(page.nextSequence || since);
-        if (page.hasMore && nextSince <= since)
-          throw new Error(`sync cursor did not advance (since ${since}, next ${nextSince})`);
+        const nextSince = Number(page.nextSequence ?? since);
+        if (
+          !Number.isSafeInteger(nextSince) ||
+          nextSince < since ||
+          (page.hasMore && nextSince === since)
+        )
+          throw Object.assign(
+            new Error(
+              `Sync paused because the server cursor did not advance (since ${since}, next ${nextSince}). Your local changes are kept. Reload or use Retry to try again.`,
+            ),
+            {code: 'sync_no_progress'},
+          );
         await applyChangePage(page.changes, fetchedNotes, nextSince);
         since = nextSince;
         if (!page.hasMore) return;

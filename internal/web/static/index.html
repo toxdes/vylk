@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="vylk-revision" content="__VYLK_APP_REVISION__" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#ae2448" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -259,37 +260,44 @@ SOFTWARE.
           <h1 class="app-brand">
             <img src="/icon-192.png" width="28" height="28" alt="" /><span>__VYLK_APP_NAME__</span>
           </h1>
-          <div class="label-input">
-            <input
-              class="label-input__control"
-              type="password"
-              id="login-password"
-              name="password"
-              placeholder=" "
-              required
-              autocomplete="current-password"
-            />
-            <label class="label-input__label" for="login-password">Password</label>
-            <button
-              class="label-input__toggle"
-              type="button"
-              data-password-toggle="login-password"
-              aria-label="Show password"
-              aria-pressed="false"
-            >
-              <svg class="icon" data-password-icon="hidden" aria-hidden="true">
-                <use href="#icon-eye"></use>
-              </svg>
-              <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
-                <use href="#icon-eye-off"></use>
-              </svg>
+          <div id="login-credentials">
+            <div class="label-input">
+              <input
+                class="label-input__control"
+                type="password"
+                id="login-password"
+                name="password"
+                placeholder=" "
+                required
+                autocomplete="current-password"
+              />
+              <label class="label-input__label" for="login-password">Password</label>
+              <button
+                class="label-input__toggle"
+                type="button"
+                data-password-toggle="login-password"
+                aria-label="Show password"
+                aria-pressed="false"
+              >
+                <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                  <use href="#icon-eye"></use>
+                </svg>
+                <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                  <use href="#icon-eye-off"></use>
+                </svg>
+              </button>
+            </div>
+            <button type="submit">Sign in</button>
+            <button id="login-forgot-password" type="button" class="login-forgot-password" hidden>
+              Forgot password?
             </button>
+            <p id="login-error" class="error"></p>
           </div>
-          <button type="submit">Sign in</button>
-          <button id="login-forgot-password" type="button" class="login-forgot-password" hidden>
-            Forgot password?
-          </button>
-          <p id="login-error" class="error"></p>
+          <p id="login-secure-context-notice" role="alert" hidden>
+            This Vylk vault uses end-to-end encryption. Open it over HTTPS to sign in on this
+            device.
+            <a href="__VYLK_DOCS_URL__" target="_blank" rel="noopener noreferrer">Learn More</a>
+          </p>
         </form>
       </div>
 
@@ -347,6 +355,18 @@ SOFTWARE.
           </div>
           <form id="login-recovery-form">
             <p class="vault-hint">Enter your 24 words in order, or paste the whole key.</p>
+            <span
+              id="login-recovery-count"
+              class="login-recovery-count"
+              role="status"
+              aria-live="polite"
+              >0/24 words</span
+            >
+            <div
+              id="login-recovery-words"
+              class="login-recovery-words"
+              aria-label="Entered recovery words"
+            ></div>
             <div class="login-recovery-word-row">
               <div class="label-input">
                 <input
@@ -364,22 +384,16 @@ SOFTWARE.
                   for="login-recovery-word"
                   >Word 1</label
                 >
+                <button
+                  id="login-recovery-add"
+                  class="label-input__action"
+                  type="button"
+                  aria-label="Add word"
+                >
+                  <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                </button>
               </div>
-              <button id="login-recovery-add" class="btn-text" type="button">Add word</button>
             </div>
-            <span
-              id="login-recovery-count"
-              class="login-recovery-count"
-              role="status"
-              aria-live="polite"
-              >0/24 words</span
-            >
-            <div
-              id="login-recovery-words"
-              class="login-recovery-words"
-              role="group"
-              aria-label="Entered recovery words"
-            ></div>
             <p id="login-recovery-error" class="error" role="alert"></p>
             <div class="modal-actions vault-form-actions">
               <button id="login-recovery-back" class="btn-text" type="button">Back</button>
@@ -970,6 +984,18 @@ SOFTWARE.
                     Restore default settings
                   </button>
                 </div>
+                <div class="pref-row">
+                  <span
+                    ><strong>Devices</strong
+                    ><small
+                      >Browsers signed in to this instance. Offline devices are signed out when they
+                      reconnect.</small
+                    ></span
+                  >
+                  <button id="devices-refresh" class="btn-text" type="button">Refresh</button>
+                </div>
+                <p id="devices-status" class="vault-hint" role="status" aria-live="polite"></p>
+                <div id="devices-list" aria-label="Signed-in devices"></div>
                 <div class="pref-row pref-signout">
                   <span
                     ><strong>Session</strong
@@ -1009,16 +1035,17 @@ SOFTWARE.
                         Only your devices can read your note titles, tags, and content after setup.
                       </p>
                       <p>Keep your passphrase and recovery key safe. Vylk cannot restore them.</p>
-                      <a
-                        href="https://vylk.toxdes.com/docs"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        aria-label="Learn more about encryption (opens in a new tab)"
-                        >Learn more</a
-                      >
                     </div>
                   </details>
                 </div>
+                <p class="vault-secure-context-note" hidden>
+                  <span id="vault-secure-context-copy"
+                    >Open Vylk over HTTPS to set up end-to-end encryption.</span
+                  >
+                  <a href="__VYLK_DOCS_URL__" target="_blank" rel="noopener noreferrer"
+                    >Learn More</a
+                  >
+                </p>
                 <div id="vault-encryption-home">
                   <div id="vault-inactive">
                     <button id="vault-open-setup" class="vault-option" type="button">
@@ -1176,7 +1203,6 @@ SOFTWARE.
                   </svg>
                 </button>
               </div>
-              <p class="vault-hint">This is separate from your Vylk sign-in password.</p>
               <p id="vault-strength" class="vault-hint" role="status" aria-live="polite"></p>
               <label id="vault-weak-confirm-row" class="vault-check" hidden>
                 <input id="vault-weak-confirm" type="checkbox" /> I understand this passphrase is
@@ -1210,27 +1236,73 @@ SOFTWARE.
               </button>
             </div>
             <div class="vault-recovery">
-              <strong>Write down your recovery key</strong>
+              <strong id="vault-recovery-heading">Write down your recovery key</strong>
               <p class="vault-recovery-hint">
-                Use these 24 words if you forget your passphrase. Keep them private and somewhere
-                safe.
+                These 24 words can unlock your notes if you forget your passphrase. Save them
+                somewhere private, away from this device.
               </p>
-              <code id="vault-recovery-key"></code>
-              <button id="vault-copy-recovery" type="button" class="btn-text">
-                Copy recovery key
-              </button>
-              <div class="label-input">
-                <input
-                  class="label-input__control"
-                  id="vault-recovery-confirm"
-                  type="text"
-                  autocomplete="off"
-                  placeholder=" "
-                  required
-                />
-                <label class="label-input__label" for="vault-recovery-confirm"
-                  >Enter the words to confirm you saved them</label
-                >
+              <div id="vault-recovery-display">
+                <ol
+                  id="vault-recovery-key"
+                  class="vault-recovery-words"
+                  aria-label="Recovery key words"
+                ></ol>
+                <div class="vault-recovery-actions">
+                  <button id="vault-download-recovery" type="button" class="btn-secondary" disabled>
+                    Download recovery key
+                  </button>
+                  <button id="vault-recovery-begin" type="button" class="btn-primary" disabled>
+                    I've saved my key
+                  </button>
+                </div>
+              </div>
+              <div id="vault-recovery-entry-step" class="vault-recovery-entry-step" hidden>
+                <p class="vault-recovery-hint">
+                  Pasting is turned off to help confirm you saved this key. Enter each word from
+                  your saved copy. If you forget your passphrase and lose this key, no one can
+                  recover your notes.
+                </p>
+                <p
+                  id="vault-recovery-count"
+                  class="login-recovery-count"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+                <div
+                  id="vault-recovery-entered"
+                  class="login-recovery-words"
+                  aria-label="Entered recovery words"
+                ></div>
+                <div class="login-recovery-word-row">
+                  <div class="label-input">
+                    <input
+                      class="label-input__control"
+                      id="vault-recovery-confirm"
+                      type="text"
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      placeholder=" "
+                    />
+                    <label
+                      id="vault-recovery-confirm-label"
+                      class="label-input__label"
+                      for="vault-recovery-confirm"
+                      >Enter word 1 (1/24)</label
+                    >
+                    <button
+                      id="vault-recovery-add"
+                      type="button"
+                      class="label-input__action"
+                      aria-label="Add word"
+                    >
+                      <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                    </button>
+                  </div>
+                </div>
+                <button id="vault-recovery-show" type="button" class="btn-text">
+                  Show key again
+                </button>
               </div>
             </div>
             <label id="vault-reset-ack-row" class="vault-check" hidden>
@@ -1244,6 +1316,39 @@ SOFTWARE.
               <button id="vault-start" type="submit" class="btn-primary">Encrypt notes</button>
             </div>
           </form>
+        </div>
+      </div>
+      <div id="vault-final-confirm-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="vault-final-confirm-title"
+          aria-describedby="vault-final-confirm-copy"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="vault-final-confirm-title">Before you turn on encryption</h3>
+            <button
+              id="vault-final-confirm-close"
+              class="modal-close"
+              type="button"
+              aria-label="Close"
+            >
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <p id="vault-final-confirm-copy" class="modal-copy">
+            If you forget your passphrase and lose your recovery key, no one can get your notes
+            back. Make sure you have saved the key somewhere private.
+          </p>
+          <div class="modal-actions">
+            <button id="vault-final-confirm-back" class="btn-text" type="button">Go back</button>
+            <button id="vault-final-confirm-start" class="btn-primary" type="button">
+              Turn on encryption
+            </button>
+          </div>
         </div>
       </div>
       <div id="vault-master-modal" class="modal hidden vault-credential-modal" aria-hidden="true">
@@ -1278,20 +1383,19 @@ SOFTWARE.
               </button>
             </div>
             <div id="vault-master-fields" class="vault-master-fields" hidden>
-              <div class="vault-master-method-summary">
+              <div id="vault-master-method-summary" class="vault-master-method-summary">
                 <span id="vault-master-method-label"></span>
                 <button id="vault-master-change-method" class="btn-text" type="button">
                   Change method
                 </button>
               </div>
-              <div class="label-input">
+              <div id="vault-master-current-field" class="label-input">
                 <input
                   class="label-input__control"
                   id="vault-master-current-secret"
                   type="password"
                   autocomplete="current-password"
                   placeholder=" "
-                  required
                 />
                 <label
                   id="vault-master-current-label"
@@ -1315,21 +1419,100 @@ SOFTWARE.
                   </svg>
                 </button>
               </div>
-              <div class="vault-passphrase-field">
+              <div id="vault-master-current-recovery" class="vault-recovery-entry-step" hidden>
+                <p class="vault-hint">Enter your 24 words in order, or paste the whole key.</p>
+                <p
+                  id="vault-master-recovery-count"
+                  class="login-recovery-count"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+                <div
+                  id="vault-master-recovery-words"
+                  class="login-recovery-words"
+                  aria-label="Entered recovery words"
+                ></div>
+                <div class="login-recovery-word-row">
+                  <div class="label-input">
+                    <input
+                      id="vault-master-recovery-word"
+                      class="label-input__control"
+                      type="text"
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      placeholder=" "
+                    />
+                    <label
+                      id="vault-master-recovery-word-label"
+                      class="label-input__label"
+                      for="vault-master-recovery-word"
+                      >Enter word 1 (1/24)</label
+                    >
+                    <button
+                      id="vault-master-recovery-add"
+                      class="label-input__action"
+                      type="button"
+                      aria-label="Add word"
+                    >
+                      <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div id="vault-master-new-fields" class="vault-master-fields" hidden>
+                <div class="vault-passphrase-field">
+                  <div class="label-input">
+                    <input
+                      class="label-input__control"
+                      id="vault-new-master"
+                      type="password"
+                      autocomplete="new-password"
+                      placeholder=" "
+                    />
+                    <label class="label-input__label" for="vault-new-master">New passphrase</label>
+                    <button
+                      class="label-input__toggle"
+                      type="button"
+                      data-password-toggle="vault-new-master"
+                      data-secret-name="passphrase"
+                      aria-label="Show passphrase"
+                      aria-pressed="false"
+                    >
+                      <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                        <use href="#icon-eye"></use>
+                      </svg>
+                      <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                        <use href="#icon-eye-off"></use>
+                      </svg>
+                    </button>
+                  </div>
+                  <p
+                    id="vault-new-master-strength"
+                    class="vault-hint"
+                    role="status"
+                    aria-live="polite"
+                  ></p>
+                  <label id="vault-new-weak-confirm-row" class="vault-check" hidden>
+                    <input id="vault-new-weak-confirm" type="checkbox" /> I understand this
+                    passphrase is easy to guess
+                  </label>
+                </div>
                 <div class="label-input">
                   <input
                     class="label-input__control"
-                    id="vault-new-master"
+                    id="vault-new-master-confirm"
                     type="password"
                     autocomplete="new-password"
                     placeholder=" "
-                    required
                   />
-                  <label class="label-input__label" for="vault-new-master">New passphrase</label>
+                  <label class="label-input__label" for="vault-new-master-confirm"
+                    >Repeat new passphrase</label
+                  >
                   <button
                     class="label-input__toggle"
                     type="button"
-                    data-password-toggle="vault-new-master"
+                    data-password-toggle="vault-new-master-confirm"
                     data-secret-name="passphrase"
                     aria-label="Show passphrase"
                     aria-pressed="false"
@@ -1342,50 +1525,22 @@ SOFTWARE.
                     </svg>
                   </button>
                 </div>
-                <p class="vault-hint">This is separate from your Vylk sign-in password.</p>
-                <p
-                  id="vault-new-master-strength"
-                  class="vault-hint"
-                  role="status"
-                  aria-live="polite"
-                ></p>
-                <label id="vault-new-weak-confirm-row" class="vault-check" hidden>
-                  <input id="vault-new-weak-confirm" type="checkbox" /> I understand this passphrase
-                  is easy to guess
+                <label class="vault-check">
+                  <input id="vault-master-signout-others" type="checkbox" checked />
+                  Sign out other devices
                 </label>
-              </div>
-              <div class="label-input">
-                <input
-                  class="label-input__control"
-                  id="vault-new-master-confirm"
-                  type="password"
-                  autocomplete="new-password"
-                  placeholder=" "
-                  required
-                />
-                <label class="label-input__label" for="vault-new-master-confirm"
-                  >Repeat new passphrase</label
-                >
-                <button
-                  class="label-input__toggle"
-                  type="button"
-                  data-password-toggle="vault-new-master-confirm"
-                  data-secret-name="passphrase"
-                  aria-label="Show passphrase"
-                  aria-pressed="false"
-                >
-                  <svg class="icon" data-password-icon="hidden" aria-hidden="true">
-                    <use href="#icon-eye"></use>
-                  </svg>
-                  <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
-                    <use href="#icon-eye-off"></use>
-                  </svg>
-                </button>
+                <p class="vault-hint">
+                  Their encrypted local changes are kept. Offline devices can still read cached
+                  notes until they reconnect.
+                </p>
               </div>
             </div>
             <p id="vault-master-error" class="error" role="alert"></p>
             <div class="modal-actions vault-form-actions">
               <button id="vault-master-cancel" class="btn-text" type="button">Cancel</button>
+              <button id="vault-master-verify" class="btn-primary" type="button" hidden>
+                Continue
+              </button>
               <button id="vault-master-submit" class="btn-primary" type="submit" hidden>
                 Save passphrase
               </button>
@@ -1425,13 +1580,13 @@ SOFTWARE.
               </button>
             </div>
             <div id="vault-recovery-fields" class="vault-master-fields" hidden>
-              <div class="vault-master-method-summary">
+              <div id="vault-recovery-method-summary" class="vault-master-method-summary">
                 <span id="vault-recovery-method-label"></span>
                 <button id="vault-recovery-change-method" class="btn-text" type="button">
                   Change method
                 </button>
               </div>
-              <div class="label-input">
+              <div id="vault-recovery-current-field" class="label-input">
                 <input
                   class="label-input__control"
                   id="vault-recovery-current-secret"
@@ -1462,32 +1617,120 @@ SOFTWARE.
                   </svg>
                 </button>
               </div>
+              <div id="vault-recovery-current-recovery" class="vault-recovery-entry-step" hidden>
+                <p class="vault-hint">Enter your 24 words in order, or paste the whole key.</p>
+                <p
+                  id="vault-recovery-current-count"
+                  class="login-recovery-count"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+                <div
+                  id="vault-recovery-current-words"
+                  class="login-recovery-words"
+                  aria-label="Entered recovery words"
+                ></div>
+                <div class="login-recovery-word-row">
+                  <div class="label-input">
+                    <input
+                      class="label-input__control"
+                      id="vault-recovery-current-word"
+                      type="text"
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      placeholder=" "
+                    />
+                    <label
+                      id="vault-recovery-current-word-label"
+                      class="label-input__label"
+                      for="vault-recovery-current-word"
+                      >Enter word 1 (1/24)</label
+                    >
+                    <button
+                      id="vault-recovery-current-add"
+                      type="button"
+                      class="label-input__action"
+                      aria-label="Add word"
+                    >
+                      <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
               <div id="vault-new-recovery-step" class="vault-recovery" hidden>
-                <strong>Write down your new recovery key</strong>
+                <strong id="vault-new-recovery-heading">Write down your new recovery key</strong>
                 <p class="vault-recovery-hint">
                   Use these 24 words if you forget your passphrase. Keep them private and somewhere
                   safe.
                 </p>
-                <code id="vault-new-recovery-key"></code>
-                <button id="vault-new-recovery-copy" type="button" class="btn-text">
-                  Copy recovery key
-                </button>
-                <div class="label-input">
-                  <input
-                    class="label-input__control"
-                    id="vault-new-recovery-confirm"
-                    type="text"
-                    autocomplete="off"
-                    placeholder=" "
-                  />
-                  <label class="label-input__label" for="vault-new-recovery-confirm"
-                    >Enter the words to confirm you saved them</label
-                  >
+                <div id="vault-new-recovery-display">
+                  <ol
+                    id="vault-new-recovery-key"
+                    class="vault-recovery-words"
+                    aria-label="New recovery key words"
+                  ></ol>
+                  <div class="vault-recovery-actions">
+                    <button id="vault-new-recovery-download" type="button" class="btn-secondary">
+                      Download recovery key
+                    </button>
+                    <button id="vault-new-recovery-begin" type="button" class="btn-primary">
+                      I've saved my key
+                    </button>
+                  </div>
+                </div>
+                <div id="vault-new-recovery-entry-step" class="vault-recovery-entry-step" hidden>
+                  <p class="vault-recovery-hint">
+                    Pasting is turned off to help confirm you saved this key. Enter each word from
+                    your saved copy. If you forget your passphrase and lose this key, no one can
+                    recover your notes.
+                  </p>
+                  <p
+                    id="vault-new-recovery-count"
+                    class="login-recovery-count"
+                    role="status"
+                    aria-live="polite"
+                  ></p>
+                  <div
+                    id="vault-new-recovery-entered"
+                    class="login-recovery-words"
+                    aria-label="Entered new recovery words"
+                  ></div>
+                  <div class="login-recovery-word-row">
+                    <div class="label-input">
+                      <input
+                        class="label-input__control"
+                        id="vault-new-recovery-confirm"
+                        type="text"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                        placeholder=" "
+                      />
+                      <label
+                        id="vault-new-recovery-confirm-label"
+                        class="label-input__label"
+                        for="vault-new-recovery-confirm"
+                        >Enter word 1 (1/24)</label
+                      >
+                      <button
+                        id="vault-new-recovery-add"
+                        type="button"
+                        class="label-input__action"
+                        aria-label="Add word"
+                      >
+                        <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <button id="vault-new-recovery-show" type="button" class="btn-text">
+                    Show key again
+                  </button>
                 </div>
               </div>
             </div>
             <p id="vault-recovery-error" class="error" role="alert"></p>
-            <div class="modal-actions vault-form-actions">
+            <div id="vault-recovery-form-actions" class="modal-actions vault-form-actions">
               <button id="vault-recovery-cancel" class="btn-text" type="button">Cancel</button>
               <button id="vault-recovery-verify" class="btn-primary" type="button" hidden>
                 Continue
@@ -1497,6 +1740,34 @@ SOFTWARE.
               </button>
             </div>
           </form>
+        </div>
+      </div>
+
+      <div id="delete-note-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-note-title"
+          aria-describedby="delete-note-copy"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="delete-note-title">Delete this note?</h3>
+            <button id="delete-note-close" class="modal-close" type="button" aria-label="Cancel">
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <p id="delete-note-copy" class="modal-copy">
+            This removes the note from this device and syncs the deletion to your other devices.
+          </p>
+          <div class="modal-actions">
+            <button id="delete-note-cancel" class="btn-text" type="button" autofocus>Cancel</button>
+            <button id="delete-note-confirm" class="btn-primary danger" type="button">
+              Delete note
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1566,6 +1837,32 @@ SOFTWARE.
         </div>
       </div>
 
+      <div id="device-signout-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="device-signout-title"
+          aria-describedby="device-signout-copy"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="device-signout-title">Sign out device?</h3>
+            <button id="device-signout-close" class="modal-close" type="button" aria-label="Close">
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <p id="device-signout-copy" class="modal-copy"></p>
+          <p id="device-signout-error" class="error" role="alert"></p>
+          <div class="modal-actions">
+            <button id="device-signout-cancel" class="btn-text" type="button">Cancel</button>
+            <button id="device-signout-confirm" class="btn-primary danger" type="button">
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
       <div id="logout-modal" class="modal hidden" aria-hidden="true">
         <div class="modal-backdrop"></div>
         <div
@@ -2107,6 +2404,7 @@ SOFTWARE.
     <script src="/js/ui/dashboard-controller.js"></script>
     <script src="/js/ui/recovery-entry.js"></script>
     <script src="/js/ui/auth.js"></script>
+    <script src="/js/ui/devices.js"></script>
     <script src="/js/ui/labeled-input.js"></script>
     <script src="/js/ui/vault-setup.js"></script>
     <script src="/js/ui/preferences.js"></script>

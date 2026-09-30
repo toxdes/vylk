@@ -738,31 +738,94 @@
     async function rebaseQueuedNoteOperations(noteID, acknowledgedID, revision, baseNote) {
       return withOfflineStore(['queue'], 'readwrite', async (stores) => {
         const operations = await requestValue(stores.queue.index('note_id').getAll(noteID));
-        let hasLater = false;
-        operations.forEach((operation) => {
-          if (
-            operation.id === acknowledgedID ||
-            operation.client_sequence < 1 ||
-            operation.attempted_at
-          )
-            return;
-          if (
-            operation.type === 'note.save' ||
-            operation.type === 'note.delete' ||
-            operation.type === 'note.pin'
-          ) {
-            operation.base_revision = revision;
-            if (operation.note) {
-              operation.note.base_revision = revision;
-              operation.note.base_content = baseNote.content;
-              operation.note.base_title = baseNote.title;
-              operation.note.base_tags = baseNote.tags;
-            }
-            stores.queue.put(operation);
-            hasLater = true;
+        return rebaseNoteOperations(stores.queue, operations, acknowledgedID, revision, baseNote);
+      });
+    }
+
+    function rebaseNoteOperations(queue, operations, acknowledgedID, revision, baseNote) {
+      let hasLater = false;
+      operations.forEach((operation) => {
+        if (
+          operation.id === acknowledgedID ||
+          operation.client_sequence < 1 ||
+          operation.attempted_at
+        )
+          return;
+        if (
+          operation.type === 'note.save' ||
+          operation.type === 'note.delete' ||
+          operation.type === 'note.pin'
+        ) {
+          operation.base_revision = revision;
+          if (operation.note) {
+            operation.note.base_revision = revision;
+            operation.note.base_content = baseNote.content;
+            operation.note.base_title = baseNote.title;
+            operation.note.base_tags = baseNote.tags;
           }
-        });
-        return hasLater;
+          queue.put(operation);
+          hasLater = true;
+        }
+      });
+      return hasLater;
+    }
+
+    function commitNoteAcknowledgement(operation, acknowledgement) {
+      // Serialize the entire read/modify/write with saves in every tab. Separate
+      // transactions can overwrite a newer edit with the acknowledgement's read.
+      return withOfflineStore(['notes', 'queue'], 'readwrite', async (stores) => {
+        const queued = await requestValue(stores.queue.get(operation.id));
+        if (
+          !queued ||
+          queued.op_id !== operation.op_id ||
+          queued.client_sequence !== operation.client_sequence ||
+          queueOperationPayload(queued) !== queueOperationPayload(operation)
+        )
+          return null;
+        const operations = await requestValue(
+          stores.queue.index('note_id').getAll(operation.note_id),
+        );
+        const local = await requestValue(stores.notes.get(operation.note_id));
+        const revision = acknowledgement.revision;
+        const baseNote = operation.type === 'note.save' ? operation.note : local;
+        if (baseNote)
+          rebaseNoteOperations(stores.queue, operations, operation.id, revision, baseNote);
+        const hasLater = operations.some(
+          (item) =>
+            item.client_sequence > operation.client_sequence &&
+            ['note.save', 'note.pin', 'note.delete'].includes(item.type),
+        );
+        const laterPin = latestLaterOperation(operations, operation, 'note.pin');
+        if (local) {
+          const pinned =
+            operation.type === 'note.pin' && !laterPin
+              ? Boolean(operation.pinned)
+              : Boolean(local.pinned);
+          const pinOrder = laterPin
+            ? local.pin_order
+            : pinned
+              ? acknowledgement.pin_order || local.pin_order || 0
+              : 0;
+          await requestValue(
+            stores.notes.put({
+              ...local,
+              revision,
+              pinned,
+              pin_order: pinOrder,
+              pending: hasLater,
+              base_revision: hasLater ? revision : null,
+              ...(operation.type === 'note.save'
+                ? {
+                    base_content: hasLater ? operation.note.content : null,
+                    base_title: hasLater ? operation.note.title : null,
+                    base_tags: hasLater ? operation.note.tags : null,
+                  }
+                : {}),
+            }),
+          );
+        }
+        await requestValue(stores.queue.delete(operation.id));
+        return {revision, baseRevision: hasLater ? revision : null};
       });
     }
 
@@ -846,6 +909,7 @@
       clearOfflineData,
       discardVaultLocalData,
       closeOfflineDatabaseConnection,
+      commitNoteAcknowledgement,
       getAllLocalNotes,
       getLocalNote,
       getLocalNotes,

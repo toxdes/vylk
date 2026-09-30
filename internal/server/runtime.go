@@ -102,6 +102,7 @@ func Main() {
 		sessions:               sessions,
 		password:               config.Password,
 		requireStrongPasswords: config.RequireStrongPasswords,
+		disableVaultChanges:    config.DisableVaultChanges,
 		notesDir:               notesDir,
 		encryption:             encryption,
 		noteCache:              notepkg.NewCache(),

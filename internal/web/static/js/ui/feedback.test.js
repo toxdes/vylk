@@ -3,7 +3,7 @@ import {JSDOM} from 'jsdom';
 
 await import('./feedback.js');
 
-function setup({version = '', revision = ''} = {}) {
+function setup({version = '', revision = '', shellRevision = ''} = {}) {
   const dom = new JSDOM(
     `
     <span id="sync-status"><span class="sync-indicator-label"></span></span>
@@ -19,6 +19,12 @@ function setup({version = '', revision = ''} = {}) {
   );
   if (version) dom.window.localStorage.setItem('vylk-version', version);
   if (revision) dom.window.localStorage.setItem('vylk-revision', revision);
+  if (shellRevision) {
+    const meta = dom.window.document.createElement('meta');
+    meta.name = 'vylk-revision';
+    meta.content = shellRevision;
+    dom.window.document.head.append(meta);
+  }
   const registered = [];
   const feedback = globalThis.VylkFeedback.create({
     document: dom.window.document,
@@ -33,6 +39,14 @@ function setup({version = '', revision = ''} = {}) {
 }
 
 describe('feedback controller', () => {
+  test('compares updates against the loaded shell rather than another tab’s cached version', () => {
+    const {document, feedback} = setup({revision: 'new', shellRevision: 'old'});
+    feedback.cacheVersion({revision: 'new'});
+    expect(document.querySelectorAll('.toast.update')).toHaveLength(1);
+    const fresh = setup({version: '1.0', revision: 'old', shellRevision: 'new'});
+    fresh.feedback.cacheVersion({version: '2.0', revision: 'new'});
+    expect(fresh.document.querySelectorAll('.toast.update')).toHaveLength(0);
+  });
   test('presents sync and offline state consistently', () => {
     const {document, feedback} = setup();
 
@@ -40,6 +54,17 @@ describe('feedback controller', () => {
     expect(document.querySelector('#sync-status').dataset.state).toBe('local');
     expect(document.querySelector('#editor-status .sync-indicator-label').textContent).toBe(
       'Saved',
+    );
+
+    feedback.setStatus('saving');
+    expect(document.querySelector('#sync-status .sync-indicator-label').textContent).toBe('Saving');
+    expect(document.querySelector('#editor-status').getAttribute('aria-label')).toBe(
+      'Saving on this device',
+    );
+
+    feedback.setStatus('unsaved');
+    expect(document.querySelector('#sync-status .sync-indicator-label').textContent).toBe(
+      'Not saved',
     );
 
     feedback.showOfflineNotice(true);

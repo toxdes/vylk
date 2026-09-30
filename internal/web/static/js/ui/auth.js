@@ -8,6 +8,7 @@
     closeModal,
     clearDiagnostic,
     clearOfflineData,
+    beforeSignOut,
     connectEvents,
     disconnectEvents,
     document,
@@ -117,6 +118,10 @@
         setAuthenticationRequired(false);
         clearDiagnostic();
         if (!vaultSession.config()) await vaultSession.bootstrap();
+        if (vaultSession.requiresSecureContext()) {
+          showLogin();
+          return;
+        }
         const result = await vaultSession.unlock(recoveryEntry.value(), {
           recovery: true,
           remember: false,
@@ -156,6 +161,10 @@
       clearDiagnostic();
       try {
         if (!vaultSession.config()) await vaultSession.bootstrap();
+        if (vaultSession.requiresSecureContext()) {
+          showLogin();
+          return;
+        }
         const result = vaultSession.encrypted()
           ? await vaultSession.unlock(event.target.password.value, {
               remember: false,
@@ -185,6 +194,7 @@
     document.querySelector('#logout-confirm').addEventListener('click', async function () {
       this.disabled = true;
       try {
+        await beforeSignOut();
         cancelRequests();
         disconnectEvents();
         try {
@@ -205,6 +215,8 @@
         recoveryNotice.hidden = true;
         closeLogout();
         showLogin();
+      } catch (error) {
+        showToast(error.message || 'Could not sign out. Please try again.', 'warning');
       } finally {
         this.disabled = false;
       }

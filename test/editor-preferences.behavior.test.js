@@ -457,7 +457,7 @@ describe('font preferences', () => {
   });
 
   test('keeps interface typography relative to the configured base size', () => {
-    expect(styleSource).toContain('.btn-text,.btn-primary,.prefs-btn{');
+    expect(styleSource).toContain('.btn-text,.btn-primary,.btn-secondary,.prefs-btn{');
     expect(styleSource).toMatch(/\.btn-text,[^}]+font-size:0?\.875em/);
     expect(styleSource).toContain('header h1{font-size:1.125em}');
   });

@@ -99,6 +99,7 @@ func (a *app) handleVaultReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	deviceID := a.browserDeviceID(r)
 	tx, err := a.db.Begin()
 	if err != nil {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_reset_failed", "could not create the new vault")
@@ -127,11 +128,11 @@ func (a *app) handleVaultReset(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_reset_failed", "could not create the new vault")
 		return
 	}
-	if _, err := tx.Exec("DELETE FROM sessions"); err != nil {
+	if err := a.sessions.RevokeAllTx(tx, "vault_reset"); err != nil {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_reset_failed", "could not create the new vault")
 		return
 	}
-	token, err := a.sessions.CreateTx(tx)
+	token, err := a.sessions.CreateDeviceTx(tx, deviceID, browserDeviceName(r.UserAgent()))
 	if err != nil {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_reset_failed", "could not create the new session")
 		return
@@ -149,6 +150,9 @@ func (a *app) handleVaultReset(w http.ResponseWriter, r *http.Request) {
 	// The complete old tree is already quarantined. Any unreferenced leftover
 	// ciphertext remains outside the new vault and cannot be synced.
 	_ = os.RemoveAll(filepath.Join(a.notesDir, ".vylk-vault"))
+	if deviceID, err := a.sessions.DeviceID(token); err == nil {
+		a.setDeviceCookie(w, r, deviceID)
+	}
 	a.setSessionCookie(w, r, token)
 	a.publishChange("notes")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

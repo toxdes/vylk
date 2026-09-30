@@ -151,12 +151,13 @@ header {
 
 .btn-text,
 .btn-primary,
+.btn-secondary,
 .prefs-btn {
   border-radius: var(--radius-action);
 }
 
 #login-form .label-input__control,
-#login-form > button[type='submit'],
+#login-credentials > button[type='submit'],
 .pref-control select {
   border-radius: var(--radius-field);
 }
@@ -214,6 +215,7 @@ body {
 
 .btn-text,
 .btn-primary,
+.btn-secondary,
 .prefs-btn {
   font-size: 0.875em;
 }
@@ -234,7 +236,7 @@ header h1 {
   font-size: 1em;
 }
 
-#login-form > button[type='submit'] {
+#login-credentials > button[type='submit'] {
   font-size: 0.9375em;
 }
 

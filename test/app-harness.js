@@ -17,6 +17,7 @@ const dashboardControllerSource = fs.readFileSync(
   'utf8',
 );
 const authSource = fs.readFileSync(path.join(staticDirectory, 'js', 'ui', 'auth.js'), 'utf8');
+const devicesSource = fs.readFileSync(path.join(staticDirectory, 'js', 'ui', 'devices.js'), 'utf8');
 const recoveryEntrySource = fs.readFileSync(
   path.join(staticDirectory, 'js', 'ui', 'recovery-entry.js'),
   'utf8',
@@ -365,6 +366,8 @@ export async function createApp({
     runScripts: 'outside-only',
   });
   const {window} = dom;
+  // JSDOM omits this browser property; its localhost test origin is trustworthy.
+  Object.defineProperty(window, 'isSecureContext', {configurable: true, value: true});
   window.__vylkDisableAutoInit = true;
   window.__vylkDependencies = {};
   window.indexedDB = indexedDB;
@@ -423,6 +426,7 @@ export async function createApp({
   window.eval(dashboardControllerSource);
   window.eval(recoveryEntrySource);
   window.eval(authSource);
+  window.eval(devicesSource);
   window.eval(labeledInputSource);
   window.eval(vaultSetupSource);
   window.eval(preferencesSource);
@@ -502,7 +506,10 @@ export async function createApp({
       window.__vylkTestHooks.cancelScheduledSync();
       window.__vylkTestHooks.cancelActiveSyncRequests();
       await window.__vylkTestHooks.waitForPreferenceIdle();
+      // Preference writes can schedule sync while teardown is awaiting them.
+      window.__vylkTestHooks.cancelScheduledSync();
       await window.__vylkTestHooks.waitForSyncIdle();
+      window.__vylkTestHooks.cancelScheduledSync();
       await window.__vylkTestHooks.closeDatabase();
       window.close();
     },

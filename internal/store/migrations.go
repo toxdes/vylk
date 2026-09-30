@@ -58,6 +58,28 @@ var Migrations = []Migration{
 	{Version: 17, Up: migrateNotePinningSchema},
 	{Version: 18, Up: migrateInstanceMetadataSchema},
 	{Version: 19, Up: migrateVaultSchema},
+	{Version: 20, Up: migrateSessionDevices},
+}
+
+func migrateSessionDevices(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+		ALTER TABLE sessions ADD COLUMN device_id TEXT NOT NULL DEFAULT '';
+		ALTER TABLE sessions ADD COLUMN device_name TEXT NOT NULL DEFAULT 'Unknown browser';
+		ALTER TABLE sessions ADD COLUMN created_at TEXT NOT NULL DEFAULT '';
+		ALTER TABLE sessions ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT '';
+		ALTER TABLE sessions ADD COLUMN revoked_at TEXT NOT NULL DEFAULT '';
+		UPDATE sessions SET device_id = lower(hex(randomblob(16))),
+			created_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+			last_seen_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now');
+		CREATE INDEX idx_sessions_device ON sessions(device_id);
+		CREATE TABLE session_events (
+			id INTEGER PRIMARY KEY,
+			device_id TEXT NOT NULL,
+			reason TEXT NOT NULL,
+			occurred_at TEXT NOT NULL
+		);
+		CREATE INDEX idx_session_events_time ON session_events(occurred_at);`)
+	return err
 }
 
 func migrateVaultSchema(tx *sql.Tx) error {

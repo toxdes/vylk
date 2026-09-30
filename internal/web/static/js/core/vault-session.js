@@ -11,6 +11,10 @@
       return config && ['encrypted', 'cleaning'].includes(config.mode);
     }
 
+    function requiresSecureContext() {
+      return config && config.mode !== 'legacy' && root.isSecureContext === false;
+    }
+
     function unlocked() {
       return Boolean(rootKey && keys);
     }
@@ -103,7 +107,13 @@
       raw.fill(0);
     }
 
-    async function changeCredential({kind, currentSecret, currentRecovery = false, newSecret}) {
+    async function changeCredential({
+      kind,
+      currentSecret,
+      currentRecovery = false,
+      newSecret,
+      signOutOthers = true,
+    }) {
       if (kind !== 'master' && kind !== 'recovery') throw new Error('invalid credential type');
       const {currentCredential, raw, vaultID} = await unwrapVerifiedCurrentCredential(
         currentSecret,
@@ -133,6 +143,7 @@
           current_recovery: currentRecovery,
           new_proof: nextCredential.loginProof,
           wrapped_key: wrapped,
+          sign_out_other_devices: signOutOthers,
           ...(kind === 'master'
             ? {
                 kdf_salt: salt,
@@ -449,6 +460,7 @@
       lock,
       migrate,
       request,
+      requiresSecureContext,
       reset,
       syncFetch,
       unlock,

@@ -12,6 +12,7 @@ const ASSETS = [
   '/js/ui/dashboard-controller.js',
   '/js/ui/recovery-entry.js',
   '/js/ui/auth.js',
+  '/js/ui/devices.js',
   '/js/ui/labeled-input.js',
   '/js/ui/vault-setup.js',
   '/js/ui/preferences.js',
@@ -125,6 +126,15 @@ self.addEventListener('install', (e) => {
         ASSETS.map(async (asset) => {
           const response = await fetch(asset, {cache: 'no-cache', headers: {'X-Vylk-Shell': '1'}});
           if (!response.ok) throw new Error(`could not cache ${asset}`);
+          if (asset === '/' || asset === '/index.html') {
+            const html = await response.clone().text();
+            const shellRevision = html.match(
+              /<meta\s+name="vylk-revision"\s+content="([^"]+)"/i,
+            )?.[1];
+            if (shellRevision && safeRevision !== 'legacy' && shellRevision !== safeRevision) {
+              throw new Error('the app shell does not match this update');
+            }
+          }
           await cache.put(asset, response);
         }),
       );

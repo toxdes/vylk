@@ -4,6 +4,7 @@
   function create({
     acknowledgeCompacted,
     applyPreferencesRevision,
+    commitNoteAcknowledgement,
     createConflictResolution,
     getCurrentNoteID,
     getLocalNote,
@@ -87,68 +88,13 @@
       }
       if (acknowledgement.status !== 'applied') throw new Error('unknown sync acknowledgement');
       if (operation.type === 'prefs.save') applyPreferencesRevision(acknowledgement.revision);
-      if (operation.type === 'note.save') {
-        const acknowledgedNote = operation.note;
-        const queued = await pendingOperationsForNote(operation.note_id);
-        const laterPin = latestLaterOperation(queued, operation, 'note.pin');
-        const hasLater = await rebaseOperations(
-          operation.note_id,
-          operation.id,
-          acknowledgement.revision,
-          acknowledgedNote,
-        );
-        const local = await getLocalNote(operation.note_id);
-        if (local) {
-          const pinOrder = laterPin
-            ? local.pin_order
-            : acknowledgedNote.pinned
-              ? acknowledgement.pin_order || local.pin_order || 0
-              : 0;
-          await putLocalNote({
-            ...local,
-            revision: acknowledgement.revision,
-            pin_order: pinOrder,
-            pending: hasLater,
-            base_revision: hasLater ? acknowledgement.revision : null,
-            base_content: hasLater ? acknowledgedNote.content : null,
-            base_title: hasLater ? acknowledgedNote.title : null,
-            base_tags: hasLater ? acknowledgedNote.tags : null,
-          });
-        }
+      if (operation.type === 'note.save' || operation.type === 'note.pin') {
+        const committed = await commitNoteAcknowledgement(operation, acknowledgement);
+        if (!committed) return;
         if (getCurrentNoteID() === operation.note_id)
-          setCurrentRevision(
-            acknowledgement.revision || 0,
-            hasLater ? acknowledgement.revision : null,
-          );
-      }
-      if (operation.type === 'note.pin') {
-        const local = await getLocalNote(operation.note_id);
-        if (local) {
-          const queued = await pendingOperationsForNote(operation.note_id);
-          const laterPin = latestLaterOperation(queued, operation, 'note.pin');
-          const hasLater = await rebaseOperations(
-            operation.note_id,
-            operation.id,
-            acknowledgement.revision,
-            local,
-          );
-          const pinned = laterPin ? Boolean(local.pinned) : Boolean(operation.pinned);
-          const pinOrder = laterPin
-            ? local.pin_order
-            : pinned
-              ? acknowledgement.pin_order || local.pin_order || 0
-              : 0;
-          const remainsPending = hasLater || Boolean(laterPin);
-          await putLocalNote({
-            ...local,
-            revision: acknowledgement.revision,
-            pinned,
-            pin_order: pinOrder,
-            pending: remainsPending,
-            base_revision: remainsPending ? acknowledgement.revision : null,
-          });
-          await refreshDashboard();
-        }
+          setCurrentRevision(committed.revision || 0, committed.baseRevision);
+        if (operation.type === 'note.pin') await refreshDashboard();
+        return;
       }
       await removePendingOperation(operation.id, operation);
     }

@@ -3,6 +3,15 @@ import {describe, expect, test} from 'vitest';
 await import('../internal/web/static/js/ui/vault-setup.js');
 
 describe('vault setup errors', () => {
+  test('downloads a numbered recovery key without a paste-ready phrase', () => {
+    const words = Array.from({length: 24}, (_, index) => `word${index + 1}`);
+    const content = globalThis.VylkVaultSetup.formatRecoveryKey(words.join(' '));
+
+    expect(content).toContain('1. word1\n2. word2');
+    expect(content).toContain('24. word24\n');
+    expect(content).not.toContain(words.join(' '));
+  });
+
   test('replaces internal base64 errors with a recovery step', () => {
     const message = globalThis.VylkVaultSetup.formatError(
       new Error('invalid base64url value'),

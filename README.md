@@ -43,6 +43,7 @@ Optional environment variables:
 | VYLK_TRUST_PROXY | (unset) | Set to `1` only when a trusted reverse proxy supplies client-IP headers |
 | VYLK_MIGRATE_ENCRYPTION | (unset) | Set to `1` once with a v2 encryption setting to upgrade all legacy encrypted notes before serving requests |
 | VYLK_REQUIRE_STRONG_PASSWORDS | false | Set to `true` or `1` to require strong configured passwords and device-side passphrases |
+| VYLK_DISABLE_VAULT_CHANGES | false | Set to `true` or `1` on a shared demo to reject vault setup, passphrase/recovery-key changes, vault reset, and device revocation; sign-in, notes, and vault reads still work |
 | VYLK_NO_BROWSER | (unset) | Set to `1` to suppress the default browser opening (equivalent to `--no-browser`) |
 | ARTIFICIAL_RTT_DELAY_MS | 0 | Development-only delay added once before each request, in milliseconds; `/api/events` is excluded |
 
@@ -62,7 +63,13 @@ The server sees note IDs, revisions, timestamps, pin state, sync timing, and pre
 
 Existing SQLite pre-migration snapshots, external backups, browser caches, filesystem snapshots, and freed storage blocks may still contain plaintext from before conversion. Conversion cannot guarantee physical erasure of old copies. Inspect and retire them under your backup policy. Back up both `VYLK_DB` and `VYLK_DIR`: the database holds key wrappers and metadata, while the directory holds encrypted note bodies. The passphrase or recovery key is also required to decrypt a restored vault. Losing both means the notes cannot be recovered.
 
-Encryption preferences can replace the passphrase or recovery key. Replacing a recovery key first requires the current passphrase or recovery key; the new words appear only after verification. This rewraps the same vault key and revokes server sessions on all devices; each other device must sign in again. It does not rotate the vault key. An attacker with an old credential and a copy of the corresponding old wrapped key can still decrypt that copy. Vault-key rotation is not yet available, so replacing a credential alone does not recover a vault whose key material has been copied.
+Encryption preferences can replace the passphrase or recovery key. Replacing a recovery key first requires the current passphrase or recovery key; the new words appear only after verification. This rewraps the same vault key. Passphrase changes offer **Sign out other devices**, enabled by default; replacing the recovery key always revokes the other sessions. The requesting browser signs in again automatically. It does not rotate the vault key. An attacker with an old credential and a copy of the corresponding old wrapped key can still decrypt that copy. Vault-key rotation is not yet available, so replacing a credential alone does not recover a vault whose key material has been copied.
+
+### Devices and session revocation
+
+**Preferences → Account → Devices** lists signed-in browser profiles, not individual tabs. Each entry shows its browser/platform, approximate last server activity (updated at most once every five minutes), and whether it is this device. **Sign out** revokes every session for that profile. Server access is rejected on subsequent authenticated requests; an existing event stream checks validity at its next change or heartbeat. Offline devices lock when they reconnect, not while disconnected. Encrypted pending changes remain in the browser for the next sign-in to the same vault.
+
+Session expiry and revocation are recorded in the database's `session_events` table, without session tokens, encryption keys, or note content. Audit entries and revoked session records are pruned periodically after 90 days. Revocation cannot erase another device's cached notes or prevent use of keys it already possesses.
 
 ## Legacy server-side file encryption
 

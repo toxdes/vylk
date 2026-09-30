@@ -77,6 +77,43 @@ func TestLoadRuntimeConfigParsesStrongPasswordPolicy(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeConfigParsesVaultChangePolicy(t *testing.T) {
+	for value, want := range map[string]bool{"true": true, "1": true, "false": false, "0": false, "": false} {
+		t.Run(value, func(t *testing.T) {
+			config, err := loadRuntimeConfig(nil, func(key string) string {
+				if key == "VYLK_DISABLE_VAULT_CHANGES" {
+					return value
+				}
+				return ""
+			}, func(string) (string, error) { return "", nil })
+			if err != nil {
+				t.Fatalf("loadRuntimeConfig: %v", err)
+			}
+			if config.DisableVaultChanges != want {
+				t.Fatalf("DisableVaultChanges = %t, want %t", config.DisableVaultChanges, want)
+			}
+		})
+	}
+	if _, err := loadRuntimeConfig(nil, func(key string) string {
+		if key == "VYLK_DISABLE_VAULT_CHANGES" {
+			return "yes"
+		}
+		return ""
+	}, func(string) (string, error) { return "", nil }); err == nil {
+		t.Fatal("accepted an invalid VYLK_DISABLE_VAULT_CHANGES value")
+	}
+}
+
+func TestDisabledVaultChangesRejectPreparingVault(t *testing.T) {
+	config := runtimeConfig{Password: "secret", DisableVaultChanges: true}
+	if err := validateRuntimeCredentials(config, &store.VaultConfig{Mode: store.VaultPreparing}); err == nil {
+		t.Fatal("accepted disabled vault changes during an unfinished migration")
+	}
+	if err := validateRuntimeCredentials(config, &store.VaultConfig{Mode: store.VaultReady}); err != nil {
+		t.Fatalf("rejected a ready encrypted vault: %v", err)
+	}
+}
+
 func TestValidateRuntimeCredentialsAppliesStrongPasswordPolicy(t *testing.T) {
 	ready := &store.VaultConfig{Mode: store.VaultReady}
 	if err := validateRuntimeCredentials(runtimeConfig{

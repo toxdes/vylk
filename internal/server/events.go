@@ -108,6 +108,11 @@ func (a *app) handleEvents(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-ticker.C:
+			if !a.sessions.Valid(sessionToken(r)) {
+				_, _ = io.WriteString(w, "event: session-expired\ndata: {}\n\n")
+				flusher.Flush()
+				return
+			}
 			if err := setSSEWriteDeadline(w); err != nil {
 				return
 			}
@@ -116,6 +121,11 @@ func (a *app) handleEvents(w http.ResponseWriter, r *http.Request) {
 			}
 			flusher.Flush()
 		case event := <-changes:
+			if !a.sessions.Valid(sessionToken(r)) {
+				_, _ = io.WriteString(w, "event: session-expired\ndata: {}\n\n")
+				flusher.Flush()
+				return
+			}
 			if err := setSSEWriteDeadline(w); err != nil {
 				return
 			}

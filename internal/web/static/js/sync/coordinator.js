@@ -3,6 +3,7 @@
 
   function create({
     apiClient,
+    canSync = () => true,
     authenticationRequired,
     beforeCompletion,
     clearDiagnostic,
@@ -44,6 +45,7 @@
     let lastSuccessfulAt = 0;
     let lastProblem = '';
     let failed = false;
+    let progressPaused = false;
     let lifecyclePromise = null;
 
     function mergeOptions(options = {}) {
@@ -62,6 +64,7 @@
     }
 
     function schedule(options = {}, delayMs = 75) {
+      if (!canSync() || progressPaused) return;
       mergeOptions(options);
       if (inFlight) {
         pendingWhileInFlight = true;
@@ -92,10 +95,18 @@
       }, delay);
     }
 
-    async function workRemains(options = {}) {
-      if (options.reconcile || (await getPendingOperations()).length) return true;
+    async function remainingWork(options = {}) {
+      const operations = await getPendingOperations();
       const cursor = Number((await getCursor()) || 0);
-      return serverWorkRemains(cursor);
+      return {
+        remains: Boolean(options.reconcile || operations.length || serverWorkRemains(cursor)),
+        // Queue identities, not payloads: avoid copying large note contents merely
+        // to detect a stalled cycle. New operations or cursor movement are progress.
+        progress: JSON.stringify([
+          cursor,
+          operations.map(({op_id, client_sequence}) => [op_id, client_sequence]),
+        ]),
+      };
     }
 
     function markOffline() {
@@ -105,6 +116,7 @@
     }
 
     async function perform(options = {}) {
+      if (!canSync()) return false;
       const preserveSnackbar = Boolean(options.preserveSnackbar);
       let reconcile = Boolean(options.reconcile);
       if (scheduleTimer) {
@@ -119,14 +131,26 @@
       startStatus();
       const wasOffline = failed;
       try {
+        let previousProgress = null;
         for (;;) {
+          if (!canSync()) return false;
           if (isEditorVisible() && isEditorDirty()) await saveCurrentNote(false);
           await pull();
+          if (!canSync()) return false;
           if (reconcile) await reconcileLocal();
           const pushed = await flush();
           if (pushed) await pull();
           const pendingOptions = takePendingIntent();
-          if (!(await workRemains(pendingOptions))) break;
+          const work = await remainingWork(pendingOptions);
+          if (!work.remains) break;
+          if (work.progress === previousProgress)
+            throw Object.assign(
+              new Error(
+                'Sync paused because no progress was made. Your local changes are kept. Reload or use Retry to try again.',
+              ),
+              {code: 'sync_no_progress'},
+            );
+          previousProgress = work.progress;
           reconcile = Boolean(pendingOptions.reconcile);
         }
         await beforeCompletion();
@@ -145,6 +169,16 @@
         return true;
       } catch (error) {
         console.warn('sync failed', error);
+        if (error?.code === 'sync_no_progress') {
+          progressPaused = true;
+          failed = false;
+          cancelScheduled();
+          setDiagnostic(error.message);
+          finishStatus((await getPendingOperations()).length ? 'local' : 'online');
+          hideOfflineNotice();
+          showToast(error.message, 'warning');
+          return false;
+        }
         if (getHydrationState() === 'loading') {
           setHydrationState('offline-empty');
           if (isDashboardVisible()) await refreshDashboard();
@@ -186,6 +220,12 @@
     }
 
     async function now(options = {}) {
+      if (!canSync()) return false;
+      if (options.retryPaused && !inFlight) {
+        progressPaused = false;
+        clearDiagnostic();
+      }
+      if (progressPaused) return false;
       if (inFlight) {
         mergeOptions(options);
         pendingWhileInFlight = true;

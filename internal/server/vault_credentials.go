@@ -18,6 +18,7 @@ type vaultCredentialRequest struct {
 	KDFSalt         string          `json:"kdf_salt"`
 	KDFMemoryKiB    int             `json:"kdf_memory_kib"`
 	KDFIterations   int             `json:"kdf_iterations"`
+	SignOutOthers   *bool           `json:"sign_out_other_devices"`
 }
 
 func (a *app) handleVaultCredentialChange(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +75,7 @@ func (a *app) handleVaultCredentialChange(w http.ResponseWriter, r *http.Request
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "credential_change_failed", "could not update vault credentials")
 		return
 	}
-	if _, err := tx.Exec("DELETE FROM sessions"); err != nil {
+	if err := a.sessions.RevokeCredentials(tx, sessionToken(r), request.SignOutOthers == nil || *request.SignOutOthers); err != nil {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "credential_change_failed", "could not revoke old sessions")
 		return
 	}

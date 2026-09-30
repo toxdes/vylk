@@ -18,9 +18,11 @@ test('resumes an interrupted vault conversion after a page reload', async ({page
   await page.locator('#vault-open-setup').click();
   await page.locator('#vault-master').fill('correct horse battery staple!');
   await expect(page.locator('#vault-strength')).toHaveText('Strong passphrase');
-  await expect(page.locator('#vault-recovery-key')).toHaveText(/^[a-z]+( [a-z]+){23}$/);
+  await expect(page.locator('#vault-recovery-key .vault-recovery-word')).toHaveCount(24);
   const master = await page.locator('#vault-master').inputValue();
-  const recovery = await page.locator('#vault-recovery-key').textContent();
+  const recovery = (
+    await page.locator('#vault-recovery-key .vault-recovery-word').allTextContents()
+  ).join(' ');
 
   const startStatus = await page.evaluate(
     async ({master, recovery}) => {
@@ -65,8 +67,17 @@ test('resumes an interrupted vault conversion after a page reload', async ({page
   await page.locator('#vault-old-password').fill('browser-test-password');
   await page.locator('#vault-master').fill(master);
   await page.locator('#vault-master-confirm').fill(master);
-  await page.locator('#vault-recovery-confirm').fill(recovery);
-  await Promise.all([page.waitForEvent('load'), page.locator('#vault-start').click()]);
+  await expect(page.locator('#vault-recovery-key')).toBeHidden();
+  for (const word of recovery.split(' ')) {
+    await page.locator('#vault-recovery-confirm').fill(word);
+    await page.locator('#vault-recovery-confirm').press('Enter');
+  }
+  await page.locator('#vault-start').click();
+  await expect(page.locator('#vault-final-confirm-modal')).toBeVisible();
+  await Promise.all([
+    page.waitForEvent('load'),
+    page.locator('#vault-final-confirm-start').click(),
+  ]);
   await expect(page.locator('#login-screen')).toBeVisible({timeout: 30000});
   await page.locator('#login-password').fill(master);
   await page.locator('#login-form button[type="submit"]').click();

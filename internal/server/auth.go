@@ -24,6 +24,7 @@ type app struct {
 	sessions               *auth.SessionStore
 	password               string
 	requireStrongPasswords bool
+	disableVaultChanges    bool
 	notesDir               string
 	encryption             *notecrypt.Config
 	noteCache              *notepkg.Cache
@@ -90,7 +91,11 @@ func (a *app) handleCheck(w http.ResponseWriter, r *http.Request) {
 func (a *app) handleLogout(w http.ResponseWriter, r *http.Request) {
 	c, _ := r.Cookie("session")
 	if c != nil {
-		a.sessions.Remove(c.Value)
+		id, err := a.sessions.DeviceID(c.Value)
+		if err != nil || a.sessions.RevokeDevice(id) != nil {
+			httpx.WriteAPIError(w, http.StatusInternalServerError, "logout_failed", "could not sign out device")
+			return
+		}
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session",
@@ -157,7 +162,7 @@ func (a *app) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.rl.RecordLoginAttempt(ip, true)
-	token, err := a.sessions.Create()
+	token, err := a.createBrowserSession(w, r)
 	if err != nil {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "create_session_failed", "could not create session")
 		return

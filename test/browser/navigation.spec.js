@@ -9,6 +9,30 @@ async function signIn(page) {
   await expect(page.locator('#dashboard')).toBeVisible();
 }
 
+test('note deletion uses the shared confirmation dialog', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-title').fill('Note to delete');
+  await page.locator('#note-content').fill('Delete only after confirmation');
+  await page.locator('#save-btn').click();
+  await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
+
+  await page.locator('#delete-btn').click();
+  await expect(page.locator('#delete-note-modal')).toBeVisible();
+  await expect(page.locator('#delete-note-modal .modal-body')).toHaveCSS(
+    'animation-name',
+    'modal-panel-in',
+  );
+  await page.locator('#delete-note-cancel').click();
+  await expect(page.locator('#delete-note-modal')).toBeHidden();
+  await expect(page.locator('#note-title')).toHaveValue('Note to delete');
+
+  await page.locator('#delete-btn').click();
+  await page.locator('#delete-note-confirm').click();
+  await expect(page.locator('#dashboard')).toBeVisible();
+  await expect(page.locator('.note-item').filter({hasText: 'Note to delete'})).toHaveCount(0);
+});
+
 test('in-app Back does not leave a stale note in browser history', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();

@@ -14,6 +14,7 @@ import (
 	"vylk/internal/auth"
 	notepkg "vylk/internal/note"
 	"vylk/internal/store"
+	"vylk/internal/web"
 )
 
 func vaultTestEnvelope() json.RawMessage {
@@ -35,6 +36,57 @@ func vaultTestRequest(t *testing.T, method, path string, body any, handler http.
 	w := httptest.NewRecorder()
 	handler(w, r)
 	return w
+}
+
+func TestDisabledVaultChangesBlockEveryMutationRoute(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "vylk.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatal(err)
+	}
+	sessions := auth.NewSessionStore(db)
+	token, err := sessions.Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assets, err := web.New(web.DefaultName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &app{db: db, sessions: sessions, password: "secret", disableVaultChanges: true}
+	handler := newHandler(a, assets, 0)
+	for _, path := range []string{
+		"/api/vault/reset",
+		"/api/vault/credentials",
+		"/api/vault/migration/start",
+		"/api/vault/migration/stage",
+		"/api/vault/migration/verify",
+		"/api/vault/migration/commit",
+	} {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+			request.AddCookie(&http.Cookie{Name: "session", Value: token})
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"code":"vault_changes_disabled"`) {
+				t.Fatalf("response = %d: %s", response.Code, response.Body.String())
+			}
+		})
+	}
+	for _, path := range []string{"/api/vault/bootstrap", "/api/notes", "/api/check"} {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, path, nil)
+			request.AddCookie(&http.Cookie{Name: "session", Value: token})
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("response = %d: %s", response.Code, response.Body.String())
+			}
+		})
+	}
 }
 
 func TestVaultMigrationCutoverRemovesActivePlaintext(t *testing.T) {

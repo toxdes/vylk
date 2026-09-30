@@ -44,3 +44,13 @@ func (a *app) vaultRoute(legacy, encrypted http.HandlerFunc, write bool) http.Ha
 		encrypted(w, r)
 	})
 }
+
+func (a *app) vaultChange(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if a.disableVaultChanges {
+			httpx.WriteAPIError(w, http.StatusForbidden, "vault_changes_disabled", "vault changes are disabled on this instance")
+			return
+		}
+		next(w, r)
+	}
+}

@@ -20,8 +20,51 @@
     return estimatorPromise;
   }
 
-  function normalizeRecoveryKey(value) {
-    return value.trim().toLowerCase().replace(/\s+/g, ' ');
+  function showRecoveryWords(document, list, key) {
+    list.replaceChildren();
+    if (!key) return;
+    for (const [index, word] of key.split(' ').entries()) {
+      const item = document.createElement('li');
+      const number = document.createElement('span');
+      number.className = 'vault-recovery-number';
+      number.textContent = String(index + 1).padStart(2, '0');
+      const value = document.createElement('span');
+      value.className = 'vault-recovery-word';
+      value.textContent = word;
+      item.append(number, value);
+      list.append(item);
+    }
+  }
+
+  function formatRecoveryKey(key) {
+    const numbered = key.split(' ').map((word, index) => `${index + 1}. ${word}`);
+    return [
+      'Vylk recovery key',
+      'Keep this file private. Anyone with these words can unlock your notes.',
+      '',
+      ...numbered,
+      '',
+    ].join('\n');
+  }
+
+  function downloadRecoveryKey(document, key) {
+    const content = formatRecoveryKey(key);
+    const url = root.URL.createObjectURL(
+      new root.Blob([content], {type: 'text/plain;charset=utf-8'}),
+    );
+    const link = document.createElement('a');
+    link.href = url;
+    const now = new Date();
+    const timestamp = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+      String(now.getHours()).padStart(2, '0'),
+      String(now.getMinutes()).padStart(2, '0'),
+    ].join('');
+    link.download = `vylk-recovery-key-${timestamp}.txt`;
+    link.click();
+    root.setTimeout(() => root.URL.revokeObjectURL(url), 1000);
   }
 
   function setupErrorMessage(cause, resetMode) {
@@ -54,15 +97,22 @@
     onDismiss = () => {},
     beforeMigration = async () => {},
     onComplete,
+    beforeCredentialChange = async () => {},
+    afterCredentialChange = () => {},
+    onCredentialChanged = onComplete,
   }) {
     const form = document.querySelector('#vault-setup-form');
     const master = document.querySelector('#vault-master');
     const oldPassword = document.querySelector('#vault-old-password');
     const recoveryDisplay = document.querySelector('#vault-recovery-key');
-    const recoveryConfirm = document.querySelector('#vault-recovery-confirm');
+    const recoveryDisplayStep = document.querySelector('#vault-recovery-display');
+    const recoveryEntryStep = document.querySelector('#vault-recovery-entry-step');
+    const recoveryDownload = document.querySelector('#vault-download-recovery');
+    const recoveryBegin = document.querySelector('#vault-recovery-begin');
     const progress = document.querySelector('#vault-progress');
     const error = document.querySelector('#vault-error');
     const setupModal = document.querySelector('#vault-setup-modal');
+    const finalConfirmModal = document.querySelector('#vault-final-confirm-modal');
     const masterModal = document.querySelector('#vault-master-modal');
     const recoveryModal = document.querySelector('#vault-recovery-modal');
     const resetWarning = document.querySelector('#vault-reset-warning');
@@ -75,6 +125,11 @@
     const recoveryForm = document.querySelector('#vault-recovery-form');
     const currentSecret = document.querySelector('#vault-master-current-secret');
     const newMaster = document.querySelector('#vault-new-master');
+    const masterCurrentField = document.querySelector('#vault-master-current-field');
+    const masterCurrentRecovery = document.querySelector('#vault-master-current-recovery');
+    const masterMethodSummary = document.querySelector('#vault-master-method-summary');
+    const masterNewFields = document.querySelector('#vault-master-new-fields');
+    const masterVerify = document.querySelector('#vault-master-verify');
     const masterMethods = document.querySelector('#vault-master-methods');
     const masterFields = document.querySelector('#vault-master-fields');
     const recoveryMethods = document.querySelector('#vault-recovery-methods');
@@ -82,20 +137,72 @@
     const masterSubmit = document.querySelector('#vault-master-submit');
     const newRecoveryDisplay = document.querySelector('#vault-new-recovery-key');
     const newRecoveryStep = document.querySelector('#vault-new-recovery-step');
+    const newRecoveryDisplayStep = document.querySelector('#vault-new-recovery-display');
+    const newRecoveryEntryStep = document.querySelector('#vault-new-recovery-entry-step');
     const recoveryVerify = document.querySelector('#vault-recovery-verify');
     const recoverySubmit = document.querySelector('#vault-recovery-submit');
     const recoveryCurrent = document.querySelector('#vault-recovery-current-secret');
+    const recoveryCurrentField = document.querySelector('#vault-recovery-current-field');
+    const recoveryCurrentRecovery = document.querySelector('#vault-recovery-current-recovery');
+    const recoveryMethodSummary = document.querySelector('#vault-recovery-method-summary');
+    const recoveryFormActions = document.querySelector('#vault-recovery-form-actions');
     const masterError = document.querySelector('#vault-master-error');
     const recoveryError = document.querySelector('#vault-recovery-error');
     let generatedRecoveryKey = '';
     let running = false;
     let generatedNewRecovery = '';
     let masterMethod = null;
+    let verifiedMasterSecret = '';
     let recoveryMethod = null;
     let credentialRunning = false;
     let setupGeneration = 0;
     let setupInitialized = false;
     let resetMode = false;
+    const recoveryEntry = root.VylkRecoveryEntry.create({
+      document,
+      input: document.querySelector('#vault-recovery-confirm'),
+      label: document.querySelector('#vault-recovery-confirm-label'),
+      list: document.querySelector('#vault-recovery-entered'),
+      count: document.querySelector('#vault-recovery-count'),
+      confirmation: true,
+      onError: (message) => {
+        error.textContent = message;
+      },
+    });
+    const masterRecoveryEntry = root.VylkRecoveryEntry.create({
+      document,
+      input: document.querySelector('#vault-master-recovery-word'),
+      label: document.querySelector('#vault-master-recovery-word-label'),
+      list: document.querySelector('#vault-master-recovery-words'),
+      count: document.querySelector('#vault-master-recovery-count'),
+      onError: (message) => {
+        masterError.textContent = message;
+      },
+    });
+    const recoveryCurrentEntry = root.VylkRecoveryEntry.create({
+      document,
+      input: document.querySelector('#vault-recovery-current-word'),
+      label: document.querySelector('#vault-recovery-current-word-label'),
+      list: document.querySelector('#vault-recovery-current-words'),
+      count: document.querySelector('#vault-recovery-current-count'),
+      onError: (message) => {
+        recoveryError.textContent = message;
+      },
+    });
+    const newRecoveryEntry = root.VylkRecoveryEntry.create({
+      document,
+      input: document.querySelector('#vault-new-recovery-confirm'),
+      label: document.querySelector('#vault-new-recovery-confirm-label'),
+      list: document.querySelector('#vault-new-recovery-entered'),
+      count: document.querySelector('#vault-new-recovery-count'),
+      confirmation: true,
+      onError: (message) => {
+        recoveryError.textContent = message;
+      },
+      onChange: (ready) => {
+        if (!newRecoveryEntryStep.hidden) recoveryFormActions.hidden = !ready;
+      },
+    });
 
     for (const field of [master, newMaster]) {
       field.addEventListener('keydown', (event) => {
@@ -135,6 +242,9 @@
           : 'Protect your notes across devices.';
       document.querySelector('#vault-inactive').hidden = encrypted;
       document.querySelector('#vault-active').hidden = !encrypted;
+      const insecure = root.isSecureContext === false;
+      document.querySelector('#vault-open-setup').disabled = insecure;
+      document.querySelector('.vault-secure-context-note').hidden = !insecure;
       document.querySelector('#vault-title').textContent =
         mode === 'preparing' ? 'Resume encryption' : 'Set up encryption';
     }
@@ -181,6 +291,7 @@
     }
 
     async function open() {
+      if (root.isSecureContext === false) return;
       refresh();
       configureSetupMode();
       if (!resetMode) await showEncryption();
@@ -195,19 +306,29 @@
       form.reset();
       resetAck.checked = false;
       generatedRecoveryKey = '';
-      recoveryDisplay.textContent = resuming
-        ? 'Enter the 24 words from the recovery key you saved when you started.'
-        : 'Preparing your recovery key…';
+      recoveryDownload.disabled = true;
+      recoveryBegin.disabled = true;
+      recoveryEntry.setConfirmation(!resuming);
+      recoveryEntry.clear();
+      showRecoveryWords(document, recoveryDisplay, '');
+      recoveryDisplayStep.hidden = resuming;
+      recoveryEntryStep.hidden = !resuming;
+      document.querySelector('#vault-recovery-heading').textContent = resuming
+        ? 'Enter your saved recovery key'
+        : 'Write down your recovery key';
       openModal(setupModal);
       oldPassword.focus({preventScroll: true});
       const generation = ++setupGeneration;
       try {
         if (!resuming) {
-          generatedRecoveryKey = await root.VylkVaultCrypto.createRecoveryKey(
+          const key = await root.VylkVaultCrypto.createRecoveryKey(
             root.VylkVaultCrypto.randomBytes(32),
           );
           if (setupModal.classList.contains('hidden') || generation !== setupGeneration) return;
-          recoveryDisplay.textContent = generatedRecoveryKey;
+          generatedRecoveryKey = key;
+          showRecoveryWords(document, recoveryDisplay, generatedRecoveryKey);
+          recoveryDownload.disabled = false;
+          recoveryBegin.disabled = false;
         }
       } catch (cause) {
         error.textContent = cause.message;
@@ -220,9 +341,16 @@
       ++setupGeneration;
       form.reset();
       generatedRecoveryKey = '';
+      recoveryDownload.disabled = true;
+      recoveryBegin.disabled = true;
+      recoveryEntry.clear();
       resetMode = false;
       configureSetupMode();
-      recoveryDisplay.textContent = '';
+      showRecoveryWords(document, recoveryDisplay, '');
+      recoveryDisplayStep.hidden = false;
+      recoveryEntryStep.hidden = true;
+      document.querySelector('#vault-recovery-heading').textContent =
+        'Write down your recovery key';
       error.textContent = '';
       progress.textContent = '';
     }
@@ -240,7 +368,7 @@
       let score = 0;
       try {
         const estimator = await loadEstimator();
-        const result = estimator(newMaster.value, [currentSecret.value, 'vylk']);
+        const result = estimator(newMaster.value, [verifiedMasterSecret, 'vylk']);
         score = result.score;
         element.textContent =
           score === 4
@@ -268,10 +396,24 @@
 
     function resetMasterMethod() {
       masterMethod = null;
+      verifiedMasterSecret = '';
       masterMethods.hidden = false;
       masterFields.hidden = true;
+      masterCurrentField.hidden = false;
+      masterCurrentRecovery.hidden = true;
+      masterMethodSummary.hidden = false;
+      masterNewFields.hidden = true;
+      masterVerify.hidden = true;
       masterSubmit.hidden = true;
       currentSecret.value = '';
+      masterRecoveryEntry.clear();
+      newMaster.value = '';
+      newMaster.required = false;
+      document.querySelector('#vault-new-master-confirm').value = '';
+      document.querySelector('#vault-new-master-confirm').required = false;
+      newWeakConfirm.checked = false;
+      newWeakConfirmRow.hidden = true;
+      document.querySelector('#vault-new-master-strength').textContent = '';
       masterError.textContent = '';
     }
 
@@ -280,11 +422,62 @@
       masterMethod = method;
       masterMethods.hidden = true;
       masterFields.hidden = false;
-      masterSubmit.hidden = false;
+      masterCurrentField.hidden = method === 'recovery';
+      masterCurrentRecovery.hidden = method !== 'recovery';
+      masterVerify.hidden = false;
       document.querySelector('#vault-master-method-label').textContent =
         method === 'recovery' ? 'Using your recovery key' : 'Using your encryption passphrase';
       updateCurrentChoice('master');
-      currentSecret.focus({preventScroll: true});
+      (method === 'recovery'
+        ? document.querySelector('#vault-master-recovery-word')
+        : currentSecret
+      ).focus({preventScroll: true});
+    }
+
+    async function verifyCurrentForMaster() {
+      if (credentialRunning || !masterMethod) return;
+      const usingRecovery = masterMethod === 'recovery';
+      const secret = usingRecovery ? masterRecoveryEntry.value() : currentSecret.value;
+      masterError.textContent = '';
+      if (!secret || (usingRecovery && !masterRecoveryEntry.ready())) {
+        masterError.textContent = usingRecovery
+          ? 'Enter all 24 recovery words to continue.'
+          : 'Enter your current passphrase to continue.';
+        (usingRecovery
+          ? document.querySelector('#vault-master-recovery-word')
+          : currentSecret
+        ).focus();
+        return;
+      }
+      credentialRunning = true;
+      masterVerify.disabled = true;
+      try {
+        await vaultSession.verifyCredential(secret, usingRecovery);
+        if (
+          masterMethod !== (usingRecovery ? 'recovery' : 'password') ||
+          secret !== (usingRecovery ? masterRecoveryEntry.value() : currentSecret.value)
+        )
+          return;
+        verifiedMasterSecret = secret;
+        masterCurrentField.hidden = true;
+        masterCurrentRecovery.hidden = true;
+        masterMethodSummary.hidden = true;
+        masterNewFields.hidden = false;
+        newMaster.required = true;
+        document.querySelector('#vault-new-master-confirm').required = true;
+        masterVerify.hidden = true;
+        masterSubmit.hidden = false;
+        newMaster.focus({preventScroll: true});
+      } catch (cause) {
+        masterError.textContent =
+          cause?.name === 'OperationError' ||
+          /invalid recovery key|encrypted data failed authentication/i.test(cause?.message || '')
+            ? 'That passphrase or recovery key is incorrect.'
+            : cause?.message || 'Could not check your passphrase or recovery key.';
+      } finally {
+        credentialRunning = false;
+        masterVerify.disabled = false;
+      }
     }
 
     async function openRecovery() {
@@ -305,6 +498,7 @@
       recoveryVerify.hidden = true;
       recoverySubmit.hidden = true;
       recoveryCurrent.value = '';
+      recoveryCurrentEntry.clear();
       recoveryError.textContent = '';
       hideNewRecovery();
     }
@@ -315,16 +509,31 @@
       recoveryMethods.hidden = true;
       recoveryFields.hidden = false;
       recoveryVerify.hidden = false;
+      recoveryCurrentField.hidden = method === 'recovery';
+      recoveryCurrentRecovery.hidden = method !== 'recovery';
+      recoveryCurrent.required = method === 'password';
       document.querySelector('#vault-recovery-method-label').textContent =
         method === 'recovery' ? 'Using your recovery key' : 'Using your encryption passphrase';
       updateCurrentChoice('recovery');
-      recoveryCurrent.focus({preventScroll: true});
+      (method === 'recovery'
+        ? document.querySelector('#vault-recovery-current-word')
+        : recoveryCurrent
+      ).focus({preventScroll: true});
     }
 
     function hideNewRecovery() {
       generatedNewRecovery = '';
-      newRecoveryDisplay.textContent = '';
-      document.querySelector('#vault-new-recovery-confirm').value = '';
+      showRecoveryWords(document, newRecoveryDisplay, '');
+      newRecoveryEntry.clear();
+      recoveryCurrentField.hidden = recoveryMethod === 'recovery';
+      recoveryCurrentRecovery.hidden = recoveryMethod !== 'recovery';
+      recoveryCurrent.required = recoveryMethod === 'password';
+      recoveryMethodSummary.hidden = false;
+      recoveryFormActions.hidden = false;
+      newRecoveryDisplayStep.hidden = false;
+      newRecoveryEntryStep.hidden = true;
+      document.querySelector('#vault-new-recovery-heading').textContent =
+        'Write down your new recovery key';
       newRecoveryStep.hidden = true;
       recoveryVerify.hidden = !recoveryMethod;
       recoverySubmit.hidden = true;
@@ -332,32 +541,42 @@
 
     async function verifyCurrentForRecovery() {
       if (credentialRunning || !recoveryMethod) return;
+      const usingRecovery = recoveryMethod === 'recovery';
+      const currentValue = usingRecovery ? recoveryCurrentEntry.value() : recoveryCurrent.value;
       recoveryError.textContent = '';
-      if (!recoveryCurrent.value) {
-        recoveryError.textContent = 'Enter your passphrase or recovery key to continue.';
-        recoveryCurrent.focus();
+      if (!currentValue || (usingRecovery && !recoveryCurrentEntry.ready())) {
+        recoveryError.textContent = usingRecovery
+          ? 'Enter all 24 recovery words to continue.'
+          : 'Enter your passphrase to continue.';
+        (usingRecovery
+          ? document.querySelector('#vault-recovery-current-word')
+          : recoveryCurrent
+        ).focus();
         return;
       }
       credentialRunning = true;
       recoveryVerify.disabled = true;
-      const currentValue = recoveryCurrent.value;
       const currentKind = selectedCurrentChoice('recovery');
       try {
-        await vaultSession.verifyCredential(currentValue, currentKind === 'recovery');
+        await vaultSession.verifyCredential(currentValue, usingRecovery);
         const next = await root.VylkVaultCrypto.createRecoveryKey(
           root.VylkVaultCrypto.randomBytes(32),
         );
         if (
-          recoveryCurrent.value !== currentValue ||
+          (usingRecovery ? recoveryCurrentEntry.value() : recoveryCurrent.value) !== currentValue ||
           selectedCurrentChoice('recovery') !== currentKind
         )
           return;
         generatedNewRecovery = next;
-        newRecoveryDisplay.textContent = next;
+        showRecoveryWords(document, newRecoveryDisplay, next);
         newRecoveryStep.hidden = false;
         recoveryVerify.hidden = true;
-        recoverySubmit.hidden = false;
-        document.querySelector('#vault-new-recovery-confirm').focus({preventScroll: true});
+        recoveryCurrentField.hidden = true;
+        recoveryCurrentRecovery.hidden = true;
+        recoveryCurrent.required = false;
+        recoveryMethodSummary.hidden = true;
+        recoveryFormActions.hidden = true;
+        document.querySelector('#vault-new-recovery-download').focus({preventScroll: true});
       } catch (cause) {
         recoveryError.textContent =
           cause?.name === 'OperationError' ||
@@ -393,17 +612,9 @@
 
     function updateCurrentChoice(kind) {
       const input = document.querySelector(`#vault-${kind}-current-secret`);
-      const recovery = selectedCurrentChoice(kind) === 'recovery';
-      document.querySelector(`#vault-${kind}-current-label`).textContent = recovery
-        ? 'Recovery key'
-        : 'Passphrase';
-      input.autocomplete = recovery ? 'off' : 'current-password';
       input.value = '';
-      const toggle = document.querySelector(
-        `[data-password-toggle="vault-${kind}-current-secret"]`,
-      );
-      toggle.dataset.secretName = recovery ? 'recovery key' : 'passphrase';
-      toggle.setAttribute('aria-label', `Show ${toggle.dataset.secretName}`);
+      if (kind === 'master') masterRecoveryEntry.clear();
+      else recoveryCurrentEntry.clear();
       document.querySelector(`#vault-${kind}-error`).textContent = '';
       if (kind === 'recovery') hideNewRecovery();
     }
@@ -421,6 +632,13 @@
       resetMasterMethod();
       masterMethods.querySelector('button').focus({preventScroll: true});
     });
+    document.querySelector('#vault-master-recovery-add').addEventListener('click', () => {
+      masterRecoveryEntry.addCurrent();
+    });
+    document.querySelector('#vault-recovery-current-add').addEventListener('click', () => {
+      recoveryCurrentEntry.addCurrent();
+    });
+    masterVerify.addEventListener('click', () => void verifyCurrentForMaster());
     document.querySelector('#vault-recovery-change-method').addEventListener('click', () => {
       if (credentialRunning) return;
       resetRecoveryMethod();
@@ -451,6 +669,7 @@
       if (updateRoute && !wasReset) onDismiss();
     }
     function closeForRoute() {
+      closeModal(finalConfirmModal);
       for (const modal of [setupModal, masterModal, recoveryModal])
         dismiss(modal, {updateRoute: false});
     }
@@ -467,50 +686,41 @@
       void assessStrength();
     });
     oldPassword.addEventListener('input', () => void assessStrength());
-    document.querySelector('#vault-copy-recovery').addEventListener('click', async () => {
-      if (!generatedRecoveryKey) return;
-      try {
-        await navigator.clipboard.writeText(generatedRecoveryKey);
-        progress.textContent = 'Recovery key copied. Keep it somewhere private.';
-      } catch (_) {
-        error.textContent = 'Copy failed. Select and write down the recovery key.';
-      }
+    recoveryDownload.addEventListener('click', () => {
+      if (generatedRecoveryKey) downloadRecoveryKey(document, generatedRecoveryKey);
     });
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
+    recoveryBegin.addEventListener('click', () => {
+      if (!generatedRecoveryKey) return;
+      recoveryEntry.clear();
+      recoveryDisplayStep.hidden = true;
+      recoveryEntryStep.hidden = false;
+      document.querySelector('#vault-recovery-heading').textContent = 'Confirm your recovery key';
+      document.querySelector('#vault-recovery-confirm').focus();
+    });
+    document.querySelector('#vault-recovery-show').addEventListener('click', () => {
+      recoveryEntry.clear();
+      recoveryEntryStep.hidden = true;
+      recoveryDisplayStep.hidden = false;
+      document.querySelector('#vault-recovery-heading').textContent =
+        'Write down your recovery key';
+    });
+    document.querySelector('#vault-recovery-add').addEventListener('click', () => {
+      recoveryEntry.addCurrent();
+    });
+    for (const id of ['vault-final-confirm-close', 'vault-final-confirm-back']) {
+      document
+        .querySelector(`#${id}`)
+        .addEventListener('click', () => closeModal(finalConfirmModal));
+    }
+    finalConfirmModal.querySelector('.modal-backdrop').addEventListener('click', () => {
+      closeModal(finalConfirmModal);
+    });
+
+    async function runSetup() {
       if (running) return;
-      error.textContent = '';
+      closeModal(finalConfirmModal);
       const chosen = master.value;
-      const recoveryKey = generatedRecoveryKey || normalizeRecoveryKey(recoveryConfirm.value);
-      if (!generatedRecoveryKey && vaultSession.config()?.mode !== 'preparing') {
-        error.textContent = 'Could not prepare your recovery key. Close this window and try again.';
-        return;
-      }
-      if (chosen !== document.querySelector('#vault-master-confirm').value) {
-        error.textContent = 'Passphrases do not match.';
-        return;
-      }
-      const score = await assessStrength();
-      if (
-        chosen === oldPassword.value ||
-        (score !== 4 && vaultSession.config()?.require_strong_passwords === true)
-      ) {
-        error.textContent = 'Choose a strong passphrase different from your Vylk sign-in password.';
-        return;
-      }
-      if (score < 4 && !weakConfirm.checked) {
-        error.textContent = 'Confirm that you understand this passphrase is easy to guess.';
-        weakConfirm.focus();
-        return;
-      }
-      if (normalizeRecoveryKey(recoveryConfirm.value) !== normalizeRecoveryKey(recoveryKey)) {
-        error.textContent = 'Enter all 24 words to confirm you saved the recovery key.';
-        return;
-      }
-      if (resetMode && !resetAck.checked) {
-        error.textContent = 'Confirm that you understand the old notes cannot be recovered.';
-        return;
-      }
+      const recoveryKey = generatedRecoveryKey || recoveryEntry.value();
       running = true;
       document.querySelector('#vault-start').disabled = true;
       try {
@@ -536,7 +746,10 @@
         }
         form.reset();
         generatedRecoveryKey = '';
-        recoveryDisplay.textContent = '';
+        recoveryEntry.clear();
+        showRecoveryWords(document, recoveryDisplay, '');
+        recoveryDisplayStep.hidden = false;
+        recoveryEntryStep.hidden = true;
         resetMode = false;
         configureSetupMode();
         closeModal(setupModal);
@@ -548,20 +761,77 @@
         running = false;
         document.querySelector('#vault-start').disabled = false;
       }
+    }
+    document.querySelector('#vault-final-confirm-start').addEventListener('click', () => {
+      void runSetup();
+    });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (running) return;
+      error.textContent = '';
+      const chosen = master.value;
+      if (!generatedRecoveryKey && vaultSession.config()?.mode !== 'preparing') {
+        error.textContent = 'Could not prepare your recovery key. Close this window and try again.';
+        return;
+      }
+      if (chosen !== document.querySelector('#vault-master-confirm').value) {
+        error.textContent = 'Passphrases do not match.';
+        return;
+      }
+      const score = await assessStrength();
+      if (
+        chosen === oldPassword.value ||
+        (score !== 4 && vaultSession.config()?.require_strong_passwords === true)
+      ) {
+        error.textContent = 'Choose a strong passphrase different from your Vylk sign-in password.';
+        return;
+      }
+      if (score < 4 && !weakConfirm.checked) {
+        error.textContent = 'Confirm that you understand this passphrase is easy to guess.';
+        weakConfirm.focus();
+        return;
+      }
+      if (
+        !recoveryEntry.ready() ||
+        (generatedRecoveryKey && recoveryEntry.value() !== generatedRecoveryKey)
+      ) {
+        error.textContent = 'Enter all 24 words to confirm you saved the recovery key.';
+        return;
+      }
+      if (resetMode && !resetAck.checked) {
+        error.textContent = 'Confirm that you understand the old notes cannot be recovered.';
+        return;
+      }
+      if (resetMode) void runSetup();
+      else openModal(finalConfirmModal);
     });
     newMaster.addEventListener('input', () => {
       void assessNewMaster();
     });
-    currentSecret.addEventListener('input', () => void assessNewMaster());
     recoveryCurrent.addEventListener('input', () => hideNewRecovery());
     recoveryVerify.addEventListener('click', () => void verifyCurrentForRecovery());
-    document.querySelector('#vault-new-recovery-copy').addEventListener('click', async () => {
+    document.querySelector('#vault-new-recovery-download').addEventListener('click', () => {
+      if (generatedNewRecovery) downloadRecoveryKey(document, generatedNewRecovery);
+    });
+    document.querySelector('#vault-new-recovery-begin').addEventListener('click', () => {
       if (!generatedNewRecovery) return;
-      try {
-        await navigator.clipboard.writeText(generatedNewRecovery);
-      } catch (_) {
-        recoveryError.textContent = 'Copy failed. Select and write down the recovery key.';
-      }
+      newRecoveryEntry.clear();
+      newRecoveryDisplayStep.hidden = true;
+      newRecoveryEntryStep.hidden = false;
+      recoverySubmit.hidden = false;
+      document.querySelector('#vault-new-recovery-heading').textContent =
+        'Confirm your new recovery key';
+      document.querySelector('#vault-new-recovery-confirm').focus();
+    });
+    document.querySelector('#vault-new-recovery-show').addEventListener('click', () => {
+      newRecoveryEntry.clear();
+      newRecoveryEntryStep.hidden = true;
+      newRecoveryDisplayStep.hidden = false;
+      document.querySelector('#vault-new-recovery-heading').textContent =
+        'Write down your new recovery key';
+    });
+    document.querySelector('#vault-new-recovery-add').addEventListener('click', () => {
+      newRecoveryEntry.addCurrent();
     });
     async function saveCredential(event, kind) {
       event.preventDefault();
@@ -571,10 +841,16 @@
         return;
       }
       if (kind === 'master' && !masterMethod) return;
+      if (kind === 'master' && !verifiedMasterSecret) {
+        await verifyCurrentForMaster();
+        return;
+      }
       const isMaster = kind === 'master';
-      const current = document.querySelector(
-        isMaster ? '#vault-master-current-secret' : '#vault-recovery-current-secret',
-      );
+      const currentValue = isMaster
+        ? verifiedMasterSecret
+        : recoveryMethod === 'recovery'
+          ? recoveryCurrentEntry.value()
+          : recoveryCurrent.value;
       const error = isMaster ? masterError : recoveryError;
       const submit = document.querySelector(
         isMaster ? '#vault-master-submit' : '#vault-recovery-submit',
@@ -590,8 +866,9 @@
       if (isMaster) {
         const score = await assessNewMaster();
         if (
+          !next ||
           next !== document.querySelector('#vault-new-master-confirm').value ||
-          next === current.value ||
+          next === currentValue ||
           (score !== 4 && vaultSession.config()?.require_strong_passwords === true)
         ) {
           error.textContent = 'Confirm a strong passphrase different from the current one.';
@@ -602,31 +879,32 @@
           newWeakConfirm.focus();
           return;
         }
-      } else if (
-        normalizeRecoveryKey(next) !==
-        normalizeRecoveryKey(document.querySelector('#vault-new-recovery-confirm').value)
-      ) {
+      } else if (!newRecoveryEntry.ready() || newRecoveryEntry.value() !== next) {
         error.textContent = 'Enter all 24 words to confirm you saved the recovery key.';
         return;
       }
       credentialRunning = true;
       submit.disabled = true;
       try {
+        await beforeCredentialChange();
         await vaultSession.changeCredential({
           kind,
-          currentSecret: current.value,
+          currentSecret: currentValue,
           currentRecovery: selectedCurrentChoice(kind) === 'recovery',
           newSecret: next,
+          signOutOthers:
+            !isMaster || document.querySelector('#vault-master-signout-others').checked,
         });
         closeCredential(kind);
         const modal = isMaster ? masterModal : recoveryModal;
         closeModal(modal);
-        onComplete();
+        onCredentialChanged();
       } catch (cause) {
         error.textContent = cause.message || 'Could not change the vault credential.';
       } finally {
         credentialRunning = false;
         submit.disabled = false;
+        afterCredentialChange();
       }
     }
     masterForm.addEventListener('submit', (event) => void saveCredential(event, 'master'));
@@ -643,5 +921,5 @@
     };
   }
 
-  root.VylkVaultSetup = {bind, formatError: setupErrorMessage};
+  root.VylkVaultSetup = {bind, formatError: setupErrorMessage, formatRecoveryKey};
 })(globalThis);

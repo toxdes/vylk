@@ -74,7 +74,8 @@
   transform: translateY(-50%) scale(0.8);
 }
 
-.label-input__toggle {
+.label-input__toggle,
+.label-input__action {
   position: absolute;
   top: 0;
   right: 0;
@@ -94,17 +95,20 @@
     box-shadow 0.15s;
 }
 
-.label-input__toggle:hover {
+.label-input__toggle:hover,
+.label-input__action:hover {
   color: var(--fg);
 }
 
-.label-input__toggle:focus-visible {
+.label-input__toggle:focus-visible,
+.label-input__action:focus-visible {
   z-index: 2;
   outline: 2px solid var(--accent);
   outline-offset: -4px;
 }
 
-.label-input__toggle .icon {
+.label-input__toggle .icon,
+.label-input__action .icon {
   width: 1rem;
   height: 1rem;
 }
@@ -113,7 +117,7 @@
   display: none;
 }
 
-.label-input:has(.label-input__toggle) .label-input__control {
+.label-input:has(.label-input__toggle, .label-input__action) .label-input__control {
   padding-right: 2.75rem;
 }
 

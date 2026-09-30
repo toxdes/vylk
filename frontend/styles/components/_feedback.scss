@@ -35,15 +35,18 @@
 }
 
 .sync-indicator[data-state='local'],
+.sync-indicator[data-state='saving'],
 .sync-indicator[data-state='syncing'] {
   --sync-color: var(--status-syncing);
 }
 
-.sync-indicator[data-state='offline'] {
+.sync-indicator[data-state='offline'],
+.sync-indicator[data-state='unsaved'] {
   --sync-color: var(--status-offline);
 }
 
-.sync-indicator[data-state='syncing'] .sync-indicator-dot {
+.sync-indicator[data-state='syncing'] .sync-indicator-dot,
+.sync-indicator[data-state='saving'] .sync-indicator-dot {
   animation: sync-pulse 1s ease-in-out infinite;
 }
 

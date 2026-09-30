@@ -76,6 +76,39 @@ describe('sync scheduling while hidden', () => {
 });
 
 describe('server change invalidation', () => {
+  test('drops events from a replaced database before checking for more changes', async () => {
+    let pulls = 0;
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) => {
+          if (String(path).startsWith('/api/sync?')) {
+            pulls++;
+            if (pulls > 8) throw new Error('sync kept polling an empty replacement database');
+            return response(200, {
+              changes: [],
+              nextSequence: 0,
+              hasMore: false,
+              instance_id: 'replacement-database',
+            });
+          }
+          if (String(path) === '/api/notes') return response(200, []);
+          throw new Error(`unexpected request: ${path}`);
+        },
+      }),
+    );
+    app.window.console.warn = () => {};
+    Object.defineProperty(app.window.document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+    });
+    await app.hooks.applyRemoteChangePage([], new Map(), 42);
+    await app.hooks.handleServerChangeEvent({type: 'notes', sequence: 43});
+
+    await expect(app.hooks.syncNow()).resolves.toBe(true);
+    expect(pulls).toBe(1);
+    await expect(app.hooks.getOfflineState('syncSequence')).resolves.toBe(0);
+  });
+
   test('resets the sync cursor when the server database instance changes', async () => {
     const requests = [];
     const app = track(
@@ -190,11 +223,17 @@ describe('sync coordinator', () => {
     const app = track(await createApp());
     app.hooks.setEditorState({
       id: 'note-a',
-      dirty: true,
+      dirty: false,
       title: 'Note',
       content: 'local edit',
       savedSnapshot: {title: '', tags: '', content: ''},
     });
+
+    app.hooks.markDirty();
+    expect(app.window.document.querySelector('#editor-status').dataset.state).toBe('saving');
+    expect(
+      app.window.document.querySelector('#editor-status .sync-indicator-label').textContent,
+    ).toBe('Saving');
 
     await app.hooks.saveCurrentNote(false);
     await vi.waitFor(() => {
@@ -206,6 +245,27 @@ describe('sync coordinator', () => {
       expect(status.querySelector('.sync-indicator-label').textContent).toBe('Saved');
       expect(status.getAttribute('aria-label')).toBe('Saved on this device; waiting to sync');
     });
+  });
+
+  test('does not claim an edit was saved when local persistence fails', async () => {
+    const app = track(await createApp());
+    app.window.console.error = () => {};
+    app.window.__vylkDependencies.saveLocalNoteAndQueue = async () => {
+      throw new Error('storage unavailable');
+    };
+    app.hooks.setEditorState({
+      id: 'note-a',
+      title: 'Note',
+      content: 'unsaved edit',
+      savedSnapshot: {title: '', tags: '', content: ''},
+    });
+
+    app.hooks.markDirty();
+    expect(app.window.document.querySelector('#editor-status').dataset.state).toBe('saving');
+    await expect(app.hooks.saveCurrentNote(false)).resolves.toBe(false);
+    const status = app.window.document.querySelector('#editor-status');
+    expect(status.dataset.state).toBe('unsaved');
+    expect(status.querySelector('.sync-indicator-label').textContent).toBe('Not saved');
   });
 
   test('does not run a redundant follow-up for requests made during an idle sync', async () => {

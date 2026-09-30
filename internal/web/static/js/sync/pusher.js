@@ -19,10 +19,30 @@
     return async function flush() {
       let pushed = false;
       let maxOperations = initialBatchLimit;
+      let previousBatch = null;
+      let repeatedBatch = false;
       for (;;) {
         const deviceID = await getDeviceID();
         const operations = await claimBatch(deviceID, maxOperations, byteLimit);
         if (!operations.length) return pushed;
+        const batch = JSON.stringify([
+          deviceID,
+          operations.map(({op_id, client_sequence, type, base_revision}) => [
+            op_id,
+            client_sequence,
+            type,
+            base_revision,
+          ]),
+        ]);
+        // One identical retry can recover a transient sequence-gap response.
+        // Repeated acknowledgements/repairs without queue progress must stop.
+        if (batch === previousBatch && repeatedBatch)
+          throw new APIError(
+            'Sync paused because the same batch keeps repeating. Your local changes are kept. Reload or use Retry to try again.',
+            {code: 'sync_no_progress', retryable: false},
+          );
+        repeatedBatch = batch === previousBatch;
+        previousBatch = batch;
         const result = await syncFetch('/api/sync/push', {
           method: 'POST',
           body: JSON.stringify({

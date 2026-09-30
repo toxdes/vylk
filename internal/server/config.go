@@ -22,12 +22,16 @@ type runtimeConfig struct {
 	EncryptionPassword     string
 	EncryptionKey          string
 	MigrateEncryption      bool
+	DisableVaultChanges    bool
 	RequireStrongPasswords bool
 	OpenBrowser            bool
 	ArtificialDelay        time.Duration
 }
 
 func validateRuntimeCredentials(config runtimeConfig, vault *store.VaultConfig) error {
+	if config.DisableVaultChanges && vault != nil && vault.Mode == store.VaultPreparing {
+		return fmt.Errorf("VYLK_DISABLE_VAULT_CHANGES cannot be enabled while a vault migration is in progress")
+	}
 	if (vault == nil || vault.Mode == store.VaultPreparing) && config.Password == "" {
 		return fmt.Errorf("VYLK_PASSWORD environment variable is required until the vault is encrypted")
 	}
@@ -65,6 +69,10 @@ func loadRuntimeConfig(args []string, getenv func(string) string, secret func(st
 	if err != nil {
 		return runtimeConfig{}, fmt.Errorf("VYLK_REQUIRE_STRONG_PASSWORDS must be true, false, 1, or 0: %w", err)
 	}
+	disableVaultChanges, err := strconv.ParseBool(valueOrDefault(getenv("VYLK_DISABLE_VAULT_CHANGES"), "false"))
+	if err != nil {
+		return runtimeConfig{}, fmt.Errorf("VYLK_DISABLE_VAULT_CHANGES must be true, false, 1, or 0: %w", err)
+	}
 	return runtimeConfig{
 		AppName:                appName,
 		Password:               password,
@@ -75,6 +83,7 @@ func loadRuntimeConfig(args []string, getenv func(string) string, secret func(st
 		EncryptionPassword:     encryptionPassword,
 		EncryptionKey:          encryptionKey,
 		MigrateEncryption:      getenv("VYLK_MIGRATE_ENCRYPTION") == "1",
+		DisableVaultChanges:    disableVaultChanges,
 		RequireStrongPasswords: requireStrongPasswords,
 		OpenBrowser:            shouldOpenBrowser(args, getenv),
 		ArtificialDelay:        parseArtificialRTTDelay(getenv(artificialRTTDelayEnv)),
