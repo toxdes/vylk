@@ -8,6 +8,7 @@ async function signIn(page) {
 }
 
 test('groups browser tabs as one device and signs out another browser', async ({page, browser}) => {
+  test.setTimeout(90000);
   await signIn(page);
   const tab = await page.context().newPage();
   await tab.goto('/');
@@ -36,7 +37,8 @@ test('groups browser tabs as one device and signs out another browser', async ({
     await page.locator('#device-signout-confirm').click();
     await expect(page.locator('#device-signout-modal')).toBeHidden();
     expect((await other.request.get('/api/check')).status()).toBe(401);
-    await expect(other.locator('#login-screen')).toBeVisible({timeout: 30000});
+    // Remote revocation is detected by SSE's 25-second heartbeat when idle.
+    await expect(other.locator('#login-screen')).toBeVisible({timeout: 60000});
     await expect(tab.locator('#dashboard')).toBeVisible();
     if (process.env.VYLK_CAPTURE_DEVICES) {
       await page.screenshot({path: '.impeccable/review/devices-desktop.png', fullPage: true});

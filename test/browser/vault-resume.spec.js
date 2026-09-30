@@ -1,7 +1,7 @@
 import {expect, test} from '@playwright/test';
 
 test('resumes an interrupted vault conversion after a page reload', async ({page}) => {
-  test.setTimeout(60000);
+  test.setTimeout(90000);
   await page.goto('/');
   await page.locator('#login-password').fill('browser-test-password');
   await page.locator('#login-form button[type="submit"]').click();

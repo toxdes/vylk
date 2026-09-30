@@ -276,28 +276,27 @@ test('Zen mode keeps a typed caret in its comfortable reading area', async ({pag
   });
 
   await page.keyboard.type('x');
-  await page.evaluate(
-    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-  );
-
-  const after = await editor.evaluate((element) => ({
-    scrollTop: element.scrollTop,
-    scrollEvents: Number(element.dataset.scrollEvents || 0),
-    writes: window.__zenScrollWrites,
-    caretPosition: (() => {
-      const selection = getSelection();
-      const range = selection.getRangeAt(0).cloneRange();
-      range.collapse(false);
-      const caret =
-        range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
-      const editor = element.getBoundingClientRect();
-      return (caret.top + caret.height / 2 - editor.top) / editor.height;
-    })(),
-  }));
-  expect(after.writes).not.toEqual([]);
-  expect(after.scrollEvents).toBeGreaterThan(0);
-  expect(after.caretPosition).toBeGreaterThanOrEqual(0.3);
-  expect(after.caretPosition).toBeLessThanOrEqual(0.5);
+  // Rendering and scroll events need not settle within exactly two frames.
+  await expect(async () => {
+    const after = await editor.evaluate((element) => ({
+      scrollTop: element.scrollTop,
+      scrollEvents: Number(element.dataset.scrollEvents || 0),
+      writes: window.__zenScrollWrites,
+      caretPosition: (() => {
+        const selection = getSelection();
+        const range = selection.getRangeAt(0).cloneRange();
+        range.collapse(false);
+        const caret =
+          range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
+        const editor = element.getBoundingClientRect();
+        return (caret.top + caret.height / 2 - editor.top) / editor.height;
+      })(),
+    }));
+    expect(after.writes).not.toEqual([]);
+    expect(after.scrollEvents).toBeGreaterThan(0);
+    expect(after.caretPosition).toBeGreaterThanOrEqual(0.3);
+    expect(after.caretPosition).toBeLessThanOrEqual(0.5);
+  }).toPass({timeout: 10000});
 });
 
 test('Zen mode eases a pointer-placed caret into its reading area', async ({page}) => {

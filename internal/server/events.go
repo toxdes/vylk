@@ -74,6 +74,16 @@ func (a *app) handleEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming is not supported", http.StatusInternalServerError)
 		return
 	}
+	expireSession := func() {
+		// The stream may have been idle beyond the previous write deadline.
+		// Revocation notices need the same fresh deadline as other SSE messages.
+		if err := setSSEWriteDeadline(w); err != nil {
+			return
+		}
+		if _, err := io.WriteString(w, "event: session-expired\ndata: {}\n\n"); err == nil {
+			flusher.Flush()
+		}
+	}
 
 	// Reset a short write deadline before each heartbeat. This lets the stream
 	// outlive the server's normal request timeout without allowing a stalled
@@ -109,8 +119,7 @@ func (a *app) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-ticker.C:
 			if !a.sessions.Valid(sessionToken(r)) {
-				_, _ = io.WriteString(w, "event: session-expired\ndata: {}\n\n")
-				flusher.Flush()
+				expireSession()
 				return
 			}
 			if err := setSSEWriteDeadline(w); err != nil {
@@ -122,8 +131,7 @@ func (a *app) handleEvents(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		case event := <-changes:
 			if !a.sessions.Valid(sessionToken(r)) {
-				_, _ = io.WriteString(w, "event: session-expired\ndata: {}\n\n")
-				flusher.Flush()
+				expireSession()
 				return
 			}
 			if err := setSSEWriteDeadline(w); err != nil {

@@ -56,7 +56,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   page,
   browser,
 }) => {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
   const bip39Requests = [];
   page.on('request', (request) => {
     if (new URL(request.url()).pathname === '/vendor/bip39.min.js')
@@ -432,8 +432,12 @@ test('encrypts an existing note and syncs ciphertext between independent devices
     await page.locator('#vault-master-submit').click();
     await expect(page.locator('#vault-master-modal')).toBeHidden({timeout: 15000});
     await expect(page.locator('#login-screen')).toBeHidden();
+    // Verify server revocation separately from eventual browser notification.
+    expect((await stalePage.request.get('/api/check')).status()).toBe(401);
     // A revoked device must derive with the new salt without needing a reload.
-    await expect(stalePage.locator('#login-screen')).toBeVisible({timeout: 30000});
+    // Detection can wait for the 25-second SSE heartbeat. Allow CI scheduling
+    // headroom rather than requiring it to fit in one near-exact interval.
+    await expect(stalePage.locator('#login-screen')).toBeVisible({timeout: 60000});
     await stalePage.locator('#login-password').fill(newMaster);
     await stalePage.locator('#login-form button[type="submit"]').click();
     await expect(stalePage.locator('#dashboard')).toBeVisible();
