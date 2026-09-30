@@ -38,6 +38,44 @@
       keys = noteKeys;
     }
 
+    async function resumeRemembered() {
+      if (!encrypted() || requiresSecureContext()) return null;
+      const saved = await offlineStore.rememberedVaultRoot();
+      if (!saved) return null;
+      const marker = await offlineStore.vaultLocalMetadata();
+      if (
+        saved.vaultID !== config.vault_id ||
+        saved.epoch !== config.epoch ||
+        marker?.value !== 1 ||
+        marker.vaultID !== saved.vaultID ||
+        marker.epoch !== saved.epoch
+      ) {
+        await offlineStore.forgetRememberedVaultRoot();
+        return null;
+      }
+      let session;
+      try {
+        session = await apiClient.request('/api/check');
+      } catch (error) {
+        if (error.status === 401 || error.responseStatus === 401) {
+          await offlineStore.forgetRememberedVaultRoot();
+          return null;
+        }
+        if (!['network', 'timeout'].includes(error.kind)) throw error;
+        session = {offline: true};
+      }
+      if (
+        !session.offline &&
+        (!['encrypted', 'cleaning'].includes(session.vault_mode) ||
+          session.vault_epoch !== saved.epoch)
+      ) {
+        await offlineStore.forgetRememberedVaultRoot();
+        return null;
+      }
+      await setRoot(saved.key, true);
+      return session;
+    }
+
     async function unlock(passphrase, {remember = false, recovery = false} = {}) {
       if (!encrypted()) throw new Error('vault encryption is not active');
       const credential = recovery
@@ -461,6 +499,7 @@
       migrate,
       request,
       requiresSecureContext,
+      resumeRemembered,
       reset,
       syncFetch,
       unlock,

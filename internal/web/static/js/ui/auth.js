@@ -126,7 +126,7 @@
         }
         const result = await vaultSession.unlock(recoveryEntry.value(), {
           recovery: true,
-          remember: false,
+          remember: true,
         });
         await completeSignIn(result, true);
         closeModal(recoveryEntryModal);
@@ -171,7 +171,7 @@
         }
         const result = vaultSession.encrypted()
           ? await vaultSession.unlock(event.target.password.value, {
-              remember: false,
+              remember: true,
             })
           : await api('/api/login', {
               method: 'POST',

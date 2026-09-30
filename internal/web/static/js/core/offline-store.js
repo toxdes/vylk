@@ -234,6 +234,12 @@
       );
     }
 
+    async function rememberedVaultRoot() {
+      return withTransaction(openOfflineDB, ['keys'], 'readonly', (stores) =>
+        requestValue(stores.keys.get('root')),
+      );
+    }
+
     async function cachedVaultBootstrap() {
       const db = await openOfflineDB();
       const saved = await requestValue(
@@ -956,7 +962,9 @@
       unresolvedConflictKey,
       unlockVaultLocal,
       forgetRememberedVaultRoot,
+      rememberedVaultRoot,
       vaultLocalFormat,
+      vaultLocalMetadata,
       withOfflineStore,
     });
   }

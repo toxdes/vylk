@@ -116,7 +116,7 @@ test('large documents keep editor input and preview transitions responsive', asy
     (started) => performance.now() - started,
     zenTransitionStarted,
   );
-  const zenEditorLatency = await zenEditor.evaluate(async (element) => {
+  await zenEditor.evaluate((element) => {
     const line = element.lastElementChild;
     const range = document.createRange();
     range.selectNodeContents(line);
@@ -125,22 +125,38 @@ test('large documents keep editor input and preview transitions responsive', asy
     selection.removeAllRanges();
     selection.addRange(range);
     element.focus({preventScroll: true});
-    const started = performance.now();
-    document.execCommand('insertText', false, 'z');
-    const sync = performance.now() - started;
-    const frame = await new Promise((resolve) =>
-      requestAnimationFrame(() => resolve(performance.now() - started)),
-    );
-    return {
-      sync,
-      frame,
-      retainedLine: line === element.lastElementChild,
-      lines: element.childElementCount,
-    };
+    window.__zenInputLatency = new Promise((resolve) => {
+      let started;
+      element.addEventListener(
+        'beforeinput',
+        () => {
+          started = performance.now();
+        },
+        {once: true, capture: true},
+      );
+      element.addEventListener(
+        'beforeinput',
+        () => {
+          const sync = performance.now() - started;
+          requestAnimationFrame(() =>
+            resolve({
+              sync,
+              frame: performance.now() - started,
+              retainedLine: line === element.lastElementChild,
+              lines: element.childElementCount,
+            }),
+          );
+        },
+        {once: true},
+      );
+    });
   });
+  await page.keyboard.type('z');
+  const zenEditorLatency = await page.evaluate(() => window.__zenInputLatency);
   expect(zenEditorLatency.retainedLine).toBe(true);
   expect(zenEditorLatency.lines).toBe(source.split('\n').length);
   await page.locator('[data-zen-action="exit"]').click();
+  await expect(editor).toHaveValue(`${source}xz`);
 
   await page.evaluate(() => {
     window.__previewWorkerMetrics = [];

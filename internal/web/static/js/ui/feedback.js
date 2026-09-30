@@ -3,7 +3,7 @@
 
   const SYNC_STATES = {
     online: {label: 'Saved', title: 'Saved and up to date'},
-    local: {label: 'Saved', title: 'Saved on this device; waiting to sync'},
+    local: {label: 'Saving', title: 'Saved on this device; waiting to sync'},
     saving: {label: 'Saving', title: 'Saving on this device'},
     syncing: {label: 'Syncing', title: 'Synchronizing changes'},
     offline: {label: 'Offline', title: 'Offline — changes are saved on this device'},

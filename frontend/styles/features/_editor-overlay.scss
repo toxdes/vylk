@@ -443,6 +443,23 @@
 
 #editor.zen-mode .zen-overlays {
   display: block;
+  animation: zen-chrome-enter 140ms ease-out;
+}
+
+@keyframes zen-chrome-enter {
+  from {
+    opacity: 0.65;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #editor.zen-mode .zen-overlays {
+    animation: none;
+  }
 }
 
 .zen-controls {
@@ -463,6 +480,15 @@
   border-radius: var(--radius-micro);
   background: transparent;
   color: var(--muted);
+  transition:
+    color 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zen-controls button {
+    transition: none;
+  }
 }
 
 .zen-controls button:hover {

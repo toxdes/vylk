@@ -2,6 +2,50 @@
   'use strict';
 
   const SHOW_TEXT = global.NodeFilter?.SHOW_TEXT || 4;
+  const graphemes = global.Intl?.Segmenter
+    ? new global.Intl.Segmenter(undefined, {granularity: 'grapheme'})
+    : null;
+
+  function deletionBoundary(text, offset, backward) {
+    if (
+      backward &&
+      text.charCodeAt(offset - 1) < 128 &&
+      (offset === text.length || text.charCodeAt(offset) < 128)
+    )
+      return offset - 1;
+    if (
+      !backward &&
+      text.charCodeAt(offset) < 128 &&
+      (offset + 1 === text.length || text.charCodeAt(offset + 1) < 128)
+    )
+      return offset + 1;
+    let index = 0;
+    const segments = graphemes
+      ? graphemes.segment(text)
+      : Array.from(text).map((segment) => {
+          const entry = {segment, index};
+          index += segment.length;
+          return entry;
+        });
+    for (const part of segments) {
+      const end = part.index + part.segment.length;
+      if (backward ? end >= offset : end > offset) return backward ? part.index : end;
+    }
+    return text.length;
+  }
+
+  function changedRange(previous, next) {
+    let start = 0;
+    while (start < previous.length && start < next.length && previous[start] === next[start])
+      start++;
+    let end = previous.length;
+    let nextEnd = next.length;
+    while (end > start && nextEnd > start && previous[end - 1] === next[nextEnd - 1]) {
+      end--;
+      nextEnd--;
+    }
+    return {start, end, inserted: next.slice(start, nextEnd)};
+  }
 
   function appendText(parent, value, className = '') {
     if (!value) return;
@@ -167,13 +211,14 @@
       this.cachedValue = '';
       this.active = false;
       this.composing = false;
-      this.composingLine = null;
+      this.composition = null;
       this.history = [];
       this.future = [];
       this.lastSelection = {start: 0, end: 0, direction: 'none'};
       this.activeLine = null;
       this.typingAnchorFrame = null;
-      this.smoothTypingAnchorUntil = 0;
+      this.anchorAnimationFrame = null;
+      this.anchorAnimation = null;
       element.contentEditable = 'true';
       element.spellcheck = true;
       element.setAttribute('role', 'textbox');
@@ -183,8 +228,14 @@
       element.setAttribute('enterkeyhint', 'enter');
       element.addEventListener('beforeinput', (event) => this.onBeforeInput(event));
       element.addEventListener('pointerdown', (event) => {
-        if (event.button === 0 && event.isPrimary !== false) this.smoothNextTypingAnchor = true;
+        if (event.button === 0 && event.isPrimary !== false) {
+          this.cancelTypingAnchor();
+          this.smoothNextTypingAnchor = true;
+        }
       });
+      element.addEventListener('wheel', () => this.cancelTypingAnchor(), {passive: true});
+      element.addEventListener('touchstart', () => this.cancelTypingAnchor(), {passive: true});
+      element.addEventListener('blur', () => this.cancelTypingAnchor());
       element.addEventListener('keydown', (event) => this.onKeyDown(event));
       element.addEventListener('keyup', (event) => this.onKeyUp(event));
       element.addEventListener('paste', (event) => this.onPaste(event));
@@ -192,14 +243,16 @@
       element.addEventListener('cut', (event) => this.onCut(event));
       element.addEventListener('compositionstart', () => {
         this.composing = true;
-        const selection = global.getSelection?.();
-        this.composingLine =
-          selection?.focusNode && this.element.contains(selection.focusNode)
-            ? (selection.focusNode.nodeType === Node.ELEMENT_NODE
-                ? selection.focusNode
-                : selection.focusNode.parentElement
-              )?.closest?.('.zen-editor-line')
-            : null;
+        const selection = this.selection();
+        const first = this.offsets.locate(selection.start).line;
+        const last = this.offsets.locate(selection.end).line;
+        this.composition = {
+          selection,
+          first,
+          last,
+          before: this.lines[first].element.previousSibling,
+          after: this.lines[last].element.nextSibling,
+        };
       });
       element.addEventListener('compositionend', () => this.finishComposition());
       document.addEventListener('selectionchange', () => this.updateActiveLine());
@@ -210,6 +263,15 @@
       if (this.cachedValue === null)
         this.cachedValue = this.lines.map((line) => line.text).join('\n');
       return this.cachedValue;
+    }
+
+    get active() {
+      return this._active;
+    }
+
+    set active(value) {
+      this._active = Boolean(value);
+      if (!this._active) this.cancelTypingAnchor();
     }
 
     get length() {
@@ -225,6 +287,9 @@
     }
 
     setValue(value, selectionStart = 0, selectionEnd = selectionStart) {
+      this.cancelTypingAnchor();
+      this.composing = false;
+      this.composition = null;
       const source = String(value ?? '');
       const fragment = document.createDocumentFragment();
       this.lines = source.split('\n').map((text, index) => {
@@ -249,6 +314,17 @@
       this.element.replaceChildren(fragment);
       this.element.classList.toggle('is-empty', source.length === 0);
       this.setSelection(selectionStart, selectionEnd);
+    }
+
+    applyValue(value, start = 0, end = start, direction = 'forward') {
+      const next = String(value ?? '');
+      if (next !== this.value) {
+        const change = changedRange(this.value, next);
+        this.replaceRange(change.start, change.end, change.inserted, {
+          inputType: 'insertReplacementText',
+        });
+      }
+      this.setSelection(start, end, direction);
     }
 
     focus(options = {preventScroll: true}) {
@@ -326,8 +402,9 @@
     caretRect() {
       const selection = global.getSelection?.();
       if (!selection?.rangeCount || !this.element.contains(selection.focusNode)) return null;
-      const range = selection.getRangeAt(0).cloneRange();
-      range.collapse(false);
+      const range = document.createRange();
+      range.setStart(selection.focusNode, selection.focusOffset);
+      range.collapse(true);
       const lineElement = (
         selection.focusNode.nodeType === Node.ELEMENT_NODE
           ? selection.focusNode
@@ -348,14 +425,58 @@
         this.element.scrollTop += caretRect.bottom - editorRect.bottom + inset;
     }
 
-    scheduleTypingAnchor({smooth = false} = {}) {
+    cancelTypingAnchor() {
+      if (this.typingAnchorFrame != null) global.cancelAnimationFrame(this.typingAnchorFrame);
+      if (this.anchorAnimationFrame != null) global.cancelAnimationFrame(this.anchorAnimationFrame);
+      this.typingAnchorFrame = null;
+      this.anchorAnimationFrame = null;
+      this.anchorAnimation = null;
+      this.smoothNextTypingAnchor = false;
+    }
+
+    animateAnchor(target) {
+      if (this.anchorAnimation) {
+        this.anchorAnimation.target = target;
+        return;
+      }
+      this.anchorAnimation = {target, time: null};
+      const step = (time) => {
+        this.anchorAnimationFrame = null;
+        const animation = this.anchorAnimation;
+        if (!animation || !this.active || document.activeElement !== this.element) {
+          this.cancelTypingAnchor();
+          return;
+        }
+        const elapsed =
+          animation.time == null ? 16 : Math.max(1, Math.min(64, time - animation.time));
+        animation.time = time;
+        animation.target = Math.max(
+          0,
+          Math.min(animation.target, this.element.scrollHeight - this.element.clientHeight),
+        );
+        const distance = animation.target - this.element.scrollTop;
+        // Browsers may quantize scrollTop to CSS/device pixels. Snap before
+        // fractional steps round to zero and leave an idle frame loop alive.
+        if (Math.abs(distance) <= 2) {
+          this.element.scrollTop = animation.target;
+          this.anchorAnimation = null;
+          // A final measurement catches edits/reflow during the last animation
+          // frame. Idle editors never run a polling loop.
+          this.scheduleTypingAnchor();
+          return;
+        }
+        this.element.scrollTop += distance * (1 - Math.exp(-elapsed / 45));
+        this.anchorAnimationFrame = global.requestAnimationFrame(step);
+      };
+      this.anchorAnimationFrame = global.requestAnimationFrame(step);
+    }
+
+    scheduleTypingAnchor({smooth = true} = {}) {
       if (smooth) this.smoothNextTypingAnchor = true;
       if (this.typingAnchorFrame !== null) return;
       this.typingAnchorFrame = global.requestAnimationFrame(() => {
         this.typingAnchorFrame = null;
         if (!this.active || document.activeElement !== this.element) return;
-        const now = global.performance?.now?.() || 0;
-        if (now < this.smoothTypingAnchorUntil) return;
         const smoothNext = this.smoothNextTypingAnchor;
         this.smoothNextTypingAnchor = false;
         const caretRect = this.caretRect();
@@ -365,7 +486,10 @@
         const relativePosition = (caretCenter - editorRect.top) / editorRect.height;
         const comfortTop = 0.3;
         const comfortBottom = 0.6;
-        if (relativePosition >= comfortTop && relativePosition <= comfortBottom) return;
+        if (relativePosition >= comfortTop && relativePosition <= comfortBottom) {
+          if (this.anchorAnimation) this.cancelTypingAnchor();
+          return;
+        }
         const maxScrollTop = Math.max(0, this.element.scrollHeight - this.element.clientHeight);
         const targetScrollTop = Math.max(
           0,
@@ -375,12 +499,13 @@
           ),
         );
         if (Math.abs(targetScrollTop - this.element.scrollTop) <= 1) return;
-        const smooth =
-          smoothNext && !global.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-        if (smooth && typeof this.element.scrollTo === 'function') {
-          this.smoothTypingAnchorUntil = now + 250;
-          this.element.scrollTo({top: targetScrollTop, behavior: 'smooth'});
-        } else this.element.scrollTop = targetScrollTop;
+        const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (!reducedMotion && (smoothNext || this.anchorAnimation))
+          this.animateAnchor(targetScrollTop);
+        else {
+          this.cancelTypingAnchor();
+          this.element.scrollTop = targetScrollTop;
+        }
       });
     }
 
@@ -515,6 +640,11 @@
         });
       if (!selection.start) return;
       let start = selection.start - 1;
+      const location = this.offsets.locate(selection.start);
+      if (!byWord && location.offset > 0)
+        start =
+          this.offsets.prefix(location.line) +
+          deletionBoundary(this.lines[location.line].text, location.offset, true);
       if (byWord) {
         const before = this.value.slice(0, selection.start);
         start = before.search(/\S+\s*$/);
@@ -532,6 +662,11 @@
         });
       if (selection.end >= this.length) return;
       let end = selection.end + 1;
+      const location = this.offsets.locate(selection.end);
+      if (!byWord && location.offset < this.lines[location.line].text.length)
+        end =
+          this.offsets.prefix(location.line) +
+          deletionBoundary(this.lines[location.line].text, location.offset, false);
       if (byWord) {
         const match = this.value.slice(selection.end).match(/^\s*\S+/);
         end = selection.end + (match?.[0].length || 1);
@@ -601,12 +736,31 @@
 
     onKeyDown(event) {
       if (!this.active) return;
+      if (
+        [
+          'ArrowUp',
+          'ArrowDown',
+          'ArrowLeft',
+          'ArrowRight',
+          'Home',
+          'End',
+          'PageUp',
+          'PageDown',
+        ].includes(event.key)
+      )
+        this.cancelTypingAnchor();
       const mod = event.ctrlKey || event.metaKey;
       if (mod && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         if (event.shiftKey) this.redo();
         else this.undo();
-      } else if (event.key === 'Tab' && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      } else if (
+        event.key === 'Tab' &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey
+      ) {
         event.preventDefault();
         this.replaceSelection('\t', 'insertText');
       }
@@ -616,7 +770,7 @@
       if (!this.active) return;
       if ((event.ctrlKey || event.metaKey) && ['Home', 'End'].includes(event.key)) {
         this.ensureSelectionVisible();
-      } else if (['ArrowUp', 'ArrowDown'].includes(event.key)) {
+      } else if (!event.shiftKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
         this.scheduleTypingAnchor({smooth: true});
       }
     }
@@ -647,25 +801,52 @@
 
     finishComposition() {
       this.composing = false;
-      const line = this.composingLine?.__zenLine;
-      this.composingLine = null;
-      if (!line) return;
-      const text = line.element.textContent || '';
-      if (text === line.text) return;
+      const state = this.composition;
+      this.composition = null;
+      if (!state) return;
+      // Native IME replacement can merge/remove multiple line elements. Capture
+      // only the affected DOM region before restoring its model-owned structure.
+      const nodes = [];
+      for (
+        let node = state.before ? state.before.nextSibling : this.element.firstChild;
+        node && node !== state.after;
+        node = node.nextSibling
+      )
+        nodes.push(node);
+      const texts = nodes.map((node) => node.textContent || '');
+      const text = texts.join('\n');
       const selection = global.getSelection?.();
-      let caretInLine = text.length;
-      if (selection?.rangeCount && line.element.contains(selection.focusNode)) {
-        const range = document.createRange();
-        range.setStart(line.element, 0);
-        range.setEnd(selection.focusNode, selection.focusOffset);
-        caretInLine = range.toString().length;
+      let caret = text.length;
+      let preceding = 0;
+      for (let index = 0; index < nodes.length; index++) {
+        const node = nodes[index];
+        if (selection?.focusNode && node.contains(selection.focusNode)) {
+          const range = document.createRange();
+          range.setStart(node, 0);
+          range.setEnd(selection.focusNode, selection.focusOffset);
+          caret = preceding + range.toString().length;
+          break;
+        }
+        preceding += texts[index].length + 1;
       }
-      const start = this.offsets.prefix(line.index);
-      renderLineContent(line.element, line.text);
-      this.replaceRange(start, start + line.text.length, text, {
-        inputType: 'insertCompositionText',
-      });
-      this.setSelection(start + Math.min(text.length, caretInLine));
+      const original = this.lines.slice(state.first, state.last + 1);
+      const previous = original.map((line) => line.text).join('\n');
+      nodes.forEach((node) => node.remove());
+      const fragment = document.createDocumentFragment();
+      for (const line of original) {
+        renderLineContent(line.element, line.text);
+        fragment.append(line.element);
+      }
+      this.element.insertBefore(fragment, state.after);
+      const start = this.offsets.prefix(state.first);
+      if (text !== previous) {
+        const change = changedRange(previous, text);
+        this.replaceRange(start + change.start, start + change.end, change.inserted, {
+          inputType: 'insertCompositionText',
+        });
+        this.setSelection(start + Math.min(text.length, caret));
+      } else
+        this.setSelection(state.selection.start, state.selection.end, state.selection.direction);
     }
 
     updateActiveLine() {

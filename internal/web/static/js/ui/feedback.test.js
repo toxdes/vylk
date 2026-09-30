@@ -53,7 +53,7 @@ describe('feedback controller', () => {
     feedback.setStatus('local');
     expect(document.querySelector('#sync-status').dataset.state).toBe('local');
     expect(document.querySelector('#editor-status .sync-indicator-label').textContent).toBe(
-      'Saved',
+      'Saving',
     );
 
     feedback.setStatus('saving');

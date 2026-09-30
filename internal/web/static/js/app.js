@@ -1143,8 +1143,8 @@
       const textarea = document.querySelector('#note-content');
       textarea.value = value;
       textarea.selectionStart = textarea.selectionEnd = cursor;
-      if (zenSourceIsActive()) editorSource.zenEditor().setValue(value, cursor, cursor);
-      textarea.dispatchEvent(new Event('input'));
+      if (zenSourceIsActive()) editorSource.zenEditor().applyValue(value, cursor, cursor);
+      else textarea.dispatchEvent(new Event('input'));
       focusCurrentSourceEditor();
     },
     onFormatted: ({immediate}) => {
@@ -1269,7 +1269,15 @@
     getZenView: () => panelController.zenView(),
     isEditorVisible: () => !screens.editor.classList.contains('hidden'),
     isInteractive: () => interactivePreviewSession.active(),
-    measureCaret: measureEditorCaret,
+    measureCaret: () => {
+      if (panelController.state() !== 'zen') return measureEditorCaret();
+      // The source is hidden in Zen reading view. Anchor its logical position
+      // in the same comfortable band instead of measuring the hidden textarea.
+      const preview = $('#preview');
+      const rect = preview.getBoundingClientRect();
+      const lineHeight = Number.parseFloat(getComputedStyle(preview).lineHeight) || 24;
+      return {top: rect.top + rect.height * 0.42, height: lineHeight, lineHeight};
+    },
     navigation: previewNavigation,
     requestPreviewRender: () => requestPreviewRender({announceBusy: true}),
     window,
@@ -2067,10 +2075,12 @@
         return;
       }
       if (vaultSession.encrypted()) {
-        await offlineStore.forgetRememberedVaultRoot();
-        showLoginScreen();
-        $('#app').classList.remove('booting');
-        return;
+        const resumed = await vaultSession.resumeRemembered();
+        if (!resumed) {
+          showLoginScreen();
+          $('#app').classList.remove('booting');
+          return;
+        }
       }
       await restoreCachedStartup();
       localStartupReady = true;

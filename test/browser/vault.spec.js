@@ -319,15 +319,26 @@ test('encrypts an existing note and syncs ciphertext between independent devices
     });
 
     await phone.evaluate(() => navigator.serviceWorker.ready);
+    await phone.reload();
+    await expect(phone.locator('#editor')).toBeVisible();
+    await expect(phone.locator('#note-content')).toHaveValue('Updated on the second device');
+    const sibling = await second.newPage();
+    try {
+      await sibling.goto(phone.url());
+      await expect(sibling.locator('#editor')).toBeVisible();
+      await expect(sibling.locator('#note-content')).toHaveValue('Updated on the second device');
+    } finally {
+      await sibling.close();
+    }
     await second.setOffline(true);
     await phone.reload();
-    await expect(phone.locator('#login-screen')).toBeVisible();
-    await phone.locator('#login-password').fill(master);
-    await phone.locator('#login-form button[type="submit"]').click();
     await expect(phone.locator('#editor')).toBeVisible();
     await expect(phone.locator('#note-content')).toHaveValue('Updated on the second device');
     await phone.locator('#note-content').fill('Saved offline under encryption');
     await phone.locator('#save-btn').click();
+    await expect(phone.locator('#note-content')).toHaveValue('Saved offline under encryption');
+    await phone.reload();
+    await expect(phone.locator('#editor')).toBeVisible();
     await expect(phone.locator('#note-content')).toHaveValue('Saved offline under encryption');
     const phoneDevice = (await second.cookies()).find((cookie) => cookie.name === 'vylk-device');
     expect(phoneDevice).toBeDefined();

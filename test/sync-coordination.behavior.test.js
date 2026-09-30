@@ -219,7 +219,7 @@ describe('server change invalidation', () => {
 });
 
 describe('sync coordinator', () => {
-  test('reports a durable queued edit as saved but waiting to sync', async () => {
+  test('keeps a durable queued edit in Saving until the server acknowledges it', async () => {
     const app = track(await createApp());
     app.hooks.setEditorState({
       id: 'note-a',
@@ -242,7 +242,7 @@ describe('sync coordinator', () => {
         dataset: expect.objectContaining({state: 'local'}),
         title: 'Saved on this device; waiting to sync',
       });
-      expect(status.querySelector('.sync-indicator-label').textContent).toBe('Saved');
+      expect(status.querySelector('.sync-indicator-label').textContent).toBe('Saving');
       expect(status.getAttribute('aria-label')).toBe('Saved on this device; waiting to sync');
     });
   });
