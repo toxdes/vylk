@@ -340,7 +340,7 @@
         (encrypted || marker?.value === 2) &&
         ((marker.vaultID && marker.vaultID !== vaultID) || previousEpochDiffers)
       ) {
-        await discardVaultLocalData();
+        await discardVaultLocalData({vaultID, epoch});
         marker = null;
         encrypted = false;
       }
@@ -876,18 +876,31 @@
       });
     }
 
-    async function discardVaultLocalData() {
+    async function discardVaultLocalData(preserveMetadataFor = null) {
       beforeClear();
       lockVaultLocal();
       const db = await openOfflineDB();
-      const stores = ['notes', 'queue', 'state', 'keys'].filter((name) =>
+      const names = ['notes', 'queue', 'state', 'keys'].filter((name) =>
         db.objectStoreNames.contains(name),
       );
-      const tx = db.transaction(stores, 'readwrite');
-      const complete = transactionComplete(tx);
-      for (const name of stores) tx.objectStore(name).clear();
-      tx.objectStore('state').put({key: 'vault-local-format', value: 2});
-      await complete;
+      await withTransaction(openOfflineDB, names, 'readwrite', async (stores) => {
+        // Sign-in may already have cached the incoming vault's bootstrap and
+        // wrappers. Keep only those matching it, never the old root or note data.
+        const retained = [];
+        if (preserveMetadataFor && stores.keys) {
+          for (const id of ['bootstrap', 'wrappers']) {
+            const record = await requestValue(stores.keys.get(id));
+            if (
+              record?.value?.vault_id === preserveMetadataFor.vaultID &&
+              record.value.epoch === preserveMetadataFor.epoch
+            )
+              retained.push(record);
+          }
+        }
+        for (const name of names) stores[name].clear();
+        for (const record of retained) stores.keys.put(record);
+        stores.state.put({key: 'vault-local-format', value: 2});
+      });
     }
 
     async function closeOfflineDatabaseConnection() {

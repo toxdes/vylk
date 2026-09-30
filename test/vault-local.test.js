@@ -209,17 +209,21 @@ describe('encrypted offline store', () => {
     const store = makeStore(databaseName);
     try {
       await store.unlockVaultLocal(rootKey, vaultID, false, 1);
-      await store.discardVaultLocalData();
+      await store.putLocalNote({id: 'old-note', content: 'old private data'});
       const nextVaultID = globalThis.VylkVaultCrypto.toBase64(
         crypto.getRandomValues(new Uint8Array(16)),
       );
       const bootstrap = {vault_id: nextVaultID, epoch: 2};
+      const wrappers = {vault_id: nextVaultID, epoch: 2, wrapped_key: {ciphertext: 'new wrapper'}};
       await store.cacheVaultBootstrap(bootstrap);
+      await store.cacheVaultWrappers(wrappers);
       const nextRoot = await globalThis.VylkVaultCrypto.importRoot(
         crypto.getRandomValues(new Uint8Array(32)),
       );
       await store.unlockVaultLocal(nextRoot, nextVaultID, false, 2);
       expect(await store.cachedVaultBootstrap()).toEqual(bootstrap);
+      expect(await store.cachedVaultWrappers()).toEqual(wrappers);
+      expect(await store.getAllLocalNotes()).toEqual([]);
     } finally {
       await store.closeOfflineDatabaseConnection();
     }

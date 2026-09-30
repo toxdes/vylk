@@ -77,6 +77,31 @@ test('allows long sync histories while the cursor keeps advancing', async () => 
   expect(cursor).toBe(25);
 });
 
+test('coalesces requests while leadership is being acquired and retains their intent', async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const leadership = vi.fn(async (work) => {
+    await gate;
+    return work();
+  });
+  const reconcileLocal = vi.fn(async () => {});
+  const {coordinator} = createCoordinator({
+    leadership,
+    reconcileLocal,
+    serverWorkRemains: () => false,
+  });
+  const first = coordinator.now();
+  const second = coordinator.now({reconcile: true});
+  const attempts = leadership.mock.calls.length;
+  release();
+  await Promise.all([first, second]);
+  await coordinator.waitForIdle();
+  expect(attempts).toBe(1);
+  expect(reconcileLocal).toHaveBeenCalledOnce();
+});
+
 test.each([409, 200])('bounds repeated identical push batches after HTTP %s', async (status) => {
   let requests = 0;
   const operation = {op_id: 'edit-1', client_sequence: 1, type: 'note.save', base_revision: 0};

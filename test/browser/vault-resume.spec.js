@@ -74,6 +74,43 @@ test('resumes an interrupted vault conversion after a page reload', async ({page
   }
   await page.locator('#vault-start').click();
   await expect(page.locator('#vault-final-confirm-modal')).toBeVisible();
+  // Interrupt after IndexedDB has been encrypted but before server cutover.
+  await page.route('**/api/vault/migration/commit', (route) => route.abort('failed'));
+  await page.locator('#vault-final-confirm-start').click();
+  await expect(page.locator('#vault-error')).not.toHaveText('');
+  expect(
+    await page.evaluate(async () => {
+      const request = indexedDB.open('vylk-offline');
+      const db = await new Promise((resolve) => {
+        request.onsuccess = () => resolve(request.result);
+      });
+      try {
+        const marker = db
+          .transaction('state', 'readonly')
+          .objectStore('state')
+          .get('vault-local-format');
+        return await new Promise((resolve) => {
+          marker.onsuccess = () => resolve(marker.result?.value);
+        });
+      } finally {
+        db.close();
+      }
+    }),
+  ).toBe(1);
+  await page.unroute('**/api/vault/migration/commit');
+  await page.reload();
+  await page.locator('#login-password').fill('browser-test-password');
+  await page.locator('#login-form button[type="submit"]').click();
+  await expect(page.locator('#vault-title')).toHaveText('Resume encryption');
+  await page.locator('#vault-old-password').fill('browser-test-password');
+  await page.locator('#vault-master').fill(master);
+  await page.locator('#vault-master-confirm').fill(master);
+  for (const word of recovery.split(' ')) {
+    await page.locator('#vault-recovery-confirm').fill(word);
+    await page.locator('#vault-recovery-confirm').press('Enter');
+  }
+  await page.locator('#vault-start').click();
+  await expect(page.locator('#vault-final-confirm-modal')).toBeVisible();
   await Promise.all([
     page.waitForEvent('load'),
     page.locator('#vault-final-confirm-start').click(),

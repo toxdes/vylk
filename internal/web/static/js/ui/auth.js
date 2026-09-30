@@ -48,11 +48,13 @@
       document.querySelector('#login-password').value = '';
       document.querySelector('#login-error').textContent = '';
       cacheVersion(result);
-      if (!result.offline) await handleServerIdentity(result.instance_id);
       if (vaultSession.config()?.mode === 'preparing') {
+        // Conversion may already have encrypted IndexedDB. Recover its key in
+        // setup before any identity/sync reads touch that locked local store.
         await vaultSetup.open();
         return;
       }
+      if (!result.offline) await handleServerIdentity(result.instance_id);
       if (!result.offline) await loadPreferences();
       await restoreRoute({fetchRemote: !result.offline});
       if (!result.offline) {
@@ -117,7 +119,7 @@
       try {
         setAuthenticationRequired(false);
         clearDiagnostic();
-        if (!vaultSession.config()) await vaultSession.bootstrap();
+        await vaultSession.bootstrap();
         if (vaultSession.requiresSecureContext()) {
           showLogin();
           return;
@@ -160,7 +162,9 @@
       setAuthenticationRequired(false);
       clearDiagnostic();
       try {
-        if (!vaultSession.config()) await vaultSession.bootstrap();
+        // Another device may have rotated the KDF salt or reset the vault since
+        // this page loaded. Bootstrap retains its cached offline fallback.
+        await vaultSession.bootstrap();
         if (vaultSession.requiresSecureContext()) {
           showLogin();
           return;

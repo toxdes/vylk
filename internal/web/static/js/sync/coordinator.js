@@ -226,12 +226,13 @@
         clearDiagnostic();
       }
       if (progressPaused) return false;
-      if (inFlight) {
+      if (inFlight || lifecyclePromise) {
         mergeOptions(options);
         pendingWhileInFlight = true;
         return false;
       }
-      const lifecycle = leadership(() => perform(options));
+      mergeOptions(options);
+      const lifecycle = leadership(() => perform(takePendingIntent()));
       lifecyclePromise = lifecycle;
       try {
         return await lifecycle;

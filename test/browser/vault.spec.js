@@ -422,9 +422,24 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await expect(page.locator('#vault-new-master-strength')).toHaveText('Strong passphrase');
   const newMaster = await page.locator('#vault-new-master').inputValue();
   await page.locator('#vault-new-master-confirm').fill(newMaster);
-  await page.locator('#vault-master-submit').click();
-  await expect(page.locator('#vault-master-modal')).toBeHidden({timeout: 15000});
-  await expect(page.locator('#login-screen')).toBeHidden();
+  const staleDevice = await browser.newContext();
+  try {
+    const stalePage = await staleDevice.newPage();
+    await stalePage.goto('/');
+    await stalePage.locator('#login-password').fill(master);
+    await stalePage.locator('#login-form button[type="submit"]').click();
+    await expect(stalePage.locator('#dashboard')).toBeVisible();
+    await page.locator('#vault-master-submit').click();
+    await expect(page.locator('#vault-master-modal')).toBeHidden({timeout: 15000});
+    await expect(page.locator('#login-screen')).toBeHidden();
+    // A revoked device must derive with the new salt without needing a reload.
+    await expect(stalePage.locator('#login-screen')).toBeVisible({timeout: 30000});
+    await stalePage.locator('#login-password').fill(newMaster);
+    await stalePage.locator('#login-form button[type="submit"]').click();
+    await expect(stalePage.locator('#dashboard')).toBeVisible();
+  } finally {
+    await staleDevice.close();
+  }
   await page.locator('#prefs-close').click();
   await expect(page.locator('#editor')).toBeVisible();
 
