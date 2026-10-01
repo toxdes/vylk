@@ -131,9 +131,6 @@ func (a *app) checkLegacyNoteFiles() error {
 			}
 			continue
 		}
-		if name == ".vylk-crypto.json" && entry.Type().IsRegular() {
-			continue
-		}
 		if !expected[name] || !entry.Type().IsRegular() {
 			return fmt.Errorf("unexpected file in notes directory: %q", name)
 		}

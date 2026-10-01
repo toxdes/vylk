@@ -13,7 +13,6 @@ import (
 	"vylk/internal/event"
 	"vylk/internal/httpx"
 	notepkg "vylk/internal/note"
-	"vylk/internal/notecrypt"
 	"vylk/internal/store"
 )
 
@@ -26,7 +25,6 @@ type app struct {
 	requireStrongPasswords bool
 	disableVaultChanges    bool
 	notesDir               string
-	encryption             *notecrypt.Config
 	noteCache              *notepkg.Cache
 	rl                     *auth.RateLimiter
 	events                 *event.Broker

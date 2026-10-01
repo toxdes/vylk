@@ -54,7 +54,15 @@
         await vaultSetup.open();
         return;
       }
-      if (!result.offline) await handleServerIdentity(result.instance_id);
+      if (!result.offline) {
+        try {
+          await handleServerIdentity(result.instance_id);
+        } catch (error) {
+          if (error?.code !== 'server_instance_changed') throw error;
+          await restoreRoute({fetchRemote: false});
+          return;
+        }
+      }
       if (!result.offline) await loadPreferences();
       await restoreRoute({fetchRemote: !result.offline});
       if (!result.offline) {

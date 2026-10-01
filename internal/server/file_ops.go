@@ -194,11 +194,8 @@ func (a *app) removeOrphanedStageFiles() error {
 }
 
 func (a *app) saveNoteWithFileOperation(id, title, tags, content string, expectedRevision *int64) (*note, error) {
-	enc, err := a.encryption.Encrypt([]byte(content), id)
-	if err != nil {
-		return nil, err
-	}
-	stageName, err := notepkg.StageFile(a.notesDir, enc)
+	data := []byte(content)
+	stageName, err := notepkg.StageFile(a.notesDir, data)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +224,7 @@ func (a *app) saveNoteWithFileOperation(id, title, tags, content string, expecte
 	if err != nil {
 		return nil, err
 	}
-	operation := fileOperation{ID: operationID, Action: fileOperationReplace, NoteID: id, StageName: stageName, ExpectedHash: notepkg.ContentHash(enc)}
+	operation := fileOperation{ID: operationID, Action: fileOperationReplace, NoteID: id, StageName: stageName, ExpectedHash: notepkg.ContentHash(data)}
 	if err := recordFileOperation(tx, operation); err != nil {
 		return nil, err
 	}

@@ -133,7 +133,7 @@
       if (activeDeleted && getCurrentNoteID() && !isDirty()) await handleActiveDeletion();
     }
 
-    async function applySnapshot(remoteNotes, remoteIDs, sequence = null) {
+    async function applySnapshot(remoteNotes, remoteIDs, sequence = null, instanceID = null) {
       let activeNote = null;
       let activeDeleted = false;
       await withOfflineStore(['notes', 'queue', 'state'], 'readwrite', async (stores) => {
@@ -167,12 +167,17 @@
         }
         if (sequence !== null)
           await requestValue(stores.state.put({key: 'syncSequence', value: sequence}));
+        if (
+          instanceID &&
+          (await requestValue(stores.state.get('serverInstanceID')))?.value === instanceID
+        )
+          await requestValue(stores.state.delete('serverReconciliationRequired'));
       });
       if (activeNote) updateOpenNote(activeNote);
       if (activeDeleted && getCurrentNoteID() && !isDirty()) await handleActiveDeletion();
     }
 
-    async function reset(sequence) {
+    async function reset(sequence, instanceID = null) {
       const summaries = await api('/api/notes', {syncRequest: true});
       if (!Array.isArray(summaries))
         throw new Error('could not refresh notes after sync compaction');
@@ -186,7 +191,7 @@
       }
       for (const id of downloadIDs)
         if (!remoteNotes.get(id)) throw new Error('could not download refreshed note');
-      await applySnapshot(remoteNotes, remoteIDs, sequence);
+      await applySnapshot(remoteNotes, remoteIDs, sequence, instanceID);
     }
 
     async function pull() {
@@ -197,7 +202,7 @@
         const page = await api(`/api/sync?since=${since}&limit=100`, {syncRequest: true});
         if (!page) throw new Error('could not fetch sync changes');
         if (await handleServerIdentity(page.instance_id)) {
-          await reset(0);
+          await reset(0, page.instance_id);
           return;
         }
         if (page.resetRequired) {

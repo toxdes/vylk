@@ -76,6 +76,9 @@ func (a *app) handleVaultSyncPush(w http.ResponseWriter, r *http.Request) {
 	}
 	a.noteMu.Lock()
 	defer a.noteMu.Unlock()
+	if !a.requireServerInstance(w, r) {
+		return
+	}
 	config, err := store.GetVaultConfig(a.db)
 	if err != nil || config == nil || config.Mode != store.VaultReady {
 		httpx.WriteAPIError(w, http.StatusLocked, "vault_unavailable", "encrypted vault is unavailable")

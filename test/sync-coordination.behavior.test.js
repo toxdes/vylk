@@ -76,6 +76,86 @@ describe('sync scheduling while hidden', () => {
 });
 
 describe('server change invalidation', () => {
+  test('retries an incomplete replacement snapshot even after its identity was recorded', async () => {
+    let snapshots = 0;
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) => {
+          if (String(path).startsWith('/api/sync?'))
+            return response(200, {
+              changes: [],
+              nextSequence: 0,
+              hasMore: false,
+              instance_id: 'replacement',
+            });
+          if (String(path) === '/api/notes') {
+            if (++snapshots === 1) throw new TypeError('snapshot download interrupted');
+            return response(200, []);
+          }
+          throw new Error(`unexpected request: ${path}`);
+        },
+      }),
+    );
+    await app.hooks.setOfflineState('serverInstanceID', 'original');
+    await expect(app.hooks.syncNow()).resolves.toBe(false);
+    await expect(app.hooks.getOfflineState('serverReconciliationRequired')).resolves.toBe(true);
+    await expect(app.hooks.syncNow()).resolves.toBe(true);
+    expect(snapshots).toBe(2);
+    expect(await app.hooks.getOfflineState('serverReconciliationRequired')).toBeFalsy();
+    app.hooks.cancelScheduledSync();
+  });
+
+  test('preserves pending edits and pauses until the original database returns', async () => {
+    let instance = 'replacement';
+    let pushes = 0;
+    const app = track(
+      await createApp({
+        fetchImpl: async (path, options) => {
+          if (String(path).startsWith('/api/sync?'))
+            return response(200, {
+              changes: [],
+              nextSequence: 0,
+              hasMore: false,
+              instance_id: instance,
+            });
+          if (String(path) === '/api/notes') return response(200, []);
+          if (String(path) === '/api/sync/push') {
+            pushes++;
+            expect(options.headers['X-Vylk-Instance-ID']).toBe('original');
+            return response(200, {
+              acknowledged: JSON.parse(options.body).operations.map((op) => ({
+                op_id: op.op_id,
+                status: 'applied',
+                revision: 1,
+              })),
+            });
+          }
+          throw new Error(`unexpected request: ${path}`);
+        },
+      }),
+    );
+    await app.hooks.setOfflineState('serverInstanceID', 'original');
+    await app.hooks.setOfflineState('syncSequence', 42);
+    await app.hooks.queueOperation({
+      type: 'note.save',
+      note_id: 'pending-note',
+      base_revision: 0,
+      note: {id: 'pending-note', title: 'Offline note', content: 'keep this', tags: ''},
+    });
+    await expect(app.hooks.syncNow()).resolves.toBe(false);
+    expect(pushes).toBe(0);
+    await expect(app.hooks.getOfflineState('serverInstanceID')).resolves.toBe('original');
+    await expect(app.hooks.getOfflineState('syncSequence')).resolves.toBe(42);
+    expect(await app.hooks.pendingOperations()).toHaveLength(1);
+    await expect(app.hooks.syncNow({retryPaused: true})).resolves.toBe(false);
+    expect(pushes).toBe(0);
+    instance = 'original';
+    await app.hooks.setOfflineState('syncSequence', 0);
+    await expect(app.hooks.syncNow({retryPaused: true})).resolves.toBe(true);
+    expect(pushes).toBe(1);
+    expect(await app.hooks.pendingOperations()).toHaveLength(0);
+  });
+
   test('drops events from a replaced database before checking for more changes', async () => {
     let pulls = 0;
     const app = track(

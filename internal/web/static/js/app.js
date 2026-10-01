@@ -332,16 +332,22 @@
       throw new Error('Could not save local changes. Try again before signing out.');
   }
 
+  let observedServerInstanceID = null;
   async function handleServerIdentity(instanceID) {
     if (!instanceID) return;
-    const previousInstanceID = await getOfflineState('serverInstanceID');
-    const changed = previousInstanceID !== instanceID;
-    // A replaced server database has a new sync history. Keep queued local
-    // operations so the normal push path can recover them after reconciliation.
-    if (changed) await setOfflineState('syncSequence', 0);
-    await setOfflineState('serverInstanceID', instanceID);
-    if (changed) serverEventClient?.resetPendingChanges();
-    return changed;
+    const result = await offlineStore.checkServerIdentity(instanceID);
+    if (result.blocked) {
+      const error = new APIError(
+        'The server database changed. Sync is paused to protect your unsynced edits. Restore the previous database and notes directory, then choose Retry.',
+        {status: 409, code: 'server_instance_changed', retryable: false},
+      );
+      showOfflineNotice(false, error.message);
+      throw error;
+    }
+    // Each tab owns its SSE high-water mark, even though IndexedDB is shared.
+    if (observedServerInstanceID !== instanceID) serverEventClient?.resetPendingChanges();
+    observedServerInstanceID = instanceID;
+    return result.reconcile;
   }
 
   function beginSyncNetworkRequest() {
@@ -608,6 +614,7 @@
     byteLimit: syncPushBatchByteLimit,
     claimBatch: claimPendingOperationBatch,
     getDeviceID: syncDeviceID,
+    getInstanceID: () => getOfflineState('serverInstanceID'),
     initialBatchLimit: syncPushBatchLimit,
     quarantine: quarantineQueueOperation,
     repairSequenceGap: repairSyncSequenceGap,
@@ -656,6 +663,7 @@
     getHydrationState: () => dashboardHydrationState,
     getPendingOperations: pendingOperations,
     hideOfflineNotice,
+    showSyncPaused: (message) => showOfflineNotice(false, message),
     isDashboardVisible: () => !screens.dashboard.classList.contains('hidden'),
     isEditorDirty: () => isDirty,
     isEditorVisible: () => !screens.editor.classList.contains('hidden'),
@@ -2108,6 +2116,7 @@
     } catch (error) {
       console.error('initialization failed', error);
       if (error?.responseStatus === 401) return;
+      if (error?.code === 'server_instance_changed' && localStartupReady) return;
       if (localStartupReady) {
         markServerOffline();
       } else {

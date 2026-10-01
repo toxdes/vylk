@@ -16,7 +16,6 @@ import (
 	"vylk/internal/auth"
 	"vylk/internal/event"
 	notepkg "vylk/internal/note"
-	"vylk/internal/notecrypt"
 	"vylk/internal/store"
 	"vylk/internal/web"
 )
@@ -81,18 +80,9 @@ func Main() {
 		log.Fatalf("rate limiter: %v", err)
 	}
 
-	var encryption *notecrypt.Config
 	if vaultConfig == nil || vaultConfig.Mode == store.VaultPreparing {
-		encryption, err = notecrypt.New(notesDir, config.EncryptionPassword, config.EncryptionKey)
-		if err != nil {
-			log.Fatalf("encryption: %v", err)
-		}
-	}
-	if encryption != nil {
-		if encryption.LegacyWrite() {
-			log.Println("legacy file encryption enabled; migrate to VYLK_ENCRYPTION_PASSWORD or an explicitly encoded 32-byte key")
-		} else {
-			log.Println("versioned file encryption enabled")
+		if err := validatePlaintextStorage(notesDir); err != nil {
+			log.Fatalf("notes storage: %v", err)
 		}
 	}
 
@@ -104,7 +94,6 @@ func Main() {
 		requireStrongPasswords: config.RequireStrongPasswords,
 		disableVaultChanges:    config.DisableVaultChanges,
 		notesDir:               notesDir,
-		encryption:             encryption,
 		noteCache:              notepkg.NewCache(),
 		rl:                     rl,
 		events:                 event.NewBroker(),
@@ -120,13 +109,6 @@ func Main() {
 	}
 	if err := app.cleanupVaultArchives(time.Now().UTC()); err != nil {
 		log.Printf("clean expired vault archives: %v", err)
-	}
-	if config.MigrateEncryption && (vaultConfig == nil || vaultConfig.Mode == store.VaultPreparing) {
-		count, err := migrateEncryption(app)
-		if err != nil {
-			log.Fatalf("encryption migration: %v", err)
-		}
-		log.Printf("migrated %d note files to encryption v2", count)
 	}
 
 	go sessions.CleanupLoop()
@@ -171,41 +153,4 @@ func Main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	srv.Shutdown(shutdownCtx)
-}
-
-func migrateEncryption(a *app) (int, error) {
-	if a.encryption == nil || a.encryption.LegacyWrite() {
-		return 0, fmt.Errorf("VYLK_MIGRATE_ENCRYPTION requires VYLK_ENCRYPTION_PASSWORD or an explicitly encoded key")
-	}
-	notes, err := store.ListNotes(a.db, "")
-	if err != nil {
-		return 0, err
-	}
-	count := 0
-	for _, n := range notes {
-		path, err := notepkg.SanitizePath(a.notesDir, n.Filename)
-		if err != nil {
-			return count, err
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return count, err
-		}
-		if notecrypt.IsVersionedEnvelope(data) {
-			continue
-		}
-		plain, err := a.encryption.Decrypt(data, n.ID)
-		if err != nil {
-			return count, fmt.Errorf("decrypt %s: %w", n.ID, err)
-		}
-		updated, err := a.encryption.Encrypt(plain, n.ID)
-		if err != nil {
-			return count, err
-		}
-		if err := notepkg.WriteFile(path, updated); err != nil {
-			return count, err
-		}
-		count++
-	}
-	return count, nil
 }

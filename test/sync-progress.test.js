@@ -176,6 +176,41 @@ test.each([409, 200])('bounds repeated identical push batches after HTTP %s', as
   expect(requests).toBe(2);
 });
 
+test('does not repair sequences or discard edits when a push reaches a replacement database', async () => {
+  const repairSequenceGap = vi.fn();
+  const quarantine = vi.fn();
+  const applyAcknowledgement = vi.fn();
+  const flush = globalThis.VylkSyncPusher.create({
+    APIError: globalThis.VylkHTTP.APIError,
+    apiErrorFromPayload: globalThis.VylkHTTP.errorFromPayload,
+    getDeviceID: async () => 'device-a',
+    getInstanceID: async () => 'original',
+    claimBatch: async () => [{op_id: 'edit-1', client_sequence: 1, type: 'noop'}],
+    serialize: (item) => item,
+    repairSequenceGap,
+    quarantine,
+    applyAcknowledgement,
+    syncFetch: async (_path, options) => {
+      expect(options.headers['X-Vylk-Instance-ID']).toBe('original');
+      return {
+        response: {status: 409, ok: false},
+        data: {
+          error: 'The server database changed',
+          code: 'server_instance_changed',
+          expected_sequence: 1,
+        },
+      };
+    },
+  });
+  await expect(flush()).rejects.toMatchObject({
+    code: 'server_instance_changed',
+    responseStatus: 409,
+  });
+  expect(repairSequenceGap).not.toHaveBeenCalled();
+  expect(quarantine).not.toHaveBeenCalled();
+  expect(applyAcknowledgement).not.toHaveBeenCalled();
+});
+
 test.each([0, -1, 'invalid'])(
   'rejects a non-advancing download cursor %s',
   async (nextSequence) => {

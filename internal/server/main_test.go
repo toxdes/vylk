@@ -24,6 +24,22 @@ func TestLoadRuntimeConfigAppliesDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeConfigRejectsRemovedEncryptionSettings(t *testing.T) {
+	for _, variable := range []string{"VYLK_ENCRYPTION_KEY", "VYLK_ENCRYPTION_PASSWORD", "VYLK_MIGRATE_ENCRYPTION", "VYLK_ENCRYPTION_KEY_FILE", "VYLK_ENCRYPTION_PASSWORD_FILE"} {
+		t.Run(variable, func(t *testing.T) {
+			_, err := loadRuntimeConfig(nil, func(name string) string {
+				if name == variable {
+					return "configured"
+				}
+				return ""
+			}, func(string) (string, error) { return "secret", nil })
+			if err == nil {
+				t.Fatal("silently accepted a removed encryption setting")
+			}
+		})
+	}
+}
+
 func TestLoadRuntimeConfigReadsOperationalSettings(t *testing.T) {
 	values := map[string]string{
 		"VYLK_PASSWORD":           "secret",
@@ -32,7 +48,6 @@ func TestLoadRuntimeConfigReadsOperationalSettings(t *testing.T) {
 		"VYLK_DIR":                "/notes",
 		"VYLK_DB":                 "/data/vylk.db",
 		"VYLK_TRUST_PROXY":        "1",
-		"VYLK_MIGRATE_ENCRYPTION": "1",
 		"ARTIFICIAL_RTT_DELAY_MS": "25",
 	}
 	getenv := func(key string) string { return values[key] }
@@ -45,7 +60,7 @@ func TestLoadRuntimeConfigReadsOperationalSettings(t *testing.T) {
 	if config.AppName != "Acme Notes" || config.Port != "9090" || config.NotesDir != "/notes" || config.DatabasePath != "/data/vylk.db" {
 		t.Fatalf("runtime config = %#v", config)
 	}
-	if !config.TrustProxy || !config.MigrateEncryption || config.OpenBrowser || config.ArtificialDelay != 25*time.Millisecond {
+	if !config.TrustProxy || config.OpenBrowser || config.ArtificialDelay != 25*time.Millisecond {
 		t.Fatalf("runtime flags = %#v", config)
 	}
 }
@@ -125,11 +140,6 @@ func TestValidateRuntimeCredentialsAppliesStrongPasswordPolicy(t *testing.T) {
 		Password: "correct horse battery staple!", RequireStrongPasswords: true,
 	}, ready); err != nil {
 		t.Fatalf("rejected a strong VYLK_PASSWORD: %v", err)
-	}
-	if err := validateRuntimeCredentials(runtimeConfig{
-		Password: "correct horse battery staple!", EncryptionPassword: "password", RequireStrongPasswords: true,
-	}, ready); err == nil {
-		t.Fatal("accepted a weak VYLK_ENCRYPTION_PASSWORD")
 	}
 	if err := validateRuntimeCredentials(runtimeConfig{Password: "password"}, ready); err != nil {
 		t.Fatalf("default policy rejected a weak VYLK_PASSWORD: %v", err)

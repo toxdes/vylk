@@ -33,6 +33,7 @@
     setDiagnostic,
     setHydrationState,
     showToast,
+    showSyncPaused = () => {},
     startStatus,
     window,
   }) {
@@ -169,6 +170,15 @@
         return true;
       } catch (error) {
         console.warn('sync failed', error);
+        if (error?.code === 'server_instance_changed') {
+          progressPaused = true;
+          failed = false;
+          cancelScheduled();
+          setDiagnostic(error.message, error.responseStatus);
+          finishStatus('local');
+          showSyncPaused(error.message);
+          return false;
+        }
         if (error?.code === 'sync_no_progress') {
           progressPaused = true;
           failed = false;

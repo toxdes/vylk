@@ -147,12 +147,12 @@
       return diagnostic;
     }
 
-    function showOfflineNotice(checking = false) {
+    function showOfflineNotice(checking = false, message = null) {
       selectAll('.offline-notice').forEach((notice) => {
         notice.classList.remove('hidden');
         notice.querySelector('.offline-notice-message').textContent = checking
           ? 'Checking…'
-          : "You're offline. Changes are saved on this device.";
+          : message || "You're offline. Changes are saved on this device.";
         const retry = notice.querySelector('.offline-retry');
         retry.classList.toggle('hidden', checking);
         retry.disabled = checking;

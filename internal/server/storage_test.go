@@ -13,7 +13,6 @@ import (
 
 	"vylk/internal/auth"
 	notepkg "vylk/internal/note"
-	"vylk/internal/notecrypt"
 )
 
 func TestSanitizePathRejectsSiblingPrefix(t *testing.T) {
@@ -39,93 +38,6 @@ func TestReadSecretFromFile(t *testing.T) {
 	value, err := readSecret("VYLK_TEST_SECRET")
 	if err != nil || value != "value" {
 		t.Fatalf("read secret = %q, %v", value, err)
-	}
-}
-
-func TestVersionedEncryptionBindsTheNoteID(t *testing.T) {
-	config, err := notecrypt.New(t.TempDir(), "", "hex:0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")
-	if err != nil {
-		t.Fatalf("create encryption config: %v", err)
-	}
-	ciphertext, err := config.Encrypt([]byte("private note"), "note-a")
-	if err != nil {
-		t.Fatalf("encrypt: %v", err)
-	}
-	if !notecrypt.IsVersionedEnvelope(ciphertext) {
-		t.Fatal("new ciphertext does not have a versioned envelope")
-	}
-	plaintext, err := config.Decrypt(ciphertext, "note-a")
-	if err != nil || string(plaintext) != "private note" {
-		t.Fatalf("decrypt = %q, %v", plaintext, err)
-	}
-	if _, err := config.Decrypt(ciphertext, "note-b"); err == nil {
-		t.Fatal("ciphertext was accepted under a different note ID")
-	}
-}
-
-func TestPasswordEncryptionReadsLegacyNotes(t *testing.T) {
-	dir := t.TempDir()
-	config, err := notecrypt.New(dir, "correct horse battery staple", "")
-	if err != nil {
-		t.Fatalf("create password config: %v", err)
-	}
-	legacy, err := notecrypt.EncryptLegacy([]byte("old note"), notecrypt.DeriveLegacyKey("correct horse battery staple"))
-	if err != nil {
-		t.Fatalf("encrypt legacy: %v", err)
-	}
-	plaintext, err := config.Decrypt(legacy, "old-id")
-	if err != nil || string(plaintext) != "old note" {
-		t.Fatalf("decrypt legacy = %q, %v", plaintext, err)
-	}
-	info, err := os.Stat(filepath.Join(dir, notecrypt.MetadataFilename))
-	if err != nil {
-		t.Fatalf("encryption metadata: %v", err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Fatalf("metadata mode = %o, want 600", info.Mode().Perm())
-	}
-}
-
-func TestMigrateEncryptionUpgradesLegacyFiles(t *testing.T) {
-	notesDir := t.TempDir()
-	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer db.Close()
-	if err := initDB(db); err != nil {
-		t.Fatalf("init db: %v", err)
-	}
-	if err := upsertNote(db, "legacy-id", "Legacy", "legacy-id.md", ""); err != nil {
-		t.Fatalf("create legacy note: %v", err)
-	}
-	legacy, err := notecrypt.EncryptLegacy([]byte("migrate me"), notecrypt.DeriveLegacyKey("old secret"))
-	if err != nil {
-		t.Fatalf("encrypt legacy: %v", err)
-	}
-	path := filepath.Join(notesDir, "legacy-id.md")
-	if err := notepkg.WriteFile(path, legacy); err != nil {
-		t.Fatalf("write legacy note: %v", err)
-	}
-	config, err := notecrypt.New(notesDir, "old secret", "")
-	if err != nil {
-		t.Fatalf("new config: %v", err)
-	}
-	a := &app{db: db, notesDir: notesDir, encryption: config}
-	count, err := migrateEncryption(a)
-	if err != nil || count != 1 {
-		t.Fatalf("migrate = %d, %v", count, err)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read migrated note: %v", err)
-	}
-	if !notecrypt.IsVersionedEnvelope(data) {
-		t.Fatal("migrated note does not use versioned encryption")
-	}
-	plaintext, err := config.Decrypt(data, "legacy-id")
-	if err != nil || string(plaintext) != "migrate me" {
-		t.Fatalf("decrypt migrated note = %q, %v", plaintext, err)
 	}
 }
 
@@ -352,21 +264,13 @@ func TestNoteContentReadWaitsForNoteWriteLock(t *testing.T) {
 	if err := initDB(db); err != nil {
 		t.Fatalf("init db: %v", err)
 	}
-	config, err := notecrypt.New(dir, "test password", "")
-	if err != nil {
-		t.Fatalf("create encryption config: %v", err)
-	}
 	if err := upsertNote(db, "read-lock-note", "Read lock", "read-lock-note.md", ""); err != nil {
 		t.Fatalf("create note: %v", err)
 	}
-	ciphertext, err := config.Encrypt([]byte("consistent content"), "read-lock-note")
-	if err != nil {
-		t.Fatalf("encrypt note: %v", err)
-	}
-	if err := notepkg.WriteFile(filepath.Join(dir, "read-lock-note.md"), ciphertext); err != nil {
+	if err := notepkg.WriteFile(filepath.Join(dir, "read-lock-note.md"), []byte("consistent content")); err != nil {
 		t.Fatalf("write note: %v", err)
 	}
-	a := &app{db: db, notesDir: dir, encryption: config, noteCache: notepkg.NewCache()}
+	a := &app{db: db, notesDir: dir, noteCache: notepkg.NewCache()}
 
 	a.noteMu.Lock()
 	result := make(chan struct {

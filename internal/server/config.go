@@ -19,9 +19,6 @@ type runtimeConfig struct {
 	NotesDir               string
 	DatabasePath           string
 	TrustProxy             bool
-	EncryptionPassword     string
-	EncryptionKey          string
-	MigrateEncryption      bool
 	DisableVaultChanges    bool
 	RequireStrongPasswords bool
 	OpenBrowser            bool
@@ -35,20 +32,19 @@ func validateRuntimeCredentials(config runtimeConfig, vault *store.VaultConfig) 
 	if (vault == nil || vault.Mode == store.VaultPreparing) && config.Password == "" {
 		return fmt.Errorf("VYLK_PASSWORD environment variable is required until the vault is encrypted")
 	}
-	if config.RequireStrongPasswords {
-		for _, credential := range []struct{ name, password string }{
-			{name: "VYLK_PASSWORD", password: config.Password},
-			{name: "VYLK_ENCRYPTION_PASSWORD", password: config.EncryptionPassword},
-		} {
-			if credential.password != "" && zxcvbn.PasswordStrength(credential.password, nil).Score < 4 {
-				return fmt.Errorf("%s must be strong when VYLK_REQUIRE_STRONG_PASSWORDS is enabled", credential.name)
-			}
-		}
+	if config.RequireStrongPasswords && config.Password != "" && zxcvbn.PasswordStrength(config.Password, nil).Score < 4 {
+		return fmt.Errorf("VYLK_PASSWORD must be strong when VYLK_REQUIRE_STRONG_PASSWORDS is enabled")
 	}
 	return nil
 }
 
 func loadRuntimeConfig(args []string, getenv func(string) string, secret func(string) (string, error)) (runtimeConfig, error) {
+	// Never silently write plaintext under an obsolete encryption configuration.
+	for _, name := range []string{"VYLK_ENCRYPTION_PASSWORD", "VYLK_ENCRYPTION_KEY", "VYLK_ENCRYPTION_PASSWORD_FILE", "VYLK_ENCRYPTION_KEY_FILE", "VYLK_MIGRATE_ENCRYPTION"} {
+		if getenv(name) != "" {
+			return runtimeConfig{}, fmt.Errorf("%s is no longer supported: server-side encryption was removed; export existing server-encrypted notes with the previous version before upgrading", name)
+		}
+	}
 	appName, err := web.ConfiguredName(getenv(web.NameEnv))
 	if err != nil {
 		return runtimeConfig{}, fmt.Errorf("app name: %w", err)
@@ -56,14 +52,6 @@ func loadRuntimeConfig(args []string, getenv func(string) string, secret func(st
 	password, err := secret("VYLK_PASSWORD")
 	if err != nil {
 		return runtimeConfig{}, fmt.Errorf("password: %w", err)
-	}
-	encryptionPassword, err := secret("VYLK_ENCRYPTION_PASSWORD")
-	if err != nil {
-		return runtimeConfig{}, fmt.Errorf("encryption password: %w", err)
-	}
-	encryptionKey, err := secret("VYLK_ENCRYPTION_KEY")
-	if err != nil {
-		return runtimeConfig{}, fmt.Errorf("encryption key: %w", err)
 	}
 	requireStrongPasswords, err := strconv.ParseBool(valueOrDefault(getenv("VYLK_REQUIRE_STRONG_PASSWORDS"), "false"))
 	if err != nil {
@@ -80,9 +68,6 @@ func loadRuntimeConfig(args []string, getenv func(string) string, secret func(st
 		NotesDir:               valueOrDefault(getenv("VYLK_DIR"), "./notes"),
 		DatabasePath:           valueOrDefault(getenv("VYLK_DB"), "./vylk.db"),
 		TrustProxy:             getenv("VYLK_TRUST_PROXY") == "1",
-		EncryptionPassword:     encryptionPassword,
-		EncryptionKey:          encryptionKey,
-		MigrateEncryption:      getenv("VYLK_MIGRATE_ENCRYPTION") == "1",
 		DisableVaultChanges:    disableVaultChanges,
 		RequireStrongPasswords: requireStrongPasswords,
 		OpenBrowser:            shouldOpenBrowser(args, getenv),
@@ -98,7 +83,7 @@ func valueOrDefault(value, fallback string) string {
 }
 
 // readSecret supports Docker/Kubernetes-style *_FILE secrets without putting a
-// reusable encryption or login secret in the process environment. A final line
+// reusable login secret in the process environment. A final line
 // break is removed because secret mounts conventionally include one.
 func readSecret(name string) (string, error) {
 	if path := os.Getenv(name + "_FILE"); path != "" {

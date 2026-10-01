@@ -221,6 +221,34 @@
       return marker?.value === 1 || marker?.value === 2;
     }
 
+    async function checkServerIdentity(instanceID) {
+      return withOfflineStore(['queue', 'state'], 'readwrite', async (stores) => {
+        const previous = (await requestValue(stores.state.get('serverInstanceID')))?.value;
+        const changed = previous !== instanceID;
+        if (previous && changed) {
+          const records = await requestValue(stores.state.getAll());
+          const pending = await requestValue(stores.queue.openCursor());
+          const guarded = records.some(
+            ({key}) => key.startsWith('unresolvedConflict:') || key.startsWith('rejectedSync:'),
+          );
+          if (pending || guarded) return {blocked: true};
+        }
+        if (changed) {
+          // Persist reconciliation with the identity: a failed snapshot must be
+          // retried on the next visit, even if another tab already saw this ID.
+          await requestValue(stores.state.put({key: 'syncSequence', value: 0}));
+          await requestValue(stores.state.put({key: 'serverInstanceID', value: instanceID}));
+          await requestValue(stores.state.put({key: 'serverReconciliationRequired', value: true}));
+        }
+        return {
+          changed,
+          reconcile:
+            changed ||
+            Boolean((await requestValue(stores.state.get('serverReconciliationRequired')))?.value),
+        };
+      });
+    }
+
     async function vaultLocalMetadata() {
       const db = await openOfflineDB();
       return requestValue(
@@ -920,6 +948,7 @@
     }
 
     return Object.freeze({
+      checkServerIdentity,
       claimQueueOperation,
       cachedVaultBootstrap,
       cachedVaultWrappers,

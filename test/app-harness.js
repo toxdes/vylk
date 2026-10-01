@@ -251,6 +251,7 @@ globalThis.__vylkTestHooks = {
   getLocalNote,
   getOfflineDatabaseInfo,
   getOfflineState,
+  setOfflineState,
   clearOfflineData,
   api,
   cancelActiveSyncRequests,

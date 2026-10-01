@@ -8,6 +8,7 @@
     byteLimit,
     claimBatch,
     getDeviceID,
+    getInstanceID = async () => null,
     initialBatchLimit,
     quarantine,
     repairSequenceGap,
@@ -43,8 +44,13 @@
           );
         repeatedBatch = batch === previousBatch;
         previousBatch = batch;
+        const instanceID = await getInstanceID();
         const result = await syncFetch('/api/sync/push', {
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(instanceID ? {'X-Vylk-Instance-ID': instanceID} : {}),
+          },
           body: JSON.stringify({
             device_id: deviceID,
             operations: operations.map(serialize),
@@ -56,6 +62,8 @@
           throw apiErrorFromPayload(result.data, 401, 'Unauthorized');
         }
         if (result.response.status === 409) {
+          if (result.data?.code === 'server_instance_changed')
+            throw apiErrorFromPayload(result.data, 409, 'The server database changed');
           const expected = Number(result.data?.expected_sequence);
           if (await repairSequenceGap(expected)) {
             showToast('Recovered a local sync gap. Retrying your changes.', 'warning');

@@ -37,6 +37,32 @@ describe('offline store', () => {
     await store.clearOfflineData();
   });
 
+  test('keeps unresolved and rejected edits bound to the original database', async () => {
+    await store.setOfflineState('serverInstanceID', 'original');
+    for (const key of ['unresolvedConflict:note-a', 'rejectedSync:note-a']) {
+      await store.setOfflineState(key, {note_id: 'note-a'});
+      await expect(store.checkServerIdentity('replacement')).resolves.toEqual({blocked: true});
+      await expect(store.getOfflineState('serverInstanceID')).resolves.toBe('original');
+      await store.withOfflineStore(['state'], 'readwrite', async ({state}) => {
+        await globalThis.VylkIndexedDB.requestValue(state.delete(key));
+      });
+    }
+    await store.clearOfflineData();
+  });
+
+  test('shares the incomplete snapshot marker across tabs without resetting the cursor again', async () => {
+    await store.checkServerIdentity('replacement');
+    await store.setOfflineState('syncSequence', 7);
+    const tab = globalThis.VylkOfflineStore.create({databaseName, indexedDB, createID: () => 'op'});
+    await expect(tab.checkServerIdentity('replacement')).resolves.toEqual({
+      changed: false,
+      reconcile: true,
+    });
+    await expect(tab.getOfflineState('syncSequence')).resolves.toBe(7);
+    await tab.closeOfflineDatabaseConnection();
+    await store.clearOfflineData();
+  });
+
   test('coalesces untouched saves but preserves the identity of an attempted operation', async () => {
     const operation = (title) => ({
       type: 'note.save',
