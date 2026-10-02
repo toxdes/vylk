@@ -479,11 +479,29 @@ test('dashboard and editor content enter on navigation and respect reduced motio
   await page.evaluate(() => {
     window.screenEntrances = {dashboard: 0, editor: 0};
     for (const screen of ['dashboard', 'editor']) {
-      document
-        .querySelector(`#${screen} .${screen}-body`)
-        .addEventListener('animationstart', () => window.screenEntrances[screen]++);
+      const body = document.querySelector(`#${screen} .${screen}-body`);
+      const animationName = screen === 'dashboard' ? 'app-content-return' : 'app-content-in';
+      // The sign-in entrance may start after this listener is installed, and
+      // animation events from descendants bubble. Count only this navigation.
+      body.addEventListener('animationstart', (event) => {
+        if (event.target === body && event.animationName === animationName) {
+          window.screenEntrances[screen]++;
+        }
+      });
     }
+    // Reproduce irrelevant events deterministically instead of depending on
+    // whether the browser delivers the sign-in entrance before this listener.
+    const dashboardBody = document.querySelector('#dashboard .dashboard-body');
+    dashboardBody.dispatchEvent(
+      new AnimationEvent('animationstart', {animationName: 'app-content-in'}),
+    );
+    const child = dashboardBody.appendChild(document.createElement('span'));
+    child.dispatchEvent(
+      new AnimationEvent('animationstart', {animationName: 'app-content-return', bubbles: true}),
+    );
+    child.remove();
   });
+  expect(await page.evaluate(() => window.screenEntrances)).toEqual({dashboard: 0, editor: 0});
 
   await page.locator('#new-note-btn').click();
   await expect(page.locator('#editor .editor-body')).toHaveCSS('animation-name', 'app-content-in');
