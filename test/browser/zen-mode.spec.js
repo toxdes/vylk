@@ -2,6 +2,104 @@ import {expect, test} from '@playwright/test';
 
 const password = 'browser-test-password';
 
+test('caret animation releases its frame when native scroll positions are rounded', async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.evaluate(() => {
+    const element = document.createElement('div');
+    element.style.cssText = 'height:100px;width:300px;overflow:auto';
+    document.body.append(element);
+    const editor = new window.VylkZenEditor(element);
+    editor.setValue(Array.from({length: 100}, () => 'Line').join('\n'));
+    editor.active = true;
+    editor.focus();
+    editor.caretRect = () => ({top: element.getBoundingClientRect().top + 40, height: 2});
+    window.__settlingEditor = editor;
+    editor.animateAnchor(100);
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__settlingEditor.anchorAnimationFrame))
+    .toBeNull();
+  expect(await page.evaluate(() => window.__settlingEditor.element.scrollTop)).toBe(100);
+});
+
+test('Zen edits retain undo across formatting and writing-view changes', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-content').fill('Hello\nUnchanged');
+  await page.locator('[data-panel="zen"]').click();
+  const editor = page.locator('#zen-source-editor');
+  await editor.press('Control+Home');
+  await editor.press('End');
+  await page.keyboard.type('!');
+  await editor.press('Home');
+  await editor.press('Shift+End');
+  await editor.press('Control+B');
+  await expect(editor.locator('.zen-md-strong')).toHaveText('Hello!');
+  await page.locator('[data-zen-action="preview"]').click();
+  await page.locator('[data-zen-action="editor"]').click();
+  await page.locator('[data-zen-action="exit"]').click();
+  await expect(page.locator('#note-content')).toHaveValue('**Hello!**\nUnchanged');
+  await page.locator('[data-panel="zen"]').click();
+  await editor.press('Control+Z');
+  await expect(editor.locator('.zen-editor-line').first()).toHaveText('Hello!');
+  await editor.press('Control+Z');
+  await expect(editor.locator('.zen-editor-line').first()).toHaveText('Hello');
+  await editor.press('Shift+Tab');
+  await expect(editor).not.toBeFocused();
+});
+
+test('native cross-line composition persists and remains undoable', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-content').fill('Alpha\nBeta\nGamma');
+  await page.locator('[data-panel="zen"]').click();
+  const editor = page.locator('#zen-source-editor');
+  await editor.evaluate((element) => {
+    const lines = element.children;
+    getSelection().setBaseAndExtent(lines[0].firstChild, 1, lines[1].firstChild, 2);
+    element.focus({preventScroll: true});
+  });
+  const session = await page.context().newCDPSession(page);
+  await session.send('Input.imeSetComposition', {
+    text: '語',
+    selectionStart: 1,
+    selectionEnd: 1,
+  });
+  await session.send('Input.insertText', {text: '語'});
+  await session.detach();
+  await expect(editor.locator('.zen-editor-line')).toHaveCount(2);
+  await expect(editor.locator('.zen-editor-line').first()).toHaveText('A語ta');
+  await editor.press('Control+Z');
+  await expect(editor.locator('.zen-editor-line')).toHaveCount(3);
+  await editor.press('Control+Shift+Z');
+  await page.locator('[data-zen-action="exit"]').click();
+  await expect(page.locator('#note-content')).toHaveValue('A語ta\nGamma');
+});
+
+test('Zen reading view follows the writing position without losing the source caret', async ({
+  page,
+}) => {
+  await signIn(page);
+  await openZenMode(page);
+  await page.locator('[data-zen-action="preview"]').click();
+  const preview = page.locator('#preview');
+  await expect(preview.locator('.highlight')).toContainText('paragraph 119');
+  await expect
+    .poll(() =>
+      preview.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const block = element.querySelector('.highlight')?.getBoundingClientRect();
+        return Boolean(block && block.top < bounds.bottom && block.bottom > bounds.top);
+      }),
+    )
+    .toBe(true);
+  await page.locator('[data-zen-action="editor"]').click();
+  await page.keyboard.type(' End');
+  await expect(page.locator('#zen-source-editor .zen-editor-line').last()).toContainText('! End');
+});
+
 async function signIn(page) {
   await page.goto('/');
   await page.locator('#login-form input[name="password"]').fill(password);
@@ -276,28 +374,27 @@ test('Zen mode keeps a typed caret in its comfortable reading area', async ({pag
   });
 
   await page.keyboard.type('x');
-  await page.evaluate(
-    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-  );
-
-  const after = await editor.evaluate((element) => ({
-    scrollTop: element.scrollTop,
-    scrollEvents: Number(element.dataset.scrollEvents || 0),
-    writes: window.__zenScrollWrites,
-    caretPosition: (() => {
-      const selection = getSelection();
-      const range = selection.getRangeAt(0).cloneRange();
-      range.collapse(false);
-      const caret =
-        range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
-      const editor = element.getBoundingClientRect();
-      return (caret.top + caret.height / 2 - editor.top) / editor.height;
-    })(),
-  }));
-  expect(after.writes).not.toEqual([]);
-  expect(after.scrollEvents).toBeGreaterThan(0);
-  expect(after.caretPosition).toBeGreaterThanOrEqual(0.3);
-  expect(after.caretPosition).toBeLessThanOrEqual(0.5);
+  // Rendering and scroll events need not settle within exactly two frames.
+  await expect(async () => {
+    const after = await editor.evaluate((element) => ({
+      scrollTop: element.scrollTop,
+      scrollEvents: Number(element.dataset.scrollEvents || 0),
+      writes: window.__zenScrollWrites,
+      caretPosition: (() => {
+        const selection = getSelection();
+        const range = selection.getRangeAt(0).cloneRange();
+        range.collapse(false);
+        const caret =
+          range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
+        const editor = element.getBoundingClientRect();
+        return (caret.top + caret.height / 2 - editor.top) / editor.height;
+      })(),
+    }));
+    expect(after.writes).not.toEqual([]);
+    expect(after.scrollEvents).toBeGreaterThan(0);
+    expect(after.caretPosition).toBeGreaterThanOrEqual(0.3);
+    expect(after.caretPosition).toBeLessThanOrEqual(0.5);
+  }).toPass({timeout: 10000});
 });
 
 test('Zen mode eases a pointer-placed caret into its reading area', async ({page}) => {

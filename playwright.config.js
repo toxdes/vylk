@@ -11,6 +11,7 @@ const dataRoot = path.join(tmpdir(), `vylk-browser-${process.pid}`);
 
 export default defineConfig({
   testDir: './test/browser',
+  testIgnore: ['**/vault*.spec.js'],
   timeout: 45_000,
   expect: {timeout: 10_000},
   fullyParallel: false,

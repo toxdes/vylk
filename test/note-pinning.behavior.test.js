@@ -606,7 +606,7 @@ describe('offline database migrations', () => {
     expect(legacy).toBeUndefined();
 
     expect(await app.hooks.getOfflineDatabaseInfo()).toMatchObject({
-      version: 4,
+      version: 5,
       queueIndexes: expect.arrayContaining(['note_id', 'client_sequence']),
     });
   });

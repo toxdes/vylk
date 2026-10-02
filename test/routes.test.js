@@ -26,8 +26,23 @@ describe('application routes', () => {
       app: 'vylk',
       screen: 'preferences',
       returnRoute: routes.noteState('note_1'),
+      section: 'appearance',
+      preferencesDepth: 1,
     });
-    expect(routes.current()).toEqual(routes.dashboardState());
+    expect(routes.current()).toEqual({
+      app: 'vylk',
+      screen: 'preferences',
+      returnRoute: routes.noteState('note_1'),
+      section: 'appearance',
+      preferencesDepth: 1,
+    });
+    routes.setPreferences({section: 'encryption', replace: true});
+    expect(window.location.pathname).toBe('/preferences/encryption');
+    expect(routes.current().section).toBe('encryption');
+    routes.setPreferences({section: 'encryption', detail: 'setup', push: true});
+    expect(routes.current().preferencesDepth).toBe(2);
+    routes.setPreferences({section: 'encryption', replace: true});
+    expect(routes.current().preferencesDepth).toBe(2);
   });
 
   test('rejects malformed note paths and preserves an existing valid route', () => {
@@ -54,6 +69,29 @@ describe('application routes', () => {
         app: 'vylk',
         screen: 'preferences',
         returnRoute: {app: 'vylk', screen: 'dashboard'},
+        section: 'appearance',
+        preferencesDepth: 1,
+      },
+    ],
+    [
+      '/preferences/encryption',
+      {
+        app: 'vylk',
+        screen: 'preferences',
+        returnRoute: {app: 'vylk', screen: 'dashboard'},
+        section: 'encryption',
+        preferencesDepth: 1,
+      },
+    ],
+    [
+      '/preferences/encryption/setup',
+      {
+        app: 'vylk',
+        screen: 'preferences',
+        returnRoute: {app: 'vylk', screen: 'dashboard'},
+        section: 'encryption',
+        preferencesDepth: 1,
+        detail: 'setup',
       },
     ],
   ])('keeps a dashboard entry behind a direct %s route', async (path, expectedState) => {

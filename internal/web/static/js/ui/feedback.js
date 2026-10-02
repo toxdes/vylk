@@ -3,10 +3,37 @@
 
   const SYNC_STATES = {
     online: {label: 'Saved', title: 'Saved and up to date'},
-    local: {label: 'Saved', title: 'Saved on this device; waiting to sync'},
+    local: {label: 'Saving', title: 'Saved on this device; waiting to sync'},
+    saving: {label: 'Saving', title: 'Saving on this device'},
     syncing: {label: 'Syncing', title: 'Synchronizing changes'},
     offline: {label: 'Offline', title: 'Offline — changes are saved on this device'},
+    unsaved: {label: 'Not saved', title: 'Changes could not be saved on this device'},
   };
+
+  function waitForRevisionController(serviceWorker, revision, timeoutMs = 15000) {
+    const matches = () => {
+      if (!serviceWorker.controller) return false;
+      return new URL(serviceWorker.controller.scriptURL).searchParams.get('revision') === revision;
+    };
+    if (matches()) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const finish = (error) => {
+        clearTimeout(timer);
+        serviceWorker.removeEventListener('controllerchange', changed);
+        if (error) reject(error);
+        else resolve();
+      };
+      const changed = () => {
+        if (matches()) finish();
+      };
+      const timer = setTimeout(
+        () => finish(new Error('The update is not ready yet. Try Reload again.')),
+        timeoutMs,
+      );
+      serviceWorker.addEventListener('controllerchange', changed);
+      changed();
+    });
+  }
 
   function create({
     document,
@@ -14,11 +41,17 @@
     localStorage,
     navigator,
     registerServiceWorker,
+    beforeReload = async () => {},
     requestFrame,
     window,
   }) {
     let appVersion = localStorage.getItem('vylk-version') || null;
-    let appRevision = localStorage.getItem('vylk-revision') || null;
+    const shellRevision = document.querySelector('meta[name="vylk-revision"]')?.content;
+    let appRevision =
+      shellRevision && !shellRevision.startsWith('__')
+        ? shellRevision
+        : localStorage.getItem('vylk-revision') || null;
+    let latestRevision = appRevision;
     let updateToast = null;
     let statusRevealTimer = null;
     let statusGeneration = 0;
@@ -71,12 +104,24 @@
         reload.disabled = true;
         reload.textContent = 'Updating…';
         try {
-          const registration = await navigator.serviceWorker?.getRegistration();
-          await registration?.update();
+          await beforeReload();
+          if (navigator.serviceWorker) {
+            const target = latestRevision;
+            const registration = await registerServiceWorker(target);
+            if (!registration)
+              throw new Error('Could not download the update. Try again when connected.');
+            await registration.update();
+            await waitForRevisionController(navigator.serviceWorker, target);
+            if (target !== latestRevision)
+              throw new Error('Another update arrived. Try Reload again.');
+          }
+          window.location.reload();
         } catch (error) {
-          console.warn('service worker update check failed', error);
+          console.warn('app update failed', error);
+          message.textContent = error.message || 'Could not update. Try again.';
+          reload.disabled = false;
+          reload.textContent = 'Reload';
         }
-        window.location.reload();
       });
       toast.append(message, reload);
       select('#toast-region').append(toast);
@@ -102,12 +147,12 @@
       return diagnostic;
     }
 
-    function showOfflineNotice(checking = false) {
+    function showOfflineNotice(checking = false, message = null) {
       selectAll('.offline-notice').forEach((notice) => {
         notice.classList.remove('hidden');
         notice.querySelector('.offline-notice-message').textContent = checking
           ? 'Checking…'
-          : "You're offline. Changes are saved on this device.";
+          : message || "You're offline. Changes are saved on this device.";
         const retry = notice.querySelector('.offline-retry');
         retry.classList.toggle('hidden', checking);
         retry.disabled = checking;
@@ -127,12 +172,16 @@
       const changedVersion = response?.version && appVersion && response.version !== appVersion;
       const changedRevision =
         response?.revision && appRevision && response.revision !== appRevision;
-      if (changedVersion || changedRevision) showUpdateAvailable();
+      // A server version label is shared across tabs and is not evidence that
+      // this page's assets are old. Prefer the loaded shell fingerprint.
+      if (response?.revision && appRevision ? changedRevision : changedVersion)
+        showUpdateAvailable();
       if (response?.version) {
         if (!appVersion) appVersion = response.version;
         localStorage.setItem('vylk-version', response.version);
       }
       if (response?.revision) {
+        latestRevision = response.revision;
         if (!appRevision) appRevision = response.revision;
         localStorage.setItem('vylk-revision', response.revision);
         registerServiceWorker(response.revision);
@@ -187,5 +236,5 @@
     };
   }
 
-  root.VylkFeedback = {create};
+  root.VylkFeedback = {create, waitForRevisionController};
 })(typeof window !== 'undefined' ? window : globalThis);

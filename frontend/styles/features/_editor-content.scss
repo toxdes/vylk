@@ -111,6 +111,7 @@
   display: block;
   padding: 1rem;
   overflow-x: auto;
+  scrollbar-gutter: stable;
   background: transparent;
   font-size: 0.8125rem;
   line-height: 1.6;
@@ -148,7 +149,9 @@
   display: block;
   width: 100%;
   margin: 0 0 1em;
+  padding-bottom: 0.5rem;
   overflow-x: auto;
+  scrollbar-gutter: stable;
   border-collapse: collapse;
   font-size: 0.875rem;
   line-height: 1.45;
@@ -164,46 +167,6 @@
 .preview th {
   background: var(--surface);
   font-weight: 700;
-}
-
-.sync-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.sync-indicator-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: currentcolor;
-}
-
-.sync-indicator[data-state='online'] {
-  color: #16803c;
-}
-
-.sync-indicator[data-state='syncing'] {
-  color: #b45309;
-}
-
-.sync-indicator[data-state='syncing'] .sync-indicator-dot {
-  animation: sync-pulse 1s ease-in-out infinite;
-}
-
-.sync-indicator[data-state='offline'] {
-  color: var(--danger);
-}
-
-@keyframes sync-pulse {
-  50% {
-    opacity: 0.3;
-    transform: scale(0.72);
-  }
 }
 
 .offline-snackbar {

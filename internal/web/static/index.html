@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="vylk-revision" content="__VYLK_APP_REVISION__" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#ae2448" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -39,7 +40,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 -->
     <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-      <symbol id="icon-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7" /></symbol>
+      <symbol id="icon-shield-check" viewBox="0 0 24 24">
+        <path d="M12 3 20 7v5c0 4.5-3 7.5-8 9-5-1.5-8-4.5-8-9V7l8-4Z" />
+        <path d="m9 12 2 2 4-4" />
+      </symbol>
       <symbol id="icon-save" viewBox="0 0 24 24">
         <path d="M5 3h11l3 3v15H5z" />
         <path d="M8 3v5h8V3" />
@@ -75,6 +79,16 @@ SOFTWARE.
           d="M13.1 17.936a9.28 9.28 0 0 1 -1.1 .064c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6"
         />
         <path d="M19 16l-2 3h4l-2 3" />
+      </symbol>
+      <symbol id="icon-eye" viewBox="0 0 24 24">
+        <path d="M2 12s3.6-7 10-7s10 7 10 7s-3.6 7-10 7s-10-7-10-7Z" />
+        <circle cx="12" cy="12" r="3" />
+      </symbol>
+      <symbol id="icon-eye-off" viewBox="0 0 24 24">
+        <path d="m3 3 18 18" />
+        <path d="M10.6 10.6a2 2 0 0 0 2.8 2.8" />
+        <path d="M9.9 5.2A11.5 11.5 0 0 1 12 5c6.4 0 10 7 10 7a15.8 15.8 0 0 1-3.1 3.9" />
+        <path d="M6.2 6.2C3.5 8 2 12 2 12s3.6 7 10 7a10.6 10.6 0 0 0 3.1-.5" />
       </symbol>
       <symbol id="icon-settings-2" viewBox="0 0 24 24">
         <path
@@ -246,18 +260,184 @@ SOFTWARE.
           <h1 class="app-brand">
             <img src="/icon-192.png" width="28" height="28" alt="" /><span>__VYLK_APP_NAME__</span>
           </h1>
-          <label class="sr-only" for="login-password">Password</label>
-          <input
-            type="password"
-            id="login-password"
-            name="password"
-            placeholder="password"
-            required
-            autocomplete="current-password"
-          />
-          <button type="submit">Sign in</button>
-          <p id="login-error" class="error"></p>
+          <div id="login-credentials">
+            <div class="label-input">
+              <input
+                class="label-input__control"
+                type="password"
+                id="login-password"
+                name="password"
+                placeholder=" "
+                required
+                autocomplete="current-password"
+              />
+              <label class="label-input__label" for="login-password">Password</label>
+              <button
+                class="label-input__toggle"
+                type="button"
+                data-password-toggle="login-password"
+                aria-label="Show password"
+                aria-pressed="false"
+              >
+                <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                  <use href="#icon-eye"></use>
+                </svg>
+                <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                  <use href="#icon-eye-off"></use>
+                </svg>
+              </button>
+            </div>
+            <button type="submit">Sign in</button>
+            <button id="login-forgot-password" type="button" class="login-forgot-password" hidden>
+              Forgot password?
+            </button>
+            <p id="login-error" class="error"></p>
+          </div>
+          <p id="login-secure-context-notice" role="alert" hidden>
+            This Vylk vault uses end-to-end encryption. Open it over HTTPS to sign in on this
+            device.
+            <a href="__VYLK_DOCS_URL__" target="_blank" rel="noopener noreferrer">Learn More</a>
+          </p>
         </form>
+      </div>
+
+      <div id="login-recovery-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body modal-body--standard"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="login-recovery-title"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h2 id="login-recovery-title">Forgot password?</h2>
+            <button id="login-recovery-close" class="modal-close" type="button" aria-label="Close">
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <div id="login-recovery-choices" class="vault-master-methods">
+            <button id="login-have-recovery" class="vault-option" type="button">
+              <span><strong>I have my recovery key</strong></span>
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m9 6 6 6-6 6" />
+              </svg>
+            </button>
+            <button id="login-no-recovery" class="vault-option" type="button">
+              <span><strong>I don’t have my recovery key</strong></span>
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m9 6 6 6-6 6" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="login-recovery-entry-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body modal-body--standard"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="login-recovery-entry-title"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h2 id="login-recovery-entry-title">Enter recovery key</h2>
+            <button
+              id="login-recovery-entry-close"
+              class="modal-close"
+              type="button"
+              aria-label="Close"
+            >
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <form id="login-recovery-form">
+            <p class="vault-hint">Enter your 24 words in order, or paste the whole key.</p>
+            <span
+              id="login-recovery-count"
+              class="login-recovery-count"
+              role="status"
+              aria-live="polite"
+              >0/24 words</span
+            >
+            <div
+              id="login-recovery-words"
+              class="login-recovery-words"
+              aria-label="Entered recovery words"
+            ></div>
+            <div class="login-recovery-word-row">
+              <div class="label-input">
+                <input
+                  class="label-input__control"
+                  id="login-recovery-word"
+                  type="text"
+                  autocomplete="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                  placeholder=" "
+                />
+                <label
+                  id="login-recovery-word-label"
+                  class="label-input__label"
+                  for="login-recovery-word"
+                  >Word 1</label
+                >
+                <button
+                  id="login-recovery-add"
+                  class="label-input__action"
+                  type="button"
+                  aria-label="Add word"
+                >
+                  <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                </button>
+              </div>
+            </div>
+            <p id="login-recovery-error" class="error" role="alert"></p>
+            <div class="modal-actions vault-form-actions">
+              <button id="login-recovery-back" class="btn-text" type="button">Back</button>
+              <button id="login-recovery-submit" class="btn-primary" type="submit" disabled>
+                Sign in
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div id="login-recovery-lost-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="login-recovery-lost-title"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h2 id="login-recovery-lost-title">No recovery key</h2>
+            <button
+              id="login-recovery-lost-close"
+              class="modal-close"
+              type="button"
+              aria-label="Close"
+            >
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <div id="login-recovery-lost" class="login-recovery-lost">
+            <p class="modal-copy">
+              Without your passphrase or recovery key, your existing notes cannot be recovered.
+            </p>
+            <p class="modal-copy">
+              Contact the server owner to reset the vault and start empty. Restarting the server
+              alone will not reset it.
+            </p>
+            <div class="modal-actions">
+              <button id="login-recovery-lost-back" class="btn-text" type="button">Back</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div id="dashboard" class="hidden">
@@ -290,6 +470,25 @@ SOFTWARE.
             </div>
           </div>
         </header>
+        <div id="recovery-signin-notice" class="recovery-signin-notice" role="status" hidden>
+          <span
+            >You signed in with a recovery key. Change your passphrase so you can sign in without it
+            next time.</span
+          >
+          <div>
+            <button id="recovery-change-passphrase" class="btn-text" type="button">
+              Change passphrase
+            </button>
+            <button
+              id="recovery-dismiss-notice"
+              class="btn-text"
+              type="button"
+              aria-label="Dismiss reminder"
+            >
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+        </div>
         <div class="offline-notice hidden" role="status" aria-live="polite">
           <span class="offline-notice-message"
             >You're offline. Your changes are saved on this device.</span
@@ -320,492 +519,1262 @@ SOFTWARE.
           role="dialog"
           aria-modal="true"
           aria-labelledby="prefs-title"
-          aria-describedby="prefs-description"
           tabindex="-1"
         >
-          <aside class="prefs-sidebar">
-            <div class="prefs-sidebar-title">Preferences</div>
-            <div class="prefs-tabs-scroll">
-              <nav class="prefs-tabs" role="tablist" aria-label="Preference sections">
-                <button
-                  id="prefs-tab-appearance"
-                  class="prefs-nav active"
-                  role="tab"
-                  aria-selected="true"
-                  aria-controls="prefs-panel-appearance"
-                  tabindex="0"
-                  type="button"
-                  data-pref-section="appearance"
-                >
-                  Appearance
-                </button>
-                <button
-                  id="prefs-tab-editor"
-                  class="prefs-nav"
-                  role="tab"
-                  aria-selected="false"
-                  aria-controls="prefs-panel-editor"
-                  tabindex="-1"
-                  type="button"
-                  data-pref-section="editor"
-                >
-                  Editor
-                </button>
-                <button
-                  id="prefs-tab-zen"
-                  class="prefs-nav"
-                  role="tab"
-                  aria-selected="false"
-                  aria-controls="prefs-panel-zen"
-                  tabindex="-1"
-                  type="button"
-                  data-pref-section="zen"
-                >
-                  Zen mode
-                </button>
-                <button
-                  id="prefs-tab-shortcuts"
-                  class="prefs-nav"
-                  role="tab"
-                  aria-selected="false"
-                  aria-controls="prefs-panel-shortcuts"
-                  tabindex="-1"
-                  type="button"
-                  data-pref-section="shortcuts"
-                >
-                  Shortcuts
-                </button>
-                <button
-                  id="prefs-tab-account"
-                  class="prefs-nav"
-                  role="tab"
-                  aria-selected="false"
-                  aria-controls="prefs-panel-account"
-                  tabindex="-1"
-                  type="button"
-                  data-pref-section="account"
-                >
-                  Account
-                </button>
-                <button
-                  id="prefs-tab-about"
-                  class="prefs-nav"
-                  role="tab"
-                  aria-selected="false"
-                  aria-controls="prefs-panel-about"
-                  tabindex="-1"
-                  type="button"
-                  data-pref-section="about"
-                >
-                  About
-                </button>
-              </nav>
-            </div>
-          </aside>
-          <main class="prefs-content">
-            <div class="prefs-content-header">
-              <h2 id="prefs-title">Appearance</h2>
-              <button
-                id="prefs-close"
-                class="modal-close"
-                type="button"
-                aria-label="Close preferences"
-              >
-                <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
-              </button>
-            </div>
-            <section
-              id="prefs-panel-appearance"
-              class="prefs-section active"
-              role="tabpanel"
-              aria-labelledby="prefs-tab-appearance"
-              data-pref-panel="appearance"
-            >
-              <p id="prefs-description" class="prefs-section-intro">
-                Personalize the colors, typeface, and content width used across the app.
-              </p>
-              <label class="pref-control"
-                ><span
-                  ><strong>Content width</strong
-                  ><small
-                    >Choose the shared content rail used by the dashboard and regular editor.</small
-                  ></span
-                ><select id="pref-content-width">
-                  <option value="compact">Compact</option>
-                  <option value="standard">Standard</option>
-                  <option value="wide">Wide</option>
-                  <option value="full">Full</option>
-                </select></label
-              >
-              <label class="pref-control"
-                ><span><strong>Theme</strong><small>Choose a preset color scheme.</small></span
-                ><select id="pref-theme"></select
-              ></label>
-              <div class="pref-control accent-control">
-                <span
-                  ><label for="pref-accent-mode"><strong>Accent color</strong></label
-                  ><small id="pref-accent-description"
-                    >Use the theme accent or choose one for buttons, links, and focus states.</small
-                  ></span
-                >
-                <div class="accent-actions">
-                  <select id="pref-accent-mode" aria-describedby="pref-accent-description">
-                    <option value="theme">Theme accent</option>
-                    <option value="custom">Custom color</option></select
-                  ><input
-                    type="color"
-                    id="pref-accent"
-                    value="#ae2448"
-                    aria-label="Custom accent color"
-                    hidden
-                  />
-                </div>
+          <div class="prefs-page-body">
+            <aside class="prefs-sidebar">
+              <div class="prefs-sidebar-title">Preferences</div>
+              <div class="prefs-tabs-scroll">
+                <nav class="prefs-tabs" role="tablist" aria-label="Preference sections">
+                  <button
+                    id="prefs-tab-appearance"
+                    class="prefs-nav active"
+                    role="tab"
+                    aria-selected="true"
+                    aria-controls="prefs-panel-appearance"
+                    tabindex="0"
+                    type="button"
+                    data-pref-section="appearance"
+                  >
+                    Appearance
+                  </button>
+                  <button
+                    id="prefs-tab-editor"
+                    class="prefs-nav"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="prefs-panel-editor"
+                    tabindex="-1"
+                    type="button"
+                    data-pref-section="editor"
+                  >
+                    Editor
+                  </button>
+                  <button
+                    id="prefs-tab-zen"
+                    class="prefs-nav"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="prefs-panel-zen"
+                    tabindex="-1"
+                    type="button"
+                    data-pref-section="zen"
+                  >
+                    Zen mode
+                  </button>
+                  <button
+                    id="prefs-tab-shortcuts"
+                    class="prefs-nav"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="prefs-panel-shortcuts"
+                    tabindex="-1"
+                    type="button"
+                    data-pref-section="shortcuts"
+                  >
+                    Shortcuts
+                  </button>
+                  <button
+                    id="prefs-tab-account"
+                    class="prefs-nav"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="prefs-panel-account"
+                    tabindex="-1"
+                    type="button"
+                    data-pref-section="account"
+                  >
+                    Account
+                  </button>
+                  <button
+                    id="prefs-tab-encryption"
+                    class="prefs-nav"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="prefs-panel-encryption"
+                    tabindex="-1"
+                    type="button"
+                    data-pref-section="encryption"
+                  >
+                    Encryption
+                  </button>
+                  <button
+                    id="prefs-tab-about"
+                    class="prefs-nav"
+                    role="tab"
+                    aria-selected="false"
+                    aria-controls="prefs-panel-about"
+                    tabindex="-1"
+                    type="button"
+                    data-pref-section="about"
+                  >
+                    About
+                  </button>
+                </nav>
               </div>
-              <div class="pref-control font-control">
-                <label class="font-label" for="pref-font"
-                  ><strong>Interface font</strong><small>Used throughout the app.</small></label
+            </aside>
+            <main class="prefs-content">
+              <div class="prefs-content-header">
+                <h2 id="prefs-title" tabindex="-1">Appearance</h2>
+                <button
+                  id="prefs-close"
+                  class="modal-close"
+                  type="button"
+                  aria-label="Close preferences"
                 >
-                <div class="font-input-wrap">
-                  <div class="font-input-row">
-                    <input
-                      type="text"
-                      id="pref-font"
-                      placeholder="e.g. Inter or system-sans"
-                      autocomplete="off"
-                      spellcheck="false"
-                      aria-describedby="pref-font-error"
-                    /><select id="pref-font-size" aria-label="Interface font size"></select>
-                  </div>
-                  <label class="font-fetch-toggle"
-                    ><input type="checkbox" id="pref-font-google" /><span
-                      >Use Google Fonts to fetch</span
-                    ></label
-                  ><small id="pref-font-error" class="font-error" role="alert" hidden></small>
-                </div>
+                  <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+                </button>
               </div>
-            </section>
-            <section
-              id="prefs-panel-editor"
-              class="prefs-section"
-              role="tabpanel"
-              aria-labelledby="prefs-tab-editor"
-              data-pref-panel="editor"
-              hidden
-            >
-              <p class="prefs-section-intro">
-                Choose how notes open, how you write, and when changes sync.
-              </p>
-              <section class="pref-subsection" aria-labelledby="prefs-editor-start-title">
-                <h3 id="prefs-editor-start-title">Start and layout</h3>
-                <p>Set the view and details state used when you open a note.</p>
+              <section
+                id="prefs-panel-appearance"
+                class="prefs-section active"
+                role="tabpanel"
+                aria-labelledby="prefs-tab-appearance"
+                data-pref-panel="appearance"
+              >
                 <label class="pref-control"
                   ><span
-                    ><strong>Open notes in</strong
-                    ><small>Use this view when you create or open a note.</small></span
-                  ><select id="pref-start-view">
-                    <option value="split">Split view</option>
-                    <option value="editor">Write view</option>
-                    <option value="preview">Preview</option>
-                    <option value="zen">Zen mode</option>
-                  </select></label
-                ><label class="pref-row"
-                  ><span
-                    ><strong>Collapse Details by default</strong
-                    ><small>Keep title and tags out of the way until needed.</small></span
-                  ><input type="checkbox" id="pref-collapse"
-                /></label>
-              </section>
-              <section class="pref-subsection" aria-labelledby="prefs-editor-writing-title">
-                <h3 id="prefs-editor-writing-title">Writing</h3>
-                <p>Choose the typefaces and editing aids used while working in Markdown.</p>
-                <div class="pref-control font-control">
-                  <label class="font-label" for="pref-editor-font"
-                    ><strong>Editor font</strong><small>Used while writing Markdown.</small></label
-                  >
-                  <div class="font-input-wrap">
-                    <div class="font-input-row">
-                      <input
-                        type="text"
-                        id="pref-editor-font"
-                        placeholder="e.g. Fira Code or system-monospace"
-                        autocomplete="off"
-                        spellcheck="false"
-                        aria-describedby="pref-editor-font-error"
-                      /><select id="pref-editor-font-size" aria-label="Editor font size"></select>
-                    </div>
-                    <label class="font-fetch-toggle"
-                      ><input type="checkbox" id="pref-editor-font-google" /><span
-                        >Use Google Fonts to fetch</span
-                      ></label
+                    ><strong>Content width</strong
                     ><small
-                      id="pref-editor-font-error"
-                      class="font-error"
-                      role="alert"
-                      hidden
-                    ></small>
-                  </div>
-                </div>
-                <div class="pref-control font-control">
-                  <label class="font-label" for="pref-preview-font"
-                    ><strong>Preview font</strong
-                    ><small>Used for rendered note content.</small></label
-                  >
-                  <div class="font-input-wrap">
-                    <div class="font-input-row">
-                      <input
-                        type="text"
-                        id="pref-preview-font"
-                        placeholder="e.g. Spectral or system-serif"
-                        autocomplete="off"
-                        spellcheck="false"
-                        aria-describedby="pref-preview-font-error"
-                      /><select id="pref-preview-font-size" aria-label="Preview font size"></select>
-                    </div>
-                    <label class="font-fetch-toggle"
-                      ><input type="checkbox" id="pref-preview-font-google" /><span
-                        >Use Google Fonts to fetch</span
-                      ></label
-                    ><small
-                      id="pref-preview-font-error"
-                      class="font-error"
-                      role="alert"
-                      hidden
-                    ></small>
-                  </div>
-                </div>
-                <label class="pref-row"
-                  ><span
-                    ><strong>Hide cursor position preview</strong
-                    ><small>Turn off the matching block highlight in Preview.</small></span
-                  ><input type="checkbox" id="pref-hidecursor" /></label
-                ><label class="pref-row"
-                  ><span
-                    ><strong>Interactive preview</strong
-                    ><small>Toggle tasks and rearrange blocks in Split and Preview.</small></span
-                  ><input type="checkbox" id="pref-interactive-preview"
-                /></label>
-              </section>
-              <section class="pref-subsection" aria-labelledby="prefs-editor-controls-title">
-                <h3 id="prefs-editor-controls-title">Controls</h3>
-                <p>Choose the visible controls for standard editor views.</p>
-                <label class="pref-row"
-                  ><span
-                    ><strong>Show editor toolbar</strong
-                    ><small>Keep formatting controls above the editor.</small></span
-                  ><input type="checkbox" id="pref-hidetoolbar" /></label
-                ><label class="pref-row"
-                  ><span
-                    ><strong>Show manual Save button</strong
-                    ><small id="pref-manual-save-copy"
-                      >Show a control for syncing changes now.</small
+                      >Choose the shared content rail used by the dashboard and regular
+                      editor.</small
                     ></span
-                  ><input
-                    type="checkbox"
-                    id="pref-hidesave"
-                    aria-describedby="pref-manual-save-copy" /></label
-                ><label class="pref-control"
-                  ><span
-                    ><strong>Save button location</strong
-                    ><small>Choose where the manual Save control appears.</small></span
-                  ><select id="pref-save-location">
-                    <option value="panel">Panel header</option>
-                    <option value="header">App header</option>
+                  ><select id="pref-content-width">
+                    <option value="compact">Compact</option>
+                    <option value="standard">Standard</option>
+                    <option value="wide">Wide</option>
+                    <option value="full">Full</option>
                   </select></label
                 >
+                <label class="pref-control"
+                  ><span><strong>Theme</strong><small>Choose a preset color scheme.</small></span
+                  ><select id="pref-theme"></select
+                ></label>
+                <div class="pref-control accent-control">
+                  <span
+                    ><label for="pref-accent-mode"><strong>Accent color</strong></label
+                    ><small id="pref-accent-description"
+                      >Use the theme accent or choose one for buttons, links, and focus
+                      states.</small
+                    ></span
+                  >
+                  <div class="accent-actions">
+                    <select id="pref-accent-mode" aria-describedby="pref-accent-description">
+                      <option value="theme">Theme accent</option>
+                      <option value="custom">Custom color</option></select
+                    ><input
+                      type="color"
+                      id="pref-accent"
+                      value="#ae2448"
+                      aria-label="Custom accent color"
+                      hidden
+                    />
+                  </div>
+                </div>
+                <div class="pref-control font-control">
+                  <div class="font-input-wrap">
+                    <div class="font-input-row">
+                      <div class="label-input">
+                        <input
+                          class="label-input__control"
+                          type="text"
+                          id="pref-font"
+                          placeholder=" "
+                          autocomplete="off"
+                          spellcheck="false"
+                          aria-describedby="pref-font-description pref-font-error"
+                        />
+                        <label class="label-input__label" for="pref-font">Interface font</label>
+                      </div>
+                      <select id="pref-font-size" aria-label="Interface font size"></select>
+                    </div>
+                    <small id="pref-font-description" class="font-input-help"
+                      >Used throughout the app.</small
+                    >
+                    <label class="font-fetch-toggle"
+                      ><input type="checkbox" id="pref-font-google" /><span
+                        >Use Google Fonts to fetch</span
+                      ></label
+                    ><small id="pref-font-error" class="font-error" role="alert" hidden></small>
+                  </div>
+                </div>
               </section>
-              <section class="pref-subsection" aria-labelledby="prefs-editor-sync-title">
-                <h3 id="prefs-editor-sync-title">Saving and sync</h3>
-                <p>Control when changes reach your other devices and how that state is shown.</p>
+              <section
+                id="prefs-panel-editor"
+                class="prefs-section"
+                role="tabpanel"
+                aria-labelledby="prefs-tab-editor"
+                data-pref-panel="editor"
+                hidden
+              >
+                <section class="pref-subsection" aria-labelledby="prefs-editor-start-title">
+                  <h3 id="prefs-editor-start-title">Start and layout</h3>
+                  <p>Set the view and details state used when you open a note.</p>
+                  <label class="pref-control"
+                    ><span
+                      ><strong>Open notes in</strong
+                      ><small>Use this view when you create or open a note.</small></span
+                    ><select id="pref-start-view">
+                      <option value="split">Split view</option>
+                      <option value="editor">Write view</option>
+                      <option value="preview">Preview</option>
+                      <option value="zen">Zen mode</option>
+                    </select></label
+                  ><label class="pref-row"
+                    ><span
+                      ><strong>Collapse Details by default</strong
+                      ><small>Keep title and tags out of the way until needed.</small></span
+                    ><input type="checkbox" id="pref-collapse"
+                  /></label>
+                </section>
+                <section class="pref-subsection" aria-labelledby="prefs-editor-writing-title">
+                  <h3 id="prefs-editor-writing-title">Writing</h3>
+                  <p>Choose the typefaces and editing aids used while working in Markdown.</p>
+                  <div class="pref-control font-control">
+                    <div class="font-input-wrap">
+                      <div class="font-input-row">
+                        <div class="label-input">
+                          <input
+                            class="label-input__control"
+                            type="text"
+                            id="pref-editor-font"
+                            placeholder=" "
+                            autocomplete="off"
+                            spellcheck="false"
+                            aria-describedby="pref-editor-font-description pref-editor-font-error"
+                          />
+                          <label class="label-input__label" for="pref-editor-font"
+                            >Editor font</label
+                          >
+                        </div>
+                        <select id="pref-editor-font-size" aria-label="Editor font size"></select>
+                      </div>
+                      <small id="pref-editor-font-description" class="font-input-help"
+                        >Used while writing Markdown.</small
+                      >
+                      <label class="font-fetch-toggle"
+                        ><input type="checkbox" id="pref-editor-font-google" /><span
+                          >Use Google Fonts to fetch</span
+                        ></label
+                      ><small
+                        id="pref-editor-font-error"
+                        class="font-error"
+                        role="alert"
+                        hidden
+                      ></small>
+                    </div>
+                  </div>
+                  <div class="pref-control font-control">
+                    <div class="font-input-wrap">
+                      <div class="font-input-row">
+                        <div class="label-input">
+                          <input
+                            class="label-input__control"
+                            type="text"
+                            id="pref-preview-font"
+                            placeholder=" "
+                            autocomplete="off"
+                            spellcheck="false"
+                            aria-describedby="pref-preview-font-description pref-preview-font-error"
+                          />
+                          <label class="label-input__label" for="pref-preview-font"
+                            >Preview font</label
+                          >
+                        </div>
+                        <select id="pref-preview-font-size" aria-label="Preview font size"></select>
+                      </div>
+                      <small id="pref-preview-font-description" class="font-input-help"
+                        >Used for rendered note content.</small
+                      >
+                      <label class="font-fetch-toggle"
+                        ><input type="checkbox" id="pref-preview-font-google" /><span
+                          >Use Google Fonts to fetch</span
+                        ></label
+                      ><small
+                        id="pref-preview-font-error"
+                        class="font-error"
+                        role="alert"
+                        hidden
+                      ></small>
+                    </div>
+                  </div>
+                  <label class="pref-row"
+                    ><span
+                      ><strong>Hide cursor position preview</strong
+                      ><small>Turn off the matching block highlight in Preview.</small></span
+                    ><input type="checkbox" id="pref-hidecursor" /></label
+                  ><label class="pref-row"
+                    ><span
+                      ><strong>Interactive preview</strong
+                      ><small>Toggle tasks and rearrange blocks in Split and Preview.</small></span
+                    ><input type="checkbox" id="pref-interactive-preview"
+                  /></label>
+                </section>
+                <section class="pref-subsection" aria-labelledby="prefs-editor-controls-title">
+                  <h3 id="prefs-editor-controls-title">Controls</h3>
+                  <p>Choose the visible controls for standard editor views.</p>
+                  <label class="pref-row"
+                    ><span
+                      ><strong>Show editor toolbar</strong
+                      ><small>Keep formatting controls above the editor.</small></span
+                    ><input type="checkbox" id="pref-hidetoolbar" /></label
+                  ><label class="pref-row"
+                    ><span
+                      ><strong>Show manual Save button</strong
+                      ><small id="pref-manual-save-copy"
+                        >Show a control for syncing changes now.</small
+                      ></span
+                    ><input
+                      type="checkbox"
+                      id="pref-hidesave"
+                      aria-describedby="pref-manual-save-copy" /></label
+                  ><label class="pref-control"
+                    ><span
+                      ><strong>Save button location</strong
+                      ><small>Choose where the manual Save control appears.</small></span
+                    ><select id="pref-save-location">
+                      <option value="panel">Panel header</option>
+                      <option value="header">App header</option>
+                    </select></label
+                  >
+                </section>
+                <section class="pref-subsection" aria-labelledby="prefs-editor-sync-title">
+                  <h3 id="prefs-editor-sync-title">Saving and sync</h3>
+                  <p>Control when changes reach your other devices and how that state is shown.</p>
+                  <label class="pref-row"
+                    ><span
+                      ><strong>Automatically sync changes</strong
+                      ><small>Changes are always saved on this device.</small></span
+                    ><input type="checkbox" id="pref-autosave" checked /></label
+                  ><label class="pref-control"
+                    ><span
+                      ><strong>Sync status</strong
+                      ><small>Choose how the current sync state is shown.</small></span
+                    ><select id="pref-status">
+                      <option value="normal">Full</option>
+                      <option value="compact">Compact</option>
+                      <option value="off">Hidden</option>
+                    </select></label
+                  >
+                </section>
+              </section>
+              <section
+                id="prefs-panel-zen"
+                class="prefs-section"
+                role="tabpanel"
+                aria-labelledby="prefs-tab-zen"
+                data-pref-panel="zen"
+                hidden
+              >
+                <label class="pref-control"
+                  ><span
+                    ><strong>Page width</strong
+                    ><small
+                      >Set the writing page width independently from the rest of the app.</small
+                    ></span
+                  ><select id="pref-zen-page-width">
+                    <option value="compact">Compact</option>
+                    <option value="standard">Standard</option>
+                    <option value="wide">Wide</option>
+                    <option value="full">Full</option>
+                  </select></label
+                >
+                <div class="pref-control font-control">
+                  <div class="font-input-wrap">
+                    <div class="font-input-row">
+                      <div class="label-input">
+                        <input
+                          class="label-input__control"
+                          type="text"
+                          id="pref-zen-font"
+                          placeholder=" "
+                          autocomplete="off"
+                          spellcheck="false"
+                          aria-describedby="pref-zen-font-description pref-zen-font-error"
+                        />
+                        <label class="label-input__label" for="pref-zen-font">Editor font</label>
+                      </div>
+                      <select
+                        id="pref-zen-font-size"
+                        aria-label="Zen mode editor font size"
+                      ></select>
+                    </div>
+                    <small id="pref-zen-font-description" class="font-input-help"
+                      >Used while writing in Zen mode.</small
+                    >
+                    <label class="font-fetch-toggle"
+                      ><input type="checkbox" id="pref-zen-font-google" /><span
+                        >Use Google Fonts to fetch</span
+                      ></label
+                    ><small id="pref-zen-font-error" class="font-error" role="alert" hidden></small>
+                  </div>
+                </div>
                 <label class="pref-row"
                   ><span
-                    ><strong>Automatically sync changes</strong
-                    ><small>Changes are always saved on this device.</small></span
-                  ><input type="checkbox" id="pref-autosave" checked /></label
-                ><label class="pref-control"
+                    ><strong>Show word count</strong
+                    ><small>Show the current word count in the lower-right corner.</small></span
+                  ><input type="checkbox" id="pref-zen-word-count"
+                /></label>
+                <label class="pref-row"
                   ><span
-                    ><strong>Sync status</strong
-                    ><small>Choose how the current sync state is shown.</small></span
-                  ><select id="pref-status">
-                    <option value="normal">Full</option>
-                    <option value="compact">Compact</option>
-                    <option value="off">Hidden</option>
-                  </select></label
-                >
+                    ><strong>Show title</strong
+                    ><small>Show the note title in the lower-left corner.</small></span
+                  ><input type="checkbox" id="pref-zen-show-title"
+                /></label>
+                <label class="pref-row"
+                  ><span
+                    ><strong>Show view switcher</strong
+                    ><small
+                      >Show the Zen editor and preview controls. Exit stays available when this is
+                      off.</small
+                    ></span
+                  ><input type="checkbox" id="pref-zen-show-controls"
+                /></label>
               </section>
-            </section>
-            <section
-              id="prefs-panel-zen"
-              class="prefs-section"
-              role="tabpanel"
-              aria-labelledby="prefs-tab-zen"
-              data-pref-panel="zen"
-              hidden
-            >
-              <p class="prefs-section-intro">
-                Choose how the focused, styled writing surface looks.
-              </p>
-              <label class="pref-control"
-                ><span
-                  ><strong>Page width</strong
-                  ><small
-                    >Set the writing page width independently from the rest of the app.</small
-                  ></span
-                ><select id="pref-zen-page-width">
-                  <option value="compact">Compact</option>
-                  <option value="standard">Standard</option>
-                  <option value="wide">Wide</option>
-                  <option value="full">Full</option>
-                </select></label
+              <section
+                id="prefs-panel-shortcuts"
+                class="prefs-section"
+                role="tabpanel"
+                aria-labelledby="prefs-tab-shortcuts"
+                data-pref-panel="shortcuts"
+                hidden
               >
-              <div class="pref-control font-control">
-                <label class="font-label" for="pref-zen-font"
-                  ><strong>Editor font</strong><small>Used while writing in Zen mode.</small></label
-                >
-                <div class="font-input-wrap">
-                  <div class="font-input-row">
-                    <input
-                      type="text"
-                      id="pref-zen-font"
-                      placeholder="e.g. Rubik or system-monospace"
-                      autocomplete="off"
-                      spellcheck="false"
-                      aria-describedby="pref-zen-font-error"
-                    /><select
-                      id="pref-zen-font-size"
-                      aria-label="Zen mode editor font size"
-                    ></select>
-                  </div>
-                  <label class="font-fetch-toggle"
-                    ><input type="checkbox" id="pref-zen-font-google" /><span
-                      >Use Google Fonts to fetch</span
-                    ></label
-                  ><small id="pref-zen-font-error" class="font-error" role="alert" hidden></small>
+                <div class="pref-row shortcut-reset-row">
+                  <span
+                    ><strong>Default shortcuts</strong
+                    ><small>Restore the original keys and shortcut prefix.</small></span
+                  ><button id="shortcut-reset" class="btn-text" type="button">
+                    Restore defaults
+                  </button>
                 </div>
-              </div>
-              <label class="pref-row"
-                ><span
-                  ><strong>Show word count</strong
-                  ><small>Show the current word count in the lower-right corner.</small></span
-                ><input type="checkbox" id="pref-zen-word-count"
-              /></label>
-              <label class="pref-row"
-                ><span
-                  ><strong>Show title</strong
-                  ><small>Show the note title in the lower-left corner.</small></span
-                ><input type="checkbox" id="pref-zen-show-title"
-              /></label>
-              <label class="pref-row"
-                ><span
-                  ><strong>Show view switcher</strong
-                  ><small
-                    >Show the Zen editor and preview controls. Exit stays available when this is
-                    off.</small
-                  ></span
-                ><input type="checkbox" id="pref-zen-show-controls"
-              /></label>
-            </section>
-            <section
-              id="prefs-panel-shortcuts"
-              class="prefs-section"
-              role="tabpanel"
-              aria-labelledby="prefs-tab-shortcuts"
-              data-pref-panel="shortcuts"
-              hidden
-            >
-              <p class="prefs-section-intro">
-                Use a direct shortcut, or Prefix followed by a second key. Browser-reserved
-                combinations may not be available.
-              </p>
-              <div class="shortcut-footer">
-                <span
+                <p
                   id="shortcut-recorder-status"
                   class="shortcut-recorder-status"
                   role="status"
                   aria-live="polite"
-                ></span
-                ><button id="shortcut-reset" class="btn-text" type="button">
-                  Restore defaults
-                </button>
-              </div>
-              <div class="shortcut-prefix-row">
-                <span class="shortcut-copy"
-                  ><strong>Shortcut prefix</strong><small>Start a two-key sequence.</small></span
-                >
-                <button
-                  id="shortcut-prefix"
-                  class="shortcut-binding"
-                  type="button"
-                  aria-label="Record shortcut prefix"
-                ></button>
-              </div>
-              <div id="shortcut-groups" class="shortcut-groups"></div>
-            </section>
-            <section
-              id="prefs-panel-account"
-              class="prefs-section"
-              role="tabpanel"
-              aria-labelledby="prefs-tab-account"
-              data-pref-panel="account"
-              hidden
-            >
-              <p class="prefs-section-intro">Manage this signed-in session.</p>
-              <div class="pref-row pref-restore-settings">
-                <span
-                  ><strong>Preferences</strong
-                  ><small>Restore appearance, editor, Zen mode, and shortcut settings.</small></span
-                ><button id="prefs-restore-defaults" class="btn-text" type="button">
-                  Restore default settings
-                </button>
-              </div>
-              <div class="pref-row pref-signout">
-                <span
-                  ><strong>Session</strong
-                  ><small>Sign out and remove this device's local data.</small></span
-                ><button id="logout-btn" class="btn-text danger" type="button">Sign out</button>
-              </div>
-            </section>
-            <section
-              id="prefs-panel-about"
-              class="prefs-section"
-              role="tabpanel"
-              aria-labelledby="prefs-tab-about"
-              data-pref-panel="about"
-              hidden
-            >
-              <p class="prefs-section-intro">Information about this installation.</p>
-              <div class="about-list">
-                <a
-                  class="about-row"
-                  href="https://github.com/toxdes/vylk"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <span><strong>Source code</strong><small>View the project on GitHub</small></span>
-                </a>
-                <a
-                  class="about-row"
-                  href="https://github.com/toxdes/vylk/blob/main/LICENSE"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <span><strong>License</strong><small>MIT License</small></span>
-                </a>
-                <div class="about-row about-row-static">
-                  <span><strong>Version</strong><small>Installed application version</small></span
-                  ><span id="app-version" class="app-version" aria-label="Application version"
-                    >vdev</span
+                ></p>
+                <div class="shortcut-prefix-row">
+                  <span class="shortcut-copy"
+                    ><strong>Shortcut prefix</strong><small>Start a two-key sequence.</small></span
                   >
+                  <button
+                    id="shortcut-prefix"
+                    class="shortcut-binding"
+                    type="button"
+                    aria-label="Record shortcut prefix"
+                  ></button>
+                </div>
+                <div id="shortcut-groups" class="shortcut-groups"></div>
+              </section>
+              <section
+                id="prefs-panel-account"
+                class="prefs-section"
+                role="tabpanel"
+                aria-labelledby="prefs-tab-account"
+                data-pref-panel="account"
+                hidden
+              >
+                <div class="pref-row pref-restore-settings">
+                  <span
+                    ><strong>Preferences</strong
+                    ><small
+                      >Restore appearance, editor, Zen mode, and shortcut settings.</small
+                    ></span
+                  ><button id="prefs-restore-defaults" class="btn-text" type="button">
+                    Restore default settings
+                  </button>
+                </div>
+                <div class="pref-row">
+                  <span
+                    ><strong>Devices</strong
+                    ><small
+                      >Browsers signed in to this instance. Offline devices are signed out when they
+                      reconnect.</small
+                    ></span
+                  >
+                  <button id="devices-refresh" class="btn-text" type="button">Refresh</button>
+                </div>
+                <p id="devices-status" class="vault-hint" role="status" aria-live="polite"></p>
+                <div id="devices-list" aria-label="Signed-in devices"></div>
+                <div class="pref-row pref-signout">
+                  <span
+                    ><strong>Session</strong
+                    ><small id="account-signout-copy"
+                      >Sign out and remove this device's local data.</small
+                    ></span
+                  ><button id="logout-btn" class="btn-text danger" type="button">Sign out</button>
+                </div>
+              </section>
+              <section
+                id="prefs-panel-encryption"
+                class="prefs-section prefs-encryption"
+                role="tabpanel"
+                aria-labelledby="prefs-tab-encryption"
+                data-pref-panel="encryption"
+                hidden
+              >
+                <div class="vault-overview">
+                  <div>
+                    <div class="vault-status-line">
+                      <svg id="vault-status-icon" class="icon vault-status-icon" aria-hidden="true">
+                        <use href="#icon-shield-check"></use>
+                      </svg>
+                      <strong id="vault-status-copy">End-to-end encryption is off</strong>
+                    </div>
+                    <p id="vault-overview-copy">Protect your notes across devices.</p>
+                  </div>
+                  <details class="vault-info">
+                    <summary aria-label="About encryption" title="About encryption">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 11v5M12 8h.01" />
+                      </svg>
+                    </summary>
+                    <div class="vault-info-copy">
+                      <p>
+                        Only your devices can read your note titles, tags, and content after setup.
+                      </p>
+                      <p>Keep your passphrase and recovery key safe. Vylk cannot restore them.</p>
+                    </div>
+                  </details>
+                </div>
+                <p class="vault-secure-context-note" hidden>
+                  <span id="vault-secure-context-copy"
+                    >Open Vylk over HTTPS to set up end-to-end encryption.</span
+                  >
+                  <a href="__VYLK_DOCS_URL__" target="_blank" rel="noopener noreferrer"
+                    >Learn More</a
+                  >
+                </p>
+                <div id="vault-encryption-home">
+                  <div id="vault-inactive">
+                    <button id="vault-open-setup" class="vault-option" type="button">
+                      <span
+                        ><strong id="vault-title">Set up encryption</strong
+                        ><small>Add a passphrase and recovery key for your notes.</small></span
+                      >
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m9 6 6 6-6 6" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div id="vault-active" hidden>
+                    <button id="vault-open-passphrase" class="vault-option" type="button">
+                      <span
+                        ><strong>Change encryption passphrase</strong
+                        ><small
+                          >Your passphrase unlocks encrypted notes on your devices.</small
+                        ></span
+                      >
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m9 6 6 6-6 6" />
+                      </svg>
+                    </button>
+                    <button id="vault-open-recovery" class="vault-option" type="button">
+                      <span
+                        ><strong>Change recovery key</strong
+                        ><small
+                          >These 24 words can unlock notes if you forget your passphrase.</small
+                        ></span
+                      >
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m9 6 6 6-6 6" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </section>
+              <section
+                id="prefs-panel-about"
+                class="prefs-section"
+                role="tabpanel"
+                aria-labelledby="prefs-tab-about"
+                data-pref-panel="about"
+                hidden
+              >
+                <div class="about-list">
+                  <a
+                    class="about-row"
+                    href="https://github.com/toxdes/vylk"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span
+                      ><strong>Source code</strong><small>View the project on GitHub</small></span
+                    >
+                  </a>
+                  <a
+                    class="about-row"
+                    href="https://github.com/toxdes/vylk/blob/main/LICENSE"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span><strong>License</strong><small>MIT License</small></span>
+                  </a>
+                  <div class="about-row about-row-static">
+                    <span><strong>Version</strong><small>Installed application version</small></span
+                    ><span id="app-version" class="app-version" aria-label="Application version"
+                      >vdev</span
+                    >
+                  </div>
+                </div>
+              </section>
+            </main>
+          </div>
+        </div>
+      </div>
+
+      <div id="vault-setup-modal" class="modal hidden vault-credential-modal" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body modal-body--form"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="vault-setup-modal-title"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="vault-setup-modal-title">Set up encryption</h3>
+            <button id="vault-setup-close" class="modal-close" type="button" aria-label="Close">
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <form id="vault-setup-form" class="vault-setup-form">
+            <div id="vault-old-password-label" class="label-input">
+              <input
+                class="label-input__control"
+                id="vault-old-password"
+                type="password"
+                autocomplete="current-password"
+                placeholder=" "
+                required
+              />
+              <label class="label-input__label" for="vault-old-password"
+                ><span>Current Vylk password</span></label
+              >
+              <button
+                class="label-input__toggle"
+                type="button"
+                data-password-toggle="vault-old-password"
+                aria-label="Show password"
+                aria-pressed="false"
+              >
+                <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                  <use href="#icon-eye"></use>
+                </svg>
+                <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                  <use href="#icon-eye-off"></use>
+                </svg>
+              </button>
+            </div>
+            <div id="vault-reset-warning" class="vault-reset-warning" role="alert" hidden>
+              <strong>This permanently starts a new, empty vault.</strong>
+              <p>Your old notes cannot be opened or restored in Vylk.</p>
+              <p>A protected copy stays on this server for 30 days, then is deleted.</p>
+              <p>
+                Other devices must use the new passphrase. Their unsynced old-vault changes will be
+                discarded.
+              </p>
+            </div>
+            <div class="vault-passphrase-field">
+              <div class="label-input">
+                <input
+                  class="label-input__control"
+                  id="vault-master"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder=" "
+                  required
+                />
+                <label class="label-input__label" for="vault-master">Passphrase</label>
+                <button
+                  class="label-input__toggle"
+                  type="button"
+                  data-password-toggle="vault-master"
+                  data-secret-name="passphrase"
+                  aria-label="Show passphrase"
+                  aria-pressed="false"
+                >
+                  <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                    <use href="#icon-eye"></use>
+                  </svg>
+                  <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                    <use href="#icon-eye-off"></use>
+                  </svg>
+                </button>
+              </div>
+              <p id="vault-strength" class="vault-hint" role="status" aria-live="polite"></p>
+              <label id="vault-weak-confirm-row" class="vault-check" hidden>
+                <input id="vault-weak-confirm" type="checkbox" /> I understand this passphrase is
+                easy to guess
+              </label>
+            </div>
+            <div class="label-input">
+              <input
+                class="label-input__control"
+                id="vault-master-confirm"
+                type="password"
+                autocomplete="new-password"
+                placeholder=" "
+                required
+              />
+              <label class="label-input__label" for="vault-master-confirm">Repeat passphrase</label>
+              <button
+                class="label-input__toggle"
+                type="button"
+                data-password-toggle="vault-master-confirm"
+                data-secret-name="passphrase"
+                aria-label="Show passphrase"
+                aria-pressed="false"
+              >
+                <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                  <use href="#icon-eye"></use>
+                </svg>
+                <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                  <use href="#icon-eye-off"></use>
+                </svg>
+              </button>
+            </div>
+            <div class="vault-recovery">
+              <strong id="vault-recovery-heading">Write down your recovery key</strong>
+              <p class="vault-recovery-hint">
+                These 24 words can unlock your notes if you forget your passphrase. Save them
+                somewhere private, away from this device.
+              </p>
+              <div id="vault-recovery-display">
+                <ol
+                  id="vault-recovery-key"
+                  class="vault-recovery-words"
+                  aria-label="Recovery key words"
+                ></ol>
+                <div class="vault-recovery-actions">
+                  <button id="vault-download-recovery" type="button" class="btn-secondary" disabled>
+                    Download recovery key
+                  </button>
+                  <button id="vault-recovery-begin" type="button" class="btn-primary" disabled>
+                    I've saved my key
+                  </button>
                 </div>
               </div>
-            </section>
-          </main>
+              <div id="vault-recovery-entry-step" class="vault-recovery-entry-step" hidden>
+                <p class="vault-recovery-hint">
+                  Pasting is turned off to help confirm you saved this key. Enter each word from
+                  your saved copy. If you forget your passphrase and lose this key, no one can
+                  recover your notes.
+                </p>
+                <p
+                  id="vault-recovery-count"
+                  class="login-recovery-count"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+                <div
+                  id="vault-recovery-entered"
+                  class="login-recovery-words"
+                  aria-label="Entered recovery words"
+                ></div>
+                <div class="login-recovery-word-row">
+                  <div class="label-input">
+                    <input
+                      class="label-input__control"
+                      id="vault-recovery-confirm"
+                      type="text"
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      placeholder=" "
+                    />
+                    <label
+                      id="vault-recovery-confirm-label"
+                      class="label-input__label"
+                      for="vault-recovery-confirm"
+                      >Enter word 1 (1/24)</label
+                    >
+                    <button
+                      id="vault-recovery-add"
+                      type="button"
+                      class="label-input__action"
+                      aria-label="Add word"
+                    >
+                      <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                    </button>
+                  </div>
+                </div>
+                <button id="vault-recovery-show" type="button" class="btn-text">
+                  Show key again
+                </button>
+              </div>
+            </div>
+            <label id="vault-reset-ack-row" class="vault-check" hidden>
+              <input id="vault-reset-ack" type="checkbox" /> I understand this starts an empty vault
+              and the old notes cannot be recovered
+            </label>
+            <p id="vault-progress" class="vault-progress" role="status" aria-live="polite"></p>
+            <p id="vault-error" class="error" role="alert"></p>
+            <div class="modal-actions vault-form-actions">
+              <button id="vault-setup-cancel" class="btn-text" type="button">Cancel</button>
+              <button id="vault-start" type="submit" class="btn-primary">Encrypt notes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div id="vault-final-confirm-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="vault-final-confirm-title"
+          aria-describedby="vault-final-confirm-copy"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="vault-final-confirm-title">Before you turn on encryption</h3>
+            <button
+              id="vault-final-confirm-close"
+              class="modal-close"
+              type="button"
+              aria-label="Close"
+            >
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <p id="vault-final-confirm-copy" class="modal-copy">
+            If you forget your passphrase and lose your recovery key, no one can get your notes
+            back. Make sure you have saved the key somewhere private.
+          </p>
+          <div class="modal-actions">
+            <button id="vault-final-confirm-back" class="btn-text" type="button">Go back</button>
+            <button id="vault-final-confirm-start" class="btn-primary" type="button">
+              Turn on encryption
+            </button>
+          </div>
+        </div>
+      </div>
+      <div id="vault-master-modal" class="modal hidden vault-credential-modal" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body modal-body--form"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="vault-master-modal-title"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="vault-master-modal-title">Change encryption passphrase</h3>
+            <button id="vault-master-close" class="modal-close" type="button" aria-label="Close">
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <form id="vault-master-form" class="vault-setup-form">
+            <div id="vault-master-methods" class="vault-master-methods">
+              <p>How would you like to confirm it’s you?</p>
+              <button class="vault-option" type="button" data-vault-master-method="password">
+                <span><strong>I know my encryption passphrase</strong></span>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
+              </button>
+              <button class="vault-option" type="button" data-vault-master-method="recovery">
+                <span><strong>I have my recovery key</strong></span>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
+              </button>
+            </div>
+            <div id="vault-master-fields" class="vault-master-fields" hidden>
+              <div id="vault-master-method-summary" class="vault-master-method-summary">
+                <span id="vault-master-method-label"></span>
+                <button id="vault-master-change-method" class="btn-text" type="button">
+                  Change method
+                </button>
+              </div>
+              <div id="vault-master-current-field" class="label-input">
+                <input
+                  class="label-input__control"
+                  id="vault-master-current-secret"
+                  type="password"
+                  autocomplete="current-password"
+                  placeholder=" "
+                />
+                <label
+                  id="vault-master-current-label"
+                  class="label-input__label"
+                  for="vault-master-current-secret"
+                  >Passphrase</label
+                >
+                <button
+                  class="label-input__toggle"
+                  type="button"
+                  data-password-toggle="vault-master-current-secret"
+                  data-secret-name="passphrase"
+                  aria-label="Show passphrase"
+                  aria-pressed="false"
+                >
+                  <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                    <use href="#icon-eye"></use>
+                  </svg>
+                  <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                    <use href="#icon-eye-off"></use>
+                  </svg>
+                </button>
+              </div>
+              <div id="vault-master-current-recovery" class="vault-recovery-entry-step" hidden>
+                <p class="vault-hint">Enter your 24 words in order, or paste the whole key.</p>
+                <p
+                  id="vault-master-recovery-count"
+                  class="login-recovery-count"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+                <div
+                  id="vault-master-recovery-words"
+                  class="login-recovery-words"
+                  aria-label="Entered recovery words"
+                ></div>
+                <div class="login-recovery-word-row">
+                  <div class="label-input">
+                    <input
+                      id="vault-master-recovery-word"
+                      class="label-input__control"
+                      type="text"
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      placeholder=" "
+                    />
+                    <label
+                      id="vault-master-recovery-word-label"
+                      class="label-input__label"
+                      for="vault-master-recovery-word"
+                      >Enter word 1 (1/24)</label
+                    >
+                    <button
+                      id="vault-master-recovery-add"
+                      class="label-input__action"
+                      type="button"
+                      aria-label="Add word"
+                    >
+                      <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div id="vault-master-new-fields" class="vault-master-fields" hidden>
+                <div class="vault-passphrase-field">
+                  <div class="label-input">
+                    <input
+                      class="label-input__control"
+                      id="vault-new-master"
+                      type="password"
+                      autocomplete="new-password"
+                      placeholder=" "
+                    />
+                    <label class="label-input__label" for="vault-new-master">New passphrase</label>
+                    <button
+                      class="label-input__toggle"
+                      type="button"
+                      data-password-toggle="vault-new-master"
+                      data-secret-name="passphrase"
+                      aria-label="Show passphrase"
+                      aria-pressed="false"
+                    >
+                      <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                        <use href="#icon-eye"></use>
+                      </svg>
+                      <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                        <use href="#icon-eye-off"></use>
+                      </svg>
+                    </button>
+                  </div>
+                  <p
+                    id="vault-new-master-strength"
+                    class="vault-hint"
+                    role="status"
+                    aria-live="polite"
+                  ></p>
+                  <label id="vault-new-weak-confirm-row" class="vault-check" hidden>
+                    <input id="vault-new-weak-confirm" type="checkbox" /> I understand this
+                    passphrase is easy to guess
+                  </label>
+                </div>
+                <div class="label-input">
+                  <input
+                    class="label-input__control"
+                    id="vault-new-master-confirm"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder=" "
+                  />
+                  <label class="label-input__label" for="vault-new-master-confirm"
+                    >Repeat new passphrase</label
+                  >
+                  <button
+                    class="label-input__toggle"
+                    type="button"
+                    data-password-toggle="vault-new-master-confirm"
+                    data-secret-name="passphrase"
+                    aria-label="Show passphrase"
+                    aria-pressed="false"
+                  >
+                    <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                      <use href="#icon-eye"></use>
+                    </svg>
+                    <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                      <use href="#icon-eye-off"></use>
+                    </svg>
+                  </button>
+                </div>
+                <label class="vault-check">
+                  <input id="vault-master-signout-others" type="checkbox" checked />
+                  Sign out other devices
+                </label>
+                <p class="vault-hint">
+                  Their encrypted local changes are kept. Offline devices can still read cached
+                  notes until they reconnect.
+                </p>
+              </div>
+            </div>
+            <p id="vault-master-error" class="error" role="alert"></p>
+            <div class="modal-actions vault-form-actions">
+              <button id="vault-master-cancel" class="btn-text" type="button">Cancel</button>
+              <button id="vault-master-verify" class="btn-primary" type="button" hidden>
+                Continue
+              </button>
+              <button id="vault-master-submit" class="btn-primary" type="submit" hidden>
+                Save passphrase
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div id="vault-recovery-modal" class="modal hidden vault-credential-modal" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body modal-body--form"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="vault-recovery-modal-title"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="vault-recovery-modal-title">Change recovery key</h3>
+            <button id="vault-recovery-close" class="modal-close" type="button" aria-label="Close">
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <form id="vault-recovery-form" class="vault-setup-form">
+            <div id="vault-recovery-methods" class="vault-master-methods">
+              <p>How would you like to confirm it’s you?</p>
+              <button class="vault-option" type="button" data-vault-recovery-method="password">
+                <span><strong>I know my encryption passphrase</strong></span>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
+              </button>
+              <button class="vault-option" type="button" data-vault-recovery-method="recovery">
+                <span><strong>I have my recovery key</strong></span>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
+              </button>
+            </div>
+            <div id="vault-recovery-fields" class="vault-master-fields" hidden>
+              <div id="vault-recovery-method-summary" class="vault-master-method-summary">
+                <span id="vault-recovery-method-label"></span>
+                <button id="vault-recovery-change-method" class="btn-text" type="button">
+                  Change method
+                </button>
+              </div>
+              <div id="vault-recovery-current-field" class="label-input">
+                <input
+                  class="label-input__control"
+                  id="vault-recovery-current-secret"
+                  type="password"
+                  autocomplete="current-password"
+                  placeholder=" "
+                  required
+                />
+                <label
+                  id="vault-recovery-current-label"
+                  class="label-input__label"
+                  for="vault-recovery-current-secret"
+                  >Passphrase</label
+                >
+                <button
+                  class="label-input__toggle"
+                  type="button"
+                  data-password-toggle="vault-recovery-current-secret"
+                  data-secret-name="passphrase"
+                  aria-label="Show passphrase"
+                  aria-pressed="false"
+                >
+                  <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                    <use href="#icon-eye"></use>
+                  </svg>
+                  <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                    <use href="#icon-eye-off"></use>
+                  </svg>
+                </button>
+              </div>
+              <div id="vault-recovery-current-recovery" class="vault-recovery-entry-step" hidden>
+                <p class="vault-hint">Enter your 24 words in order, or paste the whole key.</p>
+                <p
+                  id="vault-recovery-current-count"
+                  class="login-recovery-count"
+                  role="status"
+                  aria-live="polite"
+                ></p>
+                <div
+                  id="vault-recovery-current-words"
+                  class="login-recovery-words"
+                  aria-label="Entered recovery words"
+                ></div>
+                <div class="login-recovery-word-row">
+                  <div class="label-input">
+                    <input
+                      class="label-input__control"
+                      id="vault-recovery-current-word"
+                      type="text"
+                      autocomplete="off"
+                      autocapitalize="off"
+                      spellcheck="false"
+                      placeholder=" "
+                    />
+                    <label
+                      id="vault-recovery-current-word-label"
+                      class="label-input__label"
+                      for="vault-recovery-current-word"
+                      >Enter word 1 (1/24)</label
+                    >
+                    <button
+                      id="vault-recovery-current-add"
+                      type="button"
+                      class="label-input__action"
+                      aria-label="Add word"
+                    >
+                      <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div id="vault-new-recovery-step" class="vault-recovery" hidden>
+                <strong id="vault-new-recovery-heading">Write down your new recovery key</strong>
+                <p class="vault-recovery-hint">
+                  Use these 24 words if you forget your passphrase. Keep them private and somewhere
+                  safe.
+                </p>
+                <div id="vault-new-recovery-display">
+                  <ol
+                    id="vault-new-recovery-key"
+                    class="vault-recovery-words"
+                    aria-label="New recovery key words"
+                  ></ol>
+                  <div class="vault-recovery-actions">
+                    <button id="vault-new-recovery-download" type="button" class="btn-secondary">
+                      Download recovery key
+                    </button>
+                    <button id="vault-new-recovery-begin" type="button" class="btn-primary">
+                      I've saved my key
+                    </button>
+                  </div>
+                </div>
+                <div id="vault-new-recovery-entry-step" class="vault-recovery-entry-step" hidden>
+                  <p class="vault-recovery-hint">
+                    Pasting is turned off to help confirm you saved this key. Enter each word from
+                    your saved copy. If you forget your passphrase and lose this key, no one can
+                    recover your notes.
+                  </p>
+                  <p
+                    id="vault-new-recovery-count"
+                    class="login-recovery-count"
+                    role="status"
+                    aria-live="polite"
+                  ></p>
+                  <div
+                    id="vault-new-recovery-entered"
+                    class="login-recovery-words"
+                    aria-label="Entered new recovery words"
+                  ></div>
+                  <div class="login-recovery-word-row">
+                    <div class="label-input">
+                      <input
+                        class="label-input__control"
+                        id="vault-new-recovery-confirm"
+                        type="text"
+                        autocomplete="off"
+                        autocapitalize="off"
+                        spellcheck="false"
+                        placeholder=" "
+                      />
+                      <label
+                        id="vault-new-recovery-confirm-label"
+                        class="label-input__label"
+                        for="vault-new-recovery-confirm"
+                        >Enter word 1 (1/24)</label
+                      >
+                      <button
+                        id="vault-new-recovery-add"
+                        type="button"
+                        class="label-input__action"
+                        aria-label="Add word"
+                      >
+                        <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <button id="vault-new-recovery-show" type="button" class="btn-text">
+                    Show key again
+                  </button>
+                </div>
+              </div>
+            </div>
+            <p id="vault-recovery-error" class="error" role="alert"></p>
+            <div id="vault-recovery-form-actions" class="modal-actions vault-form-actions">
+              <button id="vault-recovery-cancel" class="btn-text" type="button">Cancel</button>
+              <button id="vault-recovery-verify" class="btn-primary" type="button" hidden>
+                Continue
+              </button>
+              <button id="vault-recovery-submit" class="btn-primary" type="submit" hidden>
+                Save recovery key
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div id="delete-note-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-note-title"
+          aria-describedby="delete-note-copy"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="delete-note-title">Delete this note?</h3>
+            <button id="delete-note-close" class="modal-close" type="button" aria-label="Cancel">
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <p id="delete-note-copy" class="modal-copy">
+            This removes the note from this device and syncs the deletion to your other devices.
+          </p>
+          <div class="modal-actions">
+            <button id="delete-note-cancel" class="btn-text" type="button" autofocus>Cancel</button>
+            <button id="delete-note-confirm" class="btn-primary danger" type="button">
+              Delete note
+            </button>
+          </div>
         </div>
       </div>
 
       <div id="restore-defaults-modal" class="modal hidden" aria-hidden="true">
         <div class="modal-backdrop"></div>
         <div
-          class="modal-body confirmation-modal-body"
+          class="modal-body"
           role="dialog"
           aria-modal="true"
           aria-labelledby="restore-defaults-title"
@@ -823,11 +1792,11 @@ SOFTWARE.
               <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
             </button>
           </div>
-          <p id="restore-defaults-copy" class="confirmation-modal-copy">
+          <p id="restore-defaults-copy" class="modal-copy">
             This resets your appearance, editor, Zen mode, and shortcut settings. Your notes are not
             affected.
           </p>
-          <div class="confirmation-modal-actions">
+          <div class="modal-actions">
             <button id="restore-defaults-cancel" class="btn-text" type="button" autofocus>
               Cancel
             </button>
@@ -838,10 +1807,66 @@ SOFTWARE.
         </div>
       </div>
 
+      <div id="shortcut-reset-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="shortcut-reset-title"
+          aria-describedby="shortcut-reset-copy"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="shortcut-reset-title">Restore default shortcuts?</h3>
+            <button id="shortcut-reset-close" class="modal-close" type="button" aria-label="Cancel">
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <p id="shortcut-reset-copy" class="modal-copy">
+            Your custom shortcuts and prefix will be replaced with the defaults.
+          </p>
+          <div class="modal-actions">
+            <button id="shortcut-reset-cancel" class="btn-text" type="button" autofocus>
+              Cancel
+            </button>
+            <button id="shortcut-reset-confirm" class="btn-primary" type="button">
+              Restore shortcuts
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="device-signout-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="device-signout-title"
+          aria-describedby="device-signout-copy"
+          tabindex="-1"
+        >
+          <div class="modal-heading">
+            <h3 id="device-signout-title">Sign out device?</h3>
+            <button id="device-signout-close" class="modal-close" type="button" aria-label="Close">
+              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+            </button>
+          </div>
+          <p id="device-signout-copy" class="modal-copy"></p>
+          <p id="device-signout-error" class="error" role="alert"></p>
+          <div class="modal-actions">
+            <button id="device-signout-cancel" class="btn-text" type="button">Cancel</button>
+            <button id="device-signout-confirm" class="btn-primary danger" type="button">
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
       <div id="logout-modal" class="modal hidden" aria-hidden="true">
         <div class="modal-backdrop"></div>
         <div
-          class="modal-body confirmation-modal-body"
+          class="modal-body"
           role="dialog"
           aria-modal="true"
           aria-labelledby="logout-title"
@@ -854,10 +1879,10 @@ SOFTWARE.
               <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
             </button>
           </div>
-          <p id="logout-copy" class="confirmation-modal-copy">
+          <p id="logout-copy" class="modal-copy">
             This ends your session and removes this device's local note data.
           </p>
-          <div class="confirmation-modal-actions">
+          <div class="modal-actions">
             <button id="logout-cancel" class="btn-text" type="button" autofocus>Cancel</button>
             <button id="logout-confirm" class="btn-primary danger" type="button">Sign out</button>
           </div>
@@ -867,7 +1892,7 @@ SOFTWARE.
       <div id="shortcut-confirm-modal" class="modal hidden" aria-hidden="true">
         <div class="modal-backdrop"></div>
         <div
-          class="modal-body shortcut-confirm-body"
+          class="modal-body"
           role="dialog"
           aria-modal="true"
           aria-labelledby="shortcut-confirm-title"
@@ -885,14 +1910,14 @@ SOFTWARE.
               <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
             </button>
           </div>
-          <p id="shortcut-confirm-copy" class="shortcut-confirm-copy">
+          <p id="shortcut-confirm-copy" class="modal-copy">
             Your current note will be saved on this device first.
           </p>
           <label class="pref-row shortcut-confirm-skip"
             ><span>Don’t ask again for this shortcut</span
             ><input id="shortcut-confirm-skip" type="checkbox"
           /></label>
-          <div class="shortcut-confirm-actions">
+          <div class="modal-actions shortcut-confirm-actions">
             <button id="shortcut-confirm-cancel" class="btn-text" type="button">Cancel</button
             ><button id="shortcut-confirm-continue" class="btn-primary" type="button">
               Create note
@@ -912,7 +1937,7 @@ SOFTWARE.
         tabindex="-1"
       >
         <div class="modal-backdrop"></div>
-        <div class="modal-body conflict-modal-body">
+        <div class="modal-body modal-body--wide conflict-modal-body">
           <div class="modal-heading">
             <h3 id="conflict-title">Resolve conflicting edits</h3>
             <button
@@ -924,7 +1949,7 @@ SOFTWARE.
               <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
             </button>
           </div>
-          <p id="conflict-intro" class="conflict-intro">
+          <p id="conflict-intro" class="modal-copy conflict-intro">
             This note changed on another device while you were editing it. Review both versions,
             then save the result you want to keep.
           </p>
@@ -933,14 +1958,26 @@ SOFTWARE.
             <pre id="conflict-deleted-content"></pre>
           </div>
           <div class="conflict-fields">
-            <label class="meta-field">
-              <span class="input-label">Title to save</span>
-              <input type="text" id="conflict-note-title" autocomplete="off" />
-            </label>
-            <label class="meta-field">
-              <span class="input-label">Tags to save</span>
-              <input type="text" id="conflict-note-tags" autocomplete="off" />
-            </label>
+            <div class="meta-field label-input">
+              <input
+                class="label-input__control"
+                type="text"
+                id="conflict-note-title"
+                placeholder=" "
+                autocomplete="off"
+              />
+              <label class="label-input__label" for="conflict-note-title">Title to save</label>
+            </div>
+            <div class="meta-field label-input">
+              <input
+                class="label-input__control"
+                type="text"
+                id="conflict-note-tags"
+                placeholder=" "
+                autocomplete="off"
+              />
+              <label class="label-input__label" for="conflict-note-tags">Tags to save</label>
+            </div>
           </div>
           <div class="conflict-metadata-compare" aria-label="Conflicting title and tags">
             <section>
@@ -987,7 +2024,7 @@ SOFTWARE.
             <summary>Show the common original</summary>
             <pre id="conflict-base-content"></pre>
           </details>
-          <div class="conflict-actions">
+          <div class="modal-actions conflict-actions">
             <button id="conflict-copy" class="btn-text" type="button">Keep as copy</button>
             <span class="conflict-actions-spacer"></span>
             <button id="conflict-later" class="btn-text" type="button">Resolve later</button>
@@ -1061,17 +2098,28 @@ SOFTWARE.
             <div id="note-details" class="meta-body">
               <div class="meta-fields">
                 <div class="meta-field">
-                  <label class="input-label" for="note-title">Title</label>
-                  <input type="text" id="note-title" placeholder="Note title" autocomplete="off" />
+                  <div class="label-input">
+                    <input
+                      class="label-input__control"
+                      type="text"
+                      id="note-title"
+                      placeholder=" "
+                      autocomplete="off"
+                    />
+                    <label class="label-input__label" for="note-title">Title</label>
+                  </div>
                 </div>
                 <div class="meta-field">
-                  <label class="input-label" for="note-tags">Tags</label>
-                  <input
-                    type="text"
-                    id="note-tags"
-                    placeholder="tag1, tag2, tag3"
-                    autocomplete="off"
-                  />
+                  <div class="label-input">
+                    <input
+                      class="label-input__control"
+                      type="text"
+                      id="note-tags"
+                      placeholder=" "
+                      autocomplete="off"
+                    />
+                    <label class="label-input__label" for="note-tags">Tags</label>
+                  </div>
                 </div>
               </div>
               <div class="meta-actions">
@@ -1315,7 +2363,10 @@ SOFTWARE.
     <script src="/js/core/api-client.js"></script>
     <script src="/js/core/routes.js"></script>
     <script src="/js/core/indexeddb.js"></script>
+    <script src="/js/core/vault-crypto.js"></script>
+    <script src="/js/core/vault-local.js"></script>
     <script src="/js/core/offline-store.js"></script>
+    <script src="/js/core/vault-session.js"></script>
     <script src="/js/core/sync-batch.js"></script>
     <script src="/js/sync/server-events.js"></script>
     <script src="/js/sync/conflict-actions.js"></script>
@@ -1351,7 +2402,11 @@ SOFTWARE.
     <script src="/js/editor/caret-controller.js"></script>
     <script src="/js/ui/dashboard.js"></script>
     <script src="/js/ui/dashboard-controller.js"></script>
+    <script src="/js/ui/recovery-entry.js"></script>
     <script src="/js/ui/auth.js"></script>
+    <script src="/js/ui/devices.js"></script>
+    <script src="/js/ui/labeled-input.js"></script>
+    <script src="/js/ui/vault-setup.js"></script>
     <script src="/js/ui/preferences.js"></script>
     <script src="/js/ui/preferences-dialog.js"></script>
     <script src="/js/ui/preferences-store.js"></script>

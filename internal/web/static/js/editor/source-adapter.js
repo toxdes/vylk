@@ -9,13 +9,17 @@
     function ensureZenEditor() {
       if (!zenEditor && zenElement && window.VylkZenEditor) {
         zenEditor = new window.VylkZenEditor(zenElement);
-        zenEditor.addEventListener('input', (event) =>
+        zenEditor.setValue(textarea.value, textarea.selectionStart, textarea.selectionEnd);
+        zenEditor.addEventListener('input', (event) => {
+          // Synchronizing the inactive editor on a view change is not a new
+          // user edit; its textarea change has already been saved/queued.
+          if (!zenEditor.active) return;
           onInput({
             inputType: event.detail?.inputType || '',
             data: event.detail?.data ?? null,
             length: event.detail?.length ?? zenEditor.length,
-          }),
-        );
+          });
+        });
       }
       return zenEditor;
     }
@@ -41,19 +45,28 @@
       const source = String(nextValue ?? '');
       textarea.value = source;
       textarea.setSelectionRange(selectionStart, selectionEnd);
-      if (zenActive()) zenEditor.setValue(source, selectionStart, selectionEnd);
+      // Setting a note snapshot is a document boundary, including while Zen is
+      // inactive. Never carry one note's undo history into another note.
+      if (zenEditor) zenEditor.setValue(source, selectionStart, selectionEnd);
       onLengthChange(source.length);
     }
 
     function activateZen() {
       const editor = ensureZenEditor();
       if (!editor || editor.active) return;
-      editor.setValue(textarea.value, textarea.selectionStart, textarea.selectionEnd);
+      editor.applyValue(
+        textarea.value,
+        textarea.selectionStart,
+        textarea.selectionEnd,
+        textarea.selectionDirection,
+      );
+      editor.cancelTypingAnchor();
       editor.active = true;
     }
 
     function deactivateZen() {
       if (!zenActive()) return;
+      if (zenEditor.composing) zenEditor.finishComposition();
       const currentSelection = zenEditor.selection();
       textarea.value = zenEditor.value;
       textarea.setSelectionRange(

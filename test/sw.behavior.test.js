@@ -62,6 +62,39 @@ test('pre-caches the interactive preview helper with the app shell', () => {
   expect(serviceWorkerSource).toContain("'/js/workers/preview-worker.js'");
 });
 
+test('rejects an update shell served from a different deployment revision', async () => {
+  const worker = loadWorker({
+    caches: createCacheStorage(),
+    fetchImpl: async (asset) =>
+      new Response(
+        asset === '/' || asset === '/index.html'
+          ? '<meta name="vylk-revision" content="old">'
+          : 'asset',
+      ),
+  });
+  await expect(worker.install()).rejects.toThrow('app shell does not match');
+  expect(worker.self.skipWaiting).not.toHaveBeenCalled();
+});
+
+test('serves required vault UI scripts after an offline reload', async () => {
+  const caches = createCacheStorage();
+  let offline = false;
+  const worker = loadWorker({
+    caches,
+    fetchImpl: async (request) => {
+      if (offline) throw new Error('network unavailable');
+      return new Response(`asset ${request}`);
+    },
+  });
+  await worker.install();
+  offline = true;
+  for (const path of ['/js/ui/recovery-entry.js', '/js/ui/labeled-input.js']) {
+    expect(await (await caches.open('vylk-shell-new')).match(path)).toBeDefined();
+    const response = await worker.fetch(new Request(`http://localhost:8080${path}`));
+    expect(await response.text()).toBe(`asset ${path}`);
+  }
+});
+
 function cacheKey(request) {
   return typeof request === 'string'
     ? new URL(request, 'http://localhost:8080/').href

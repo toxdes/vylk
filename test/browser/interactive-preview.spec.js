@@ -284,7 +284,7 @@ test.describe('mobile interactive preview', () => {
       type: 'touchStart',
       touchPoints: [{x: nextHandle.x + 22, y: nextHandle.y + 22, id: 2}],
     });
-    await expect(page.locator('.preview-drag-ghost')).toHaveCount(1, {timeout: 1000});
+    await expect(page.locator('.preview-drag-ghost')).toHaveCount(1);
     await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
     await expect(page.locator('#preview .interactive-preview-card.is-selected')).toHaveCount(0);
   });

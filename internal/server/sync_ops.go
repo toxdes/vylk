@@ -2,7 +2,6 @@ package server
 
 import (
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -22,6 +21,16 @@ const compactedOperationPayload = `{"compacted":true}`
 
 var maxSyncOperationPayloadBytes int64 = 32 << 20
 var maxSyncOperationAcknowledgements int64 = 100000
+
+// A browser can finish pulling just before the operator replaces the database.
+// Fence its push before any sequence, acknowledgement, or note is changed.
+func (a *app) requireServerInstance(w http.ResponseWriter, r *http.Request) bool {
+	if expected := r.Header.Get("X-Vylk-Instance-ID"); expected != "" && expected != a.instanceID {
+		httpx.WriteAPIError(w, http.StatusConflict, "server_instance_changed", "The server database changed. Sync is paused to protect your unsynced edits. Restore the previous database and notes directory, then choose Retry.")
+		return false
+	}
+	return true
+}
 
 func (a *app) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 	var request syncPushRequest
@@ -48,6 +57,12 @@ func (a *app) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 
 	a.noteMu.Lock()
 	defer a.noteMu.Unlock()
+	if !a.requireServerInstance(w, r) {
+		return
+	}
+	if !a.requireLegacyWrite(w) {
+		return
+	}
 	if err := a.recoverFileOperations(); err != nil {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "recover_file_operations_failed", "could not recover pending file operations")
 		return
@@ -174,11 +189,8 @@ func (a *app) applySyncOperation(deviceID string, operation syncOperationRequest
 		if err != nil {
 			return syncOperationResult{}, err
 		}
-		enc, err := a.encryption.Encrypt([]byte(operation.Content), operation.NoteID)
-		if err != nil {
-			return syncOperationResult{}, err
-		}
-		stagedName, err = notepkg.StageFile(a.notesDir, enc)
+		data := []byte(operation.Content)
+		stagedName, err = notepkg.StageFile(a.notesDir, data)
 		if err != nil {
 			return syncOperationResult{}, err
 		}
@@ -204,7 +216,7 @@ func (a *app) applySyncOperation(deviceID string, operation syncOperationRequest
 		if err != nil {
 			return syncOperationResult{}, err
 		}
-		pendingFileOperation = &fileOperation{ID: fileOperationID, Action: fileOperationReplace, NoteID: operation.NoteID, StageName: stagedName, ExpectedHash: notepkg.ContentHash(enc)}
+		pendingFileOperation = &fileOperation{ID: fileOperationID, Action: fileOperationReplace, NoteID: operation.NoteID, StageName: stagedName, ExpectedHash: notepkg.ContentHash(data)}
 		if err := recordFileOperation(tx, *pendingFileOperation); err != nil {
 			return syncOperationResult{}, err
 		}
@@ -313,7 +325,7 @@ func (a *app) applySyncOperation(deviceID string, operation syncOperationRequest
 	if err != nil {
 		return syncOperationResult{}, err
 	}
-	encodedOperation, err := a.encodeSyncOperation(deviceID, operation)
+	encodedOperation, err := encodeSyncOperation(operation)
 	if err != nil {
 		return syncOperationResult{}, err
 	}
@@ -449,17 +461,10 @@ func compactSyncOperationPayloads(tx *sql.Tx) error {
 	return nil
 }
 
-func (a *app) encodeSyncOperation(deviceID string, operation syncOperationRequest) (string, error) {
+func encodeSyncOperation(operation syncOperationRequest) (string, error) {
 	data, err := json.Marshal(operation)
 	if err != nil {
 		return "", err
 	}
-	if a.encryption == nil {
-		return string(data), nil
-	}
-	encoded, err := a.encryption.Encrypt(data, "sync-operation:"+deviceID+":"+operation.OpID)
-	if err != nil {
-		return "", err
-	}
-	return "enc:" + base64.RawStdEncoding.EncodeToString(encoded), nil
+	return string(data), nil
 }

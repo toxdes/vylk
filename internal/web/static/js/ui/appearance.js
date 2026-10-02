@@ -218,11 +218,13 @@
 
     function renderOptions() {
       const prefs = getPrefs();
-      select('#pref-theme').innerHTML = themes
+      const themeSelect = select('#pref-theme');
+      themeSelect.innerHTML = themes
         .map(
           (theme) => `<option value="${escapeHTML(theme.id)}">${escapeHTML(theme.name)}</option>`,
         )
         .join('');
+      themeSelect.value = prefs.theme;
       fontSlots.forEach((slot) => {
         const input = select(slot.input);
         if (input) input.value = prefs[slot.preference];

@@ -9,6 +9,30 @@ async function signIn(page) {
   await expect(page.locator('#dashboard')).toBeVisible();
 }
 
+test('note deletion uses the shared confirmation dialog', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-title').fill('Note to delete');
+  await page.locator('#note-content').fill('Delete only after confirmation');
+  await page.locator('#save-btn').click();
+  await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
+
+  await page.locator('#delete-btn').click();
+  await expect(page.locator('#delete-note-modal')).toBeVisible();
+  await expect(page.locator('#delete-note-modal .modal-body')).toHaveCSS(
+    'animation-name',
+    'modal-panel-in',
+  );
+  await page.locator('#delete-note-cancel').click();
+  await expect(page.locator('#delete-note-modal')).toBeHidden();
+  await expect(page.locator('#note-title')).toHaveValue('Note to delete');
+
+  await page.locator('#delete-btn').click();
+  await page.locator('#delete-note-confirm').click();
+  await expect(page.locator('#dashboard')).toBeVisible();
+  await expect(page.locator('.note-item').filter({hasText: 'Note to delete'})).toHaveCount(0);
+});
+
 test('in-app Back does not leave a stale note in browser history', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
@@ -19,6 +43,10 @@ test('in-app Back does not leave a stale note in browser history', async ({page}
   const noteID = new URL(page.url()).pathname.slice(1);
   await page.locator('#back-btn').click();
   await expect(page.locator('#dashboard')).toBeVisible();
+  await expect(page.locator('#dashboard .dashboard-body')).toHaveCSS(
+    'animation-name',
+    'app-content-return',
+  );
 
   await page.locator(`.note-item[data-id="${noteID}"]`).click();
   await expect(page.locator('#editor')).toBeVisible();
@@ -50,6 +78,10 @@ test('browser Back saves the current note before returning to the dashboard', as
   await page.goBack();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('#dashboard')).toBeVisible();
+  await expect(page.locator('#dashboard .dashboard-body')).toHaveCSS(
+    'animation-name',
+    'app-content-return',
+  );
 
   await page
     .locator(`.note-item[data-id="${noteURL.slice(noteURL.lastIndexOf('/') + 1)}"]`)
@@ -132,10 +164,57 @@ test('closing note Preferences leaves one Back step to the dashboard', async ({p
   await expect(page.locator('#dashboard')).toBeVisible();
 });
 
-test('direct Preferences URL opens over the dashboard', async ({page}) => {
+test('closing Preferences from an unsaved note returns to that note', async ({page}) => {
   await signIn(page);
-  await page.goto('/preferences');
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-content').fill('A note in progress');
+  await page.locator('#editor-prefs-btn').click();
   await expect(page).toHaveURL(/\/preferences$/);
+  await page.locator('#prefs-tab-editor').click();
+  await page.locator('#prefs-close').click();
+  await expect(page.locator('#prefs-modal')).toBeHidden();
+  await expect(page.locator('#editor')).toBeVisible();
+  await expect(page.locator('#note-content')).toHaveValue('A note in progress');
+  await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
+});
+
+test('direct Preferences section URL opens the selected section', async ({page}) => {
+  await signIn(page);
+  await page.goto('/preferences/encryption');
+  await expect(page).toHaveURL(/\/preferences\/encryption$/);
   await expect(page.locator('#dashboard')).toBeVisible();
+  await expect(page.locator('#prefs-modal')).toBeVisible();
+  await expect(page.locator('#prefs-title')).toHaveText('Encryption');
+  await expect(page.locator('#prefs-tab-encryption')).toHaveAttribute('aria-selected', 'true');
+});
+
+test('browser history moves between Preferences and its encryption dialog', async ({page}) => {
+  await signIn(page);
+  await page.locator('#prefs-btn').click();
+  await page.locator('#prefs-tab-encryption').click();
+  await page.locator('#vault-open-setup').click();
+  await expect(page).toHaveURL(/\/preferences\/encryption\/setup$/);
+  await expect(page.locator('#vault-setup-modal')).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/preferences\/encryption$/);
+  await expect(page.locator('#vault-setup-modal')).toBeHidden();
+  await expect(page.locator('#prefs-modal')).toBeVisible();
+
+  await page.goForward();
+  await expect(page.locator('#vault-setup-modal')).toBeVisible();
+  await page.locator('#vault-setup-cancel').click();
+  await expect(page).toHaveURL(/\/preferences\/encryption$/);
+  await expect(page.locator('#prefs-modal')).toBeVisible();
+});
+
+test('direct encryption dialog URL returns to Preferences on close', async ({page}) => {
+  await signIn(page);
+  await page.goto('/preferences/encryption/setup');
+  await expect(page.locator('#prefs-modal')).toBeVisible();
+  await expect(page.locator('#vault-setup-modal')).toBeVisible();
+  await page.locator('#vault-setup-cancel').click();
+  await expect(page.locator('#vault-setup-modal')).toBeHidden();
+  await expect(page).toHaveURL(/\/preferences\/encryption$/);
   await expect(page.locator('#prefs-modal')).toBeVisible();
 });

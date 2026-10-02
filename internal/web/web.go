@@ -18,10 +18,14 @@ import (
 )
 
 const (
-	NameEnv            = "VYLK_APP_NAME"
-	DefaultName        = "VYLK"
-	AppNamePlaceholder = "__VYLK_APP_NAME__"
-	MaxNameRunes       = 64
+	NameEnv             = "VYLK_APP_NAME"
+	DefaultName         = "VYLK"
+	AppNamePlaceholder  = "__VYLK_APP_NAME__"
+	SiteBaseURL         = "https://vylk.toxdes.com"
+	DocsURL             = SiteBaseURL + "/docs/#end-to-end-encryption"
+	DocsURLPlaceholder  = "__VYLK_DOCS_URL__"
+	MaxNameRunes        = 64
+	RevisionPlaceholder = "__VYLK_APP_REVISION__"
 )
 
 //go:embed static
@@ -34,19 +38,10 @@ var zeroTime time.Time
 var revisionFiles = []string{
 	"static/index.html",
 	"static/style.css",
-	"static/js/app.js",
-	"static/js/core/http.js",
-	"static/js/core/routes.js",
-	"static/js/core/indexeddb.js",
-	"static/js/core/offline-store.js",
-	"static/js/editor/shortcuts.js",
-	"static/js/editor/interactive-preview.js",
-	"static/js/editor/markdown-formatting.js",
-	"static/js/editor/zen-editor.js",
-	"static/js/workers/preview-worker.js",
-	"static/js/ui/themes.js",
-	"static/js/editor/merge.js",
 	"static/vendor/marked.min.js",
+	"static/vendor/libsodium-sumo.min.js",
+	"static/vendor/bip39.min.js",
+	"static/vendor/zxcvbn.js",
 	"static/manifest.json",
 	"static/favicon.ico",
 	"static/icon-192.png",
@@ -96,15 +91,39 @@ func ConfiguredName(raw string) (string, error) {
 }
 
 func Revision(name string) string {
+	return revisionOf(embedded, name)
+}
+
+func revisionOf(files fs.FS, name string) string {
 	hash := sha256.New()
 	_, _ = hash.Write([]byte("app-name\x00" + name + "\x00"))
 	for _, path := range revisionFiles {
-		data, err := embedded.ReadFile(path)
+		data, err := fs.ReadFile(files, path)
 		if err != nil {
 			return "unknown"
 		}
 		_, _ = hash.Write([]byte(path))
 		_, _ = hash.Write(data)
+	}
+	// WalkDir is lexically ordered. Automatically fingerprint runtime modules so
+	// adding a module cannot leave the offline shell on an unchanged revision.
+	err := fs.WalkDir(files, "static/js", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".test.js") {
+			return nil
+		}
+		data, err := fs.ReadFile(files, path)
+		if err != nil {
+			return err
+		}
+		_, _ = hash.Write([]byte(path))
+		_, _ = hash.Write(data)
+		return nil
+	})
+	if err != nil {
+		return "unknown"
 	}
 	return fmt.Sprintf("%x", hash.Sum(nil)[:8])
 }
@@ -117,7 +136,9 @@ func RenderAppShell(name string) ([]byte, error) {
 	if !bytes.Contains(shell, []byte(AppNamePlaceholder)) {
 		return nil, fmt.Errorf("static app shell is missing the app name placeholder")
 	}
-	return bytes.ReplaceAll(shell, []byte(AppNamePlaceholder), []byte(html.EscapeString(name))), nil
+	shell = bytes.ReplaceAll(shell, []byte(AppNamePlaceholder), []byte(html.EscapeString(name)))
+	shell = bytes.ReplaceAll(shell, []byte(RevisionPlaceholder), []byte(Revision(name)))
+	return bytes.ReplaceAll(shell, []byte(DocsURLPlaceholder), []byte(DocsURL)), nil
 }
 
 func ServeAppShell(w http.ResponseWriter, r *http.Request, shell []byte) {
@@ -178,6 +199,9 @@ func CacheMiddleware(next http.Handler, isAppPath func(string) bool) http.Handle
 				break
 			}
 			w.Header().Set("Cache-Control", "public, max-age=86400, no-transform")
+		}
+		if strings.HasPrefix(r.URL.Path, "/js/") || r.URL.Path == "/sw.js" {
+			w.Header().Set("Cache-Control", "no-cache, no-transform")
 		}
 		next.ServeHTTP(w, r)
 	})

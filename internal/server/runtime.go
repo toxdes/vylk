@@ -16,7 +16,6 @@ import (
 	"vylk/internal/auth"
 	"vylk/internal/event"
 	notepkg "vylk/internal/note"
-	"vylk/internal/notecrypt"
 	"vylk/internal/store"
 	"vylk/internal/web"
 )
@@ -66,6 +65,13 @@ func Main() {
 	if err != nil {
 		log.Fatalf("read instance identity: %v", err)
 	}
+	vaultConfig, err := store.GetVaultConfig(db)
+	if err != nil {
+		log.Fatalf("vault config: %v", err)
+	}
+	if err := validateRuntimeCredentials(config, vaultConfig); err != nil {
+		log.Fatal(err)
+	}
 
 	sessions := auth.NewSessionStore(db)
 
@@ -74,41 +80,39 @@ func Main() {
 		log.Fatalf("rate limiter: %v", err)
 	}
 
-	encryption, err := notecrypt.New(notesDir, config.EncryptionPassword, config.EncryptionKey)
-	if err != nil {
-		log.Fatalf("encryption: %v", err)
-	}
-	if encryption != nil {
-		if encryption.LegacyWrite() {
-			log.Println("legacy file encryption enabled; migrate to VYLK_ENCRYPTION_PASSWORD or an explicitly encoded 32-byte key")
-		} else {
-			log.Println("versioned file encryption enabled")
+	if vaultConfig == nil || vaultConfig.Mode == store.VaultPreparing {
+		if err := validatePlaintextStorage(notesDir); err != nil {
+			log.Fatalf("notes storage: %v", err)
 		}
 	}
 
 	app := &app{
-		db:         db,
-		instanceID: instanceID,
-		sessions:   sessions,
-		password:   config.Password,
-		notesDir:   notesDir,
-		encryption: encryption,
-		noteCache:  notepkg.NewCache(),
-		rl:         rl,
-		events:     event.NewBroker(),
+		db:                     db,
+		instanceID:             instanceID,
+		sessions:               sessions,
+		password:               config.Password,
+		requireStrongPasswords: config.RequireStrongPasswords,
+		disableVaultChanges:    config.DisableVaultChanges,
+		notesDir:               notesDir,
+		noteCache:              notepkg.NewCache(),
+		rl:                     rl,
+		events:                 event.NewBroker(),
 	}
 	if err := app.recoverFileOperations(); err != nil {
 		log.Fatalf("recover pending file operations: %v", err)
 	}
-	if config.MigrateEncryption {
-		count, err := migrateEncryption(app)
-		if err != nil {
-			log.Fatalf("encryption migration: %v", err)
-		}
-		log.Printf("migrated %d note files to encryption v2", count)
+	if err := app.resumeVaultCleanup(); err != nil {
+		log.Fatalf("resume encrypted vault cleanup: %v", err)
+	}
+	if err := app.recoverVaultFileOperations(); err != nil {
+		log.Fatalf("recover encrypted file operations: %v", err)
+	}
+	if err := app.cleanupVaultArchives(time.Now().UTC()); err != nil {
+		log.Printf("clean expired vault archives: %v", err)
 	}
 
 	go sessions.CleanupLoop()
+	go app.vaultArchiveCleanupLoop()
 
 	if config.ArtificialDelay > 0 {
 		log.Printf("artificial request delay enabled: %s per request", config.ArtificialDelay)
@@ -149,41 +153,4 @@ func Main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	srv.Shutdown(shutdownCtx)
-}
-
-func migrateEncryption(a *app) (int, error) {
-	if a.encryption == nil || a.encryption.LegacyWrite() {
-		return 0, fmt.Errorf("VYLK_MIGRATE_ENCRYPTION requires VYLK_ENCRYPTION_PASSWORD or an explicitly encoded key")
-	}
-	notes, err := store.ListNotes(a.db, "")
-	if err != nil {
-		return 0, err
-	}
-	count := 0
-	for _, n := range notes {
-		path, err := notepkg.SanitizePath(a.notesDir, n.Filename)
-		if err != nil {
-			return count, err
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return count, err
-		}
-		if notecrypt.IsVersionedEnvelope(data) {
-			continue
-		}
-		plain, err := a.encryption.Decrypt(data, n.ID)
-		if err != nil {
-			return count, fmt.Errorf("decrypt %s: %w", n.ID, err)
-		}
-		updated, err := a.encryption.Encrypt(plain, n.ID)
-		if err != nil {
-			return count, err
-		}
-		if err := notepkg.WriteFile(path, updated); err != nil {
-			return count, err
-		}
-		count++
-	}
-	return count, nil
 }

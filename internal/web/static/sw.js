@@ -10,7 +10,11 @@ const ASSETS = [
   '/js/ui/themes.js',
   '/js/ui/dashboard.js',
   '/js/ui/dashboard-controller.js',
+  '/js/ui/recovery-entry.js',
   '/js/ui/auth.js',
+  '/js/ui/devices.js',
+  '/js/ui/labeled-input.js',
+  '/js/ui/vault-setup.js',
   '/js/ui/preferences.js',
   '/js/ui/preferences-dialog.js',
   '/js/ui/preferences-store.js',
@@ -25,7 +29,11 @@ const ASSETS = [
   '/js/core/api-client.js',
   '/js/core/routes.js',
   '/js/core/indexeddb.js',
+  '/js/core/vault-crypto.js',
+  '/js/core/vault-kdf-worker.js',
+  '/js/core/vault-local.js',
   '/js/core/offline-store.js',
+  '/js/core/vault-session.js',
   '/js/core/sync-batch.js',
   '/js/sync/server-events.js',
   '/js/sync/conflict-actions.js',
@@ -62,11 +70,13 @@ const ASSETS = [
   '/js/workers/preview-worker.js',
   '/js/editor/merge.js',
   '/vendor/marked.min.js',
+  '/vendor/libsodium-sumo.min.js',
   '/manifest.json',
   '/favicon.ico',
   '/icon-192.png',
   '/icon-512.png',
 ];
+const OPTIONAL_ASSETS = new Set(['/vendor/bip39.min.js']);
 const SHELL_ASSETS = new Set(ASSETS);
 const FONT_CACHE = 'vylk-fonts';
 const FONT_ORIGINS = new Set(['https://fonts.googleapis.com', 'https://fonts.gstatic.com']);
@@ -98,7 +108,7 @@ async function fetchShellAsset(request) {
   const response = await fetch(request, {cache: 'no-cache', headers: {'X-Vylk-Shell': '1'}});
   if (response.ok) {
     const url = new URL(request.url);
-    if (!url.search && SHELL_ASSETS.has(url.pathname)) {
+    if (!url.search && (SHELL_ASSETS.has(url.pathname) || OPTIONAL_ASSETS.has(url.pathname))) {
       const cache = await caches.open(CACHE);
       await cache.put(url.pathname, response.clone());
     }
@@ -116,6 +126,15 @@ self.addEventListener('install', (e) => {
         ASSETS.map(async (asset) => {
           const response = await fetch(asset, {cache: 'no-cache', headers: {'X-Vylk-Shell': '1'}});
           if (!response.ok) throw new Error(`could not cache ${asset}`);
+          if (asset === '/' || asset === '/index.html') {
+            const html = await response.clone().text();
+            const shellRevision = html.match(
+              /<meta\s+name="vylk-revision"\s+content="([^"]+)"/i,
+            )?.[1];
+            if (shellRevision && safeRevision !== 'legacy' && shellRevision !== safeRevision) {
+              throw new Error('the app shell does not match this update');
+            }
+          }
           await cache.put(asset, response);
         }),
       );
@@ -192,7 +211,7 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  if (!SHELL_ASSETS.has(url.pathname) || url.search) return;
+  if ((!SHELL_ASSETS.has(url.pathname) && !OPTIONAL_ASSETS.has(url.pathname)) || url.search) return;
   e.respondWith(
     (async () => {
       const cached = await cachedShellResponse(request);

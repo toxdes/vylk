@@ -8,6 +8,7 @@
     byteLimit,
     claimBatch,
     getDeviceID,
+    getInstanceID = async () => null,
     initialBatchLimit,
     quarantine,
     repairSequenceGap,
@@ -19,12 +20,37 @@
     return async function flush() {
       let pushed = false;
       let maxOperations = initialBatchLimit;
+      let previousBatch = null;
+      let repeatedBatch = false;
       for (;;) {
         const deviceID = await getDeviceID();
         const operations = await claimBatch(deviceID, maxOperations, byteLimit);
         if (!operations.length) return pushed;
+        const batch = JSON.stringify([
+          deviceID,
+          operations.map(({op_id, client_sequence, type, base_revision}) => [
+            op_id,
+            client_sequence,
+            type,
+            base_revision,
+          ]),
+        ]);
+        // One identical retry can recover a transient sequence-gap response.
+        // Repeated acknowledgements/repairs without queue progress must stop.
+        if (batch === previousBatch && repeatedBatch)
+          throw new APIError(
+            'Sync paused because the same batch keeps repeating. Your local changes are kept. Reload or use Retry to try again.',
+            {code: 'sync_no_progress', retryable: false},
+          );
+        repeatedBatch = batch === previousBatch;
+        previousBatch = batch;
+        const instanceID = await getInstanceID();
         const result = await syncFetch('/api/sync/push', {
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(instanceID ? {'X-Vylk-Instance-ID': instanceID} : {}),
+          },
           body: JSON.stringify({
             device_id: deviceID,
             operations: operations.map(serialize),
@@ -36,6 +62,8 @@
           throw apiErrorFromPayload(result.data, 401, 'Unauthorized');
         }
         if (result.response.status === 409) {
+          if (result.data?.code === 'server_instance_changed')
+            throw apiErrorFromPayload(result.data, 409, 'The server database changed');
           const expected = Number(result.data?.expected_sequence);
           if (await repairSequenceGap(expected)) {
             showToast('Recovered a local sync gap. Retrying your changes.', 'warning');

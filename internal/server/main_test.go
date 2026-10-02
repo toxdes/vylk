@@ -3,6 +3,8 @@ package server
 import (
 	"testing"
 	"time"
+
+	"vylk/internal/store"
 )
 
 func TestLoadRuntimeConfigAppliesDefaults(t *testing.T) {
@@ -22,6 +24,22 @@ func TestLoadRuntimeConfigAppliesDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeConfigRejectsRemovedEncryptionSettings(t *testing.T) {
+	for _, variable := range []string{"VYLK_ENCRYPTION_KEY", "VYLK_ENCRYPTION_PASSWORD", "VYLK_MIGRATE_ENCRYPTION", "VYLK_ENCRYPTION_KEY_FILE", "VYLK_ENCRYPTION_PASSWORD_FILE"} {
+		t.Run(variable, func(t *testing.T) {
+			_, err := loadRuntimeConfig(nil, func(name string) string {
+				if name == variable {
+					return "configured"
+				}
+				return ""
+			}, func(string) (string, error) { return "secret", nil })
+			if err == nil {
+				t.Fatal("silently accepted a removed encryption setting")
+			}
+		})
+	}
+}
+
 func TestLoadRuntimeConfigReadsOperationalSettings(t *testing.T) {
 	values := map[string]string{
 		"VYLK_PASSWORD":           "secret",
@@ -30,7 +48,6 @@ func TestLoadRuntimeConfigReadsOperationalSettings(t *testing.T) {
 		"VYLK_DIR":                "/notes",
 		"VYLK_DB":                 "/data/vylk.db",
 		"VYLK_TRUST_PROXY":        "1",
-		"VYLK_MIGRATE_ENCRYPTION": "1",
 		"ARTIFICIAL_RTT_DELAY_MS": "25",
 	}
 	getenv := func(key string) string { return values[key] }
@@ -43,15 +60,103 @@ func TestLoadRuntimeConfigReadsOperationalSettings(t *testing.T) {
 	if config.AppName != "Acme Notes" || config.Port != "9090" || config.NotesDir != "/notes" || config.DatabasePath != "/data/vylk.db" {
 		t.Fatalf("runtime config = %#v", config)
 	}
-	if !config.TrustProxy || !config.MigrateEncryption || config.OpenBrowser || config.ArtificialDelay != 25*time.Millisecond {
+	if !config.TrustProxy || config.OpenBrowser || config.ArtificialDelay != 25*time.Millisecond {
 		t.Fatalf("runtime flags = %#v", config)
 	}
 }
 
+func TestLoadRuntimeConfigParsesStrongPasswordPolicy(t *testing.T) {
+	for value, want := range map[string]bool{"true": true, "1": true, "false": false, "0": false, "": false} {
+		t.Run(value, func(t *testing.T) {
+			config, err := loadRuntimeConfig(nil, func(key string) string {
+				if key == "VYLK_REQUIRE_STRONG_PASSWORDS" {
+					return value
+				}
+				return ""
+			}, func(string) (string, error) { return "", nil })
+			if err != nil {
+				t.Fatalf("loadRuntimeConfig: %v", err)
+			}
+			if config.RequireStrongPasswords != want {
+				t.Fatalf("RequireStrongPasswords = %t, want %t", config.RequireStrongPasswords, want)
+			}
+		})
+	}
+	if _, err := loadRuntimeConfig(nil, func(key string) string {
+		if key == "VYLK_REQUIRE_STRONG_PASSWORDS" {
+			return "yes"
+		}
+		return ""
+	}, func(string) (string, error) { return "", nil }); err == nil {
+		t.Fatal("accepted an invalid VYLK_REQUIRE_STRONG_PASSWORDS value")
+	}
+}
+
+func TestLoadRuntimeConfigParsesVaultChangePolicy(t *testing.T) {
+	for value, want := range map[string]bool{"true": true, "1": true, "false": false, "0": false, "": false} {
+		t.Run(value, func(t *testing.T) {
+			config, err := loadRuntimeConfig(nil, func(key string) string {
+				if key == "VYLK_DISABLE_VAULT_CHANGES" {
+					return value
+				}
+				return ""
+			}, func(string) (string, error) { return "", nil })
+			if err != nil {
+				t.Fatalf("loadRuntimeConfig: %v", err)
+			}
+			if config.DisableVaultChanges != want {
+				t.Fatalf("DisableVaultChanges = %t, want %t", config.DisableVaultChanges, want)
+			}
+		})
+	}
+	if _, err := loadRuntimeConfig(nil, func(key string) string {
+		if key == "VYLK_DISABLE_VAULT_CHANGES" {
+			return "yes"
+		}
+		return ""
+	}, func(string) (string, error) { return "", nil }); err == nil {
+		t.Fatal("accepted an invalid VYLK_DISABLE_VAULT_CHANGES value")
+	}
+}
+
+func TestDisabledVaultChangesRejectPreparingVault(t *testing.T) {
+	config := runtimeConfig{Password: "secret", DisableVaultChanges: true}
+	if err := validateRuntimeCredentials(config, &store.VaultConfig{Mode: store.VaultPreparing}); err == nil {
+		t.Fatal("accepted disabled vault changes during an unfinished migration")
+	}
+	if err := validateRuntimeCredentials(config, &store.VaultConfig{Mode: store.VaultReady}); err != nil {
+		t.Fatalf("rejected a ready encrypted vault: %v", err)
+	}
+}
+
+func TestValidateRuntimeCredentialsAppliesStrongPasswordPolicy(t *testing.T) {
+	ready := &store.VaultConfig{Mode: store.VaultReady}
+	if err := validateRuntimeCredentials(runtimeConfig{
+		Password: "password", RequireStrongPasswords: true,
+	}, ready); err == nil {
+		t.Fatal("accepted a weak VYLK_PASSWORD")
+	}
+	if err := validateRuntimeCredentials(runtimeConfig{
+		Password: "correct horse battery staple!", RequireStrongPasswords: true,
+	}, ready); err != nil {
+		t.Fatalf("rejected a strong VYLK_PASSWORD: %v", err)
+	}
+	if err := validateRuntimeCredentials(runtimeConfig{Password: "password"}, ready); err != nil {
+		t.Fatalf("default policy rejected a weak VYLK_PASSWORD: %v", err)
+	}
+}
+
 func TestLoadRuntimeConfigRequiresPassword(t *testing.T) {
-	_, err := loadRuntimeConfig(nil, func(string) string { return "" }, func(string) (string, error) { return "", nil })
+	config, err := loadRuntimeConfig(nil, func(string) string { return "" }, func(string) (string, error) { return "", nil })
+	if err != nil {
+		t.Fatalf("loadRuntimeConfig: %v", err)
+	}
+	err = validateRuntimeCredentials(config, nil)
 	if err == nil {
-		t.Fatal("loadRuntimeConfig() accepted an empty password")
+		t.Fatal("legacy vault accepted an empty password")
+	}
+	if err := validateRuntimeCredentials(config, &store.VaultConfig{Mode: store.VaultReady}); err != nil {
+		t.Fatalf("encrypted vault rejected empty password: %v", err)
 	}
 }
 

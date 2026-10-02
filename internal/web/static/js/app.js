@@ -61,11 +61,14 @@
   let syncNetworkRequestsInFlight = 0;
   let offlineStorageFailureReported = false;
   let authenticationRequired = false;
+  let credentialChangePaused = false;
   const syncTabID = `tab_${newLocalNoteID()}`;
   let syncCoordinationChannel = null;
   let syncCoordinator = null;
   let serverEventClient = null;
   let registeredServiceWorkerRevision = null;
+  let serviceWorkerRegistrationPromise = null;
+  let loginVersionTimer = null;
   let dashboardHydrationState = 'ready';
 
   const healthySseFallbackSyncAgeMs = 5 * 60 * 1000;
@@ -147,7 +150,11 @@
         if (!event.data || event.data.sender === syncTabID) return;
         if (event.data.type === 'sync-request') scheduleSync({}, 0);
         if (event.data.type === 'sync-complete') void refreshLocalStateFromStorage();
-        if (event.data.type === 'logout') void closeOfflineDatabaseConnection();
+        if (event.data.type === 'logout') {
+          vaultSession.lock();
+          void closeOfflineDatabaseConnection().finally(() => window.location.reload());
+        }
+        if (event.data.type === 'session-locked') void lockRevokedSession(false);
       });
     }
   } catch (_) {
@@ -172,19 +179,49 @@
     localStorage,
     navigator,
     registerServiceWorker: (revision) => registerServiceWorker(revision),
+    beforeReload: persistBeforeSessionExit,
     requestFrame: (callback) => requestAnimationFrame(callback),
     window,
   });
-  const beginSyncStatusPresentation = feedback.beginStatusPresentation;
+  const beginSyncStatusPresentation = () => {
+    if (!isDirty) feedback.beginStatusPresentation();
+  };
   const cacheAppVersion = feedback.cacheVersion;
   const clearSyncDiagnostic = feedback.clearDiagnostic;
-  const finishSyncStatusPresentation = feedback.finishStatusPresentation;
+  const finishSyncStatusPresentation = (state) =>
+    feedback.finishStatusPresentation(isDirty && state !== 'offline' ? 'saving' : state);
   const hideOfflineNotice = feedback.hideOfflineNotice;
   const setSyncDiagnostic = feedback.setDiagnostic;
-  const setSyncStatus = feedback.setStatus;
+  const setSyncStatus = (state) =>
+    feedback.setStatus(isDirty && !['offline', 'unsaved'].includes(state) ? 'saving' : state);
   const showOfflineNotice = feedback.showOfflineNotice;
   const showSyncCompleteToast = feedback.showSyncComplete;
   const showToast = feedback.showToast;
+  async function checkLoginVersion() {
+    if (screens.login.classList.contains('hidden') || document.hidden) return;
+    try {
+      const response = await fetch('/api/vault/bootstrap', {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(5000),
+      });
+      if (response.ok) cacheAppVersion(await response.json());
+    } catch (_) {
+      // A disconnected sign-in screen remains usable with a locally cached vault.
+    }
+  }
+
+  function syncLoginVersionChecks(active) {
+    if (!active) {
+      if (loginVersionTimer) window.clearInterval(loginVersionTimer);
+      loginVersionTimer = null;
+      return;
+    }
+    if (loginVersionTimer) return;
+    void checkLoginVersion();
+    loginVersionTimer = window.setInterval(() => void checkLoginVersion(), 60_000);
+  }
+
+  window.addEventListener('pagehide', () => syncLoginVersionChecks(false));
   const zenOverlays = window.VylkZenOverlays.create({
     document,
     getPanelState: () => panelController?.state() || 'both',
@@ -212,8 +249,24 @@
   const scheduleEditorCaretCue = caretController.schedule;
 
   function show(screen) {
+    if (screen !== screens.dashboard || screens.dashboard.classList.contains('hidden')) {
+      screens.dashboard.classList.toggle(
+        'returning-from-editor',
+        screen === screens.dashboard && !screens.editor.classList.contains('hidden'),
+      );
+    }
     Object.values(screens).forEach((el) => el.classList.add('hidden'));
     screen.classList.remove('hidden');
+    syncLoginVersionChecks(screen === screens.login);
+  }
+
+  function showLoginScreen() {
+    const blocked = Boolean(vaultSession.requiresSecureContext());
+    $('#login-credentials').hidden = blocked;
+    $('#login-secure-context-notice').hidden = !blocked;
+    $('#login-password').disabled = blocked;
+    show(screens.login);
+    (blocked ? $('#login-secure-context-notice a') : $('#login-password')).focus();
   }
 
   function clearCurrentNote() {
@@ -228,19 +281,73 @@
     authenticationRequired = true;
     syncCoordinator?.cancelScheduled();
     serverEventClient?.disconnect();
-    show(screens.login);
-    $('#login-form input').focus();
+    if (vaultSession.encrypted() && vaultSession.unlocked()) void lockRevokedSession();
+    vaultSetup?.closeForRoute();
+    closeModal($('#shortcut-reset-modal'));
+    closeModal($('#prefs-modal'));
+    showLoginScreen();
+    if (window.isSecureContext === false) {
+      void vaultSession
+        .bootstrap()
+        .then(() => {
+          vaultSetup.refresh();
+          if (vaultSession.requiresSecureContext()) vaultSession.lock();
+          showLoginScreen();
+        })
+        .catch(() => {});
+    }
   }
 
+  let sessionLockPromise = null;
+  function lockRevokedSession(broadcast = true) {
+    if (sessionLockPromise) return sessionLockPromise;
+    authenticationRequired = true;
+    syncCoordinator?.cancelScheduled();
+    cancelActiveSyncRequests();
+    serverEventClient?.disconnect();
+    sessionLockPromise = (async () => {
+      try {
+        await persistBeforeSessionExit();
+      } finally {
+        vaultSession.lock();
+        await offlineStore.forgetRememberedVaultRoot();
+        if (broadcast)
+          syncCoordinationChannel?.postMessage({type: 'session-locked', sender: syncTabID});
+        closeModal($('#prefs-modal'));
+        showLoginScreen();
+      }
+    })()
+      .catch((error) => {
+        console.error('could not preserve local edits while locking', error);
+        showToast('Could not save local changes before locking. Keep this tab open.', 'warning');
+      })
+      .finally(() => {
+        sessionLockPromise = null;
+      });
+    return sessionLockPromise;
+  }
+
+  async function persistBeforeSessionExit() {
+    if (isDirty && !(await saveCurrentNote(false)))
+      throw new Error('Could not save local changes. Try again before signing out.');
+  }
+
+  let observedServerInstanceID = null;
   async function handleServerIdentity(instanceID) {
     if (!instanceID) return;
-    const previousInstanceID = await getOfflineState('serverInstanceID');
-    const changed = previousInstanceID !== instanceID;
-    // A replaced server database has a new sync history. Keep queued local
-    // operations so the normal push path can recover them after reconciliation.
-    if (changed) await setOfflineState('syncSequence', 0);
-    await setOfflineState('serverInstanceID', instanceID);
-    return changed;
+    const result = await offlineStore.checkServerIdentity(instanceID);
+    if (result.blocked) {
+      const error = new APIError(
+        'The server database changed. Sync is paused to protect your unsynced edits. Restore the previous database and notes directory, then choose Retry.',
+        {status: 409, code: 'server_instance_changed', retryable: false},
+      );
+      showOfflineNotice(false, error.message);
+      throw error;
+    }
+    // Each tab owns its SSE high-water mark, even though IndexedDB is shared.
+    if (observedServerInstanceID !== instanceID) serverEventClient?.resetPendingChanges();
+    observedServerInstanceID = instanceID;
+    return result.reconcile;
   }
 
   function beginSyncNetworkRequest() {
@@ -262,9 +369,10 @@
     onSyncRequestEnd: endSyncNetworkRequest,
     onSyncRequestStart: beginSyncNetworkRequest,
   });
-  const api = apiClient.request;
+  const vaultSession = window.VylkVaultSession.create({apiClient, offlineStore});
+  const api = vaultSession.request;
   const cancelActiveSyncRequests = apiClient.cancelActiveSyncRequests;
-  const syncFetch = apiClient.syncFetch;
+  const syncFetch = vaultSession.syncFetch;
 
   async function setIdleSyncStatus() {
     if (syncNetworkRequestsInFlight > 0 || syncCoordinator?.inFlight()) return;
@@ -357,6 +465,12 @@
     onEscape: (modal) => {
       if (modal.id === 'conflict-modal') conflictResolver.close();
       else if (modal.id === 'prefs-modal') closePreferences();
+      else if (modal.id === 'login-recovery-modal') $('#login-recovery-close').click();
+      else if (modal.id === 'login-recovery-entry-modal') $('#login-recovery-entry-close').click();
+      else if (modal.id === 'login-recovery-lost-modal') $('#login-recovery-lost-close').click();
+      else if (modal.id === 'delete-note-modal') $('#delete-note-cancel').click();
+      else if (modal.id === 'device-signout-modal') $('#device-signout-cancel').click();
+      else if (modal.classList.contains('vault-credential-modal')) vaultSetup.closeDialog(modal);
       else modalController.close(modal);
     },
   });
@@ -378,11 +492,9 @@
   const showConflictResolverFor = conflictResolver.showFor;
 
   function closePreferences() {
+    if (vaultSetup.busy()) return;
     if (isAppPreferencesRoute()) {
-      // Preferences is a real overlay history entry. Pop it instead of replacing
-      // it with its parent route, which would leave duplicate note entries and
-      // make the next Back appear unresponsive.
-      history.back();
+      history.go(-(history.state?.preferencesDepth || 1));
       return;
     }
     closeModal($('#prefs-modal'));
@@ -464,6 +576,7 @@
 
   const syncAcknowledgements = window.VylkSyncAcknowledgements.create({
     acknowledgeCompacted: acknowledgeCompactedOperation,
+    commitNoteAcknowledgement: offlineStore.commitNoteAcknowledgement,
     applyPreferencesRevision: (revision) => {
       prefs = normalizePrefs({...prefs, revision: revision || prefs.revision});
       localStorage.setItem('vylk-prefs', JSON.stringify(prefs));
@@ -501,6 +614,7 @@
     byteLimit: syncPushBatchByteLimit,
     claimBatch: claimPendingOperationBatch,
     getDeviceID: syncDeviceID,
+    getInstanceID: () => getOfflineState('serverInstanceID'),
     initialBatchLimit: syncPushBatchLimit,
     quarantine: quarantineQueueOperation,
     repairSequenceGap: repairSyncSequenceGap,
@@ -521,10 +635,12 @@
   const withSyncLeadership = syncLeadership.run;
 
   function scheduleSync(options = {}, delayMs = 75) {
+    if (credentialChangePaused || authenticationRequired) return;
     return syncCoordinator.schedule(options, delayMs);
   }
 
   function syncNow(options = {}) {
+    if (credentialChangePaused || authenticationRequired) return Promise.resolve(false);
     return syncCoordinator.now(options);
   }
 
@@ -534,6 +650,7 @@
 
   syncCoordinator = window.VylkSyncCoordinator.create({
     apiClient,
+    canSync: () => !credentialChangePaused && !authenticationRequired,
     authenticationRequired: () => authenticationRequired,
     beforeCompletion: () => globalThis.__vylkDependencies?.beforeSyncCompletion?.(),
     clearDiagnostic: clearSyncDiagnostic,
@@ -546,6 +663,7 @@
     getHydrationState: () => dashboardHydrationState,
     getPendingOperations: pendingOperations,
     hideOfflineNotice,
+    showSyncPaused: (message) => showOfflineNotice(false, message),
     isDashboardVisible: () => !screens.dashboard.classList.contains('hidden'),
     isEditorDirty: () => isDirty,
     isEditorVisible: () => !screens.editor.classList.contains('hidden'),
@@ -585,6 +703,7 @@
 
   serverEventClient = window.VylkServerEvents.create({
     cacheVersion: cacheAppVersion,
+    onAuthenticationRequired: () => void lockRevokedSession(),
     getOfflineState,
     getPreferenceRevision: () => prefs.revision,
     isSyncInFlight: () => syncCoordinator.inFlight(),
@@ -600,12 +719,79 @@
     syncNow,
     window,
   });
-  const connectServerEvents = serverEventClient.connect;
+  const connectServerEvents = () => {
+    if (!credentialChangePaused && !authenticationRequired) serverEventClient.connect();
+  };
   const disconnectServerEvents = serverEventClient.disconnect;
   const handleServerChangeEvent = serverEventClient.handleChange;
   const isServerEventsHealthy = serverEventClient.healthy;
 
   // --- Auth ---
+  const vaultSetup = window.VylkVaultSetup.bind({
+    vaultSession,
+    document,
+    openModal,
+    closeModal,
+    showEncryption: async () => {
+      if (!$('#prefs-modal').classList.contains('hidden')) return;
+      const restoringPreferences = isAppPreferencesRoute();
+      await preferencesDialog.open({
+        route: restoringPreferences ? 'none' : 'push',
+        section: 'encryption',
+      });
+      if (!restoringPreferences)
+        setPreferencesRoute({section: 'encryption', detail: 'setup', replace: true});
+    },
+    onDismiss: () => {
+      if (!isAppPreferencesRoute() || !history.state?.detail) return;
+      if ((history.state.preferencesDepth || 1) > 1) history.back();
+      else setPreferencesRoute({section: 'encryption', replace: true});
+    },
+    beforeMigration: async () => {
+      if (isDirty && !(await saveCurrentNote(false))) {
+        throw new Error('Save the current note before starting vault encryption.');
+      }
+    },
+    beforeCredentialChange: async () => {
+      credentialChangePaused = true;
+      await persistBeforeSessionExit();
+      syncCoordinator.cancelScheduled();
+      cancelActiveSyncRequests();
+      disconnectServerEvents();
+      await syncCoordinator.waitForIdle();
+    },
+    afterCredentialChange: () => {
+      credentialChangePaused = false;
+      if (authenticationRequired || !vaultSession.unlocked()) return;
+      connectServerEvents();
+      scheduleSync();
+    },
+    onCredentialChanged: () => {
+      vaultSetup.refresh();
+      setPreferencesRoute({section: 'encryption', replace: true});
+      showToast('Changes saved.', 'success');
+    },
+    onComplete: () => {
+      if (isAppPreferencesRoute()) {
+        const returnRoute = history.state?.returnRoute;
+        if (returnRoute?.screen === 'note' && returnRoute.noteID) {
+          setNoteRoute(returnRoute.noteID, {replace: true});
+        } else {
+          setDashboardRoute({replace: true});
+        }
+      }
+      window.location.reload();
+    },
+  });
+  window.VylkLabeledInput.bind(document);
+  window.VylkDevices.bind({
+    api,
+    document,
+    openModal,
+    closeModal,
+    beforeSignOut: persistBeforeSessionExit,
+    onCurrentDeviceRevoked: lockRevokedSession,
+  });
   window.VylkAuth.bind({
     api,
     cacheVersion: cacheAppVersion,
@@ -613,6 +799,7 @@
     closeModal,
     clearDiagnostic: clearSyncDiagnostic,
     clearOfflineData,
+    beforeSignOut: persistBeforeSessionExit,
     connectEvents: connectServerEvents,
     disconnectEvents: disconnectServerEvents,
     document,
@@ -620,18 +807,23 @@
     loadPreferences: (...args) => loadPrefs(...args),
     localStorage,
     openModal,
+    openPassphrasePreferences: () =>
+      preferencesDialog.open({route: 'push', section: 'encryption', detail: 'passphrase'}),
     restoreRoute: (...args) => restoreRoute(...args),
     scheduleSync,
+    vaultSetup,
+    vaultSession,
     setAuthenticationRequired: (required) => {
       authenticationRequired = required;
     },
     showLogin: () => {
       clearCurrentNote();
       setDashboardRoute({replace: true});
-      closeModal($('#prefs-modal'));
       closeModal($('#restore-defaults-modal'));
-      show(screens.login);
-      $('#login-form input').focus();
+      closeModal($('#shortcut-reset-modal'));
+      vaultSetup.closeForRoute();
+      closeModal($('#prefs-modal'));
+      showLoginScreen();
     },
     showToast,
   });
@@ -787,8 +979,11 @@
 
   // --- Autosave ---
   function markDirty() {
-    if (!isDirty) {
-      isDirty = true;
+    const changed = !isDirty || $('#sync-status').dataset.state === 'unsaved';
+    isDirty = true;
+    if (changed) {
+      feedback.cancelStatusPresentation();
+      setSyncStatus('saving');
     }
   }
 
@@ -844,6 +1039,7 @@
     isRestoringRoute: () => navigationController?.restoring() || false,
     newNoteID: newLocalNoteID,
     noteIDFromLocation,
+    onSaveFailed: () => setSyncStatus('unsaved'),
     persistConflict: (noteID, unresolved, local) =>
       withOfflineStore(['notes', 'state'], 'readwrite', async (stores) => {
         await requestValue(stores.notes.put(local));
@@ -886,7 +1082,10 @@
     },
     cancelPreviewRender: cancelPendingPreviewRender,
     clearCurrentNote,
-    closeModal,
+    dismissPreferences: () => {
+      vaultSetup.closeForRoute();
+      closeModal($('#prefs-modal'));
+    },
     document,
     getCurrentNoteID: () => currentNoteId,
     getLocalNote,
@@ -952,8 +1151,8 @@
       const textarea = document.querySelector('#note-content');
       textarea.value = value;
       textarea.selectionStart = textarea.selectionEnd = cursor;
-      if (zenSourceIsActive()) editorSource.zenEditor().setValue(value, cursor, cursor);
-      textarea.dispatchEvent(new Event('input'));
+      if (zenSourceIsActive()) editorSource.zenEditor().applyValue(value, cursor, cursor);
+      else textarea.dispatchEvent(new Event('input'));
       focusCurrentSourceEditor();
     },
     onFormatted: ({immediate}) => {
@@ -1078,7 +1277,15 @@
     getZenView: () => panelController.zenView(),
     isEditorVisible: () => !screens.editor.classList.contains('hidden'),
     isInteractive: () => interactivePreviewSession.active(),
-    measureCaret: measureEditorCaret,
+    measureCaret: () => {
+      if (panelController.state() !== 'zen') return measureEditorCaret();
+      // The source is hidden in Zen reading view. Anchor its logical position
+      // in the same comfortable band instead of measuring the hidden textarea.
+      const preview = $('#preview');
+      const rect = preview.getBoundingClientRect();
+      const lineHeight = Number.parseFloat(getComputedStyle(preview).lineHeight) || 24;
+      return {top: rect.top + rect.height * 0.42, height: lineHeight, lineHeight};
+    },
     navigation: previewNavigation,
     requestPreviewRender: () => requestPreviewRender({announceBusy: true}),
     window,
@@ -1105,10 +1312,27 @@
   });
 
   // --- Delete ---
-  $('#delete-btn').addEventListener('click', async () => {
+  const deleteNoteModal = $('#delete-note-modal');
+  let noteToDelete = null;
+  function closeDeleteNoteModal() {
+    noteToDelete = null;
+    closeModal(deleteNoteModal);
+  }
+  $('#delete-btn').addEventListener('click', () => {
     if (!currentNoteId) return;
-    if (!confirm('Delete this note?')) return;
+    noteToDelete = currentNoteId;
+    openModal(deleteNoteModal);
+  });
+  $('#delete-note-close').addEventListener('click', closeDeleteNoteModal);
+  $('#delete-note-cancel').addEventListener('click', closeDeleteNoteModal);
+  deleteNoteModal.querySelector('.modal-backdrop').addEventListener('click', closeDeleteNoteModal);
+  $('#delete-note-confirm').addEventListener('click', async () => {
+    if (!noteToDelete || currentNoteId !== noteToDelete) {
+      closeDeleteNoteModal();
+      return;
+    }
     const noteID = currentNoteId;
+    closeDeleteNoteModal();
     if (isDirty || noteSaver.hasPendingSave()) {
       const saved = await saveCurrentNote(false);
       if (saved === false || currentNoteId !== noteID) return;
@@ -1583,8 +1807,8 @@
     applyPrefs();
   }
 
-  function openPreferences({route = 'push'} = {}) {
-    preferencesDialog.open({route});
+  function openPreferences({route = 'push', section, detail} = {}) {
+    preferencesDialog.open({route, section, detail});
   }
 
   let preferencesDialog = null;
@@ -1736,8 +1960,8 @@
   }
 
   const shortcutController = window.VylkShortcutController.create({
+    closeModal,
     commandCanRun,
-    defaultPrefix: DEFAULT_PREFS.shortcutPrefix,
     document,
     escapeHTML: esc,
     getPreferences: () => prefs,
@@ -1749,7 +1973,14 @@
       focusCurrentSourceEditor();
       return true;
     },
+    openModal,
+    restoreShortcuts: () =>
+      preferencesStore.saveMany({
+        shortcutPrefix: DEFAULT_PREFS.shortcutPrefix,
+        keyboardShortcuts: {},
+      }),
     savePreference: savePref,
+    showToast,
     shortcuts: window.VylkShortcuts,
   });
   const shortcutCommands = shortcutController.commands;
@@ -1762,11 +1993,19 @@
 
   preferencesDialog = window.VylkPreferencesDialog.create({
     appearance,
+    beforeOpen: () => {
+      if (screens.editor.classList.contains('hidden') || (!isDirty && !noteSaver.hasPendingSave()))
+        return true;
+      // Finish the note route before adding Preferences to browser history.
+      return saveCurrentNote(false).then((saved) => saved !== false);
+    },
     close: closePreferences,
+    closeEncryptionDetail: vaultSetup.closeForRoute,
     closeModal,
     document,
     getPreferences: () => prefs,
     openModal,
+    openEncryptionDetail: vaultSetup.openDetail,
     renderShortcuts: renderShortcutPreferences,
     restoreDefaults: restoreDefaultPrefs,
     save: savePref,
@@ -1829,6 +2068,28 @@
     let localStartupReady = false;
     try {
       initializeHistoryRoute();
+      try {
+        await vaultSession.bootstrap();
+        vaultSetup.refresh();
+        cacheAppVersion(vaultSession.config());
+      } catch (error) {
+        if (await offlineStore.vaultLocalFormat()) throw error;
+      }
+      if (vaultSession.config()?.mode === 'preparing') {
+        showLoginScreen();
+        if (!vaultSession.requiresSecureContext())
+          $('#login-error').textContent =
+            'Sign in with your current Vylk password to resume encryption.';
+        return;
+      }
+      if (vaultSession.encrypted()) {
+        const resumed = await vaultSession.resumeRemembered();
+        if (!resumed) {
+          showLoginScreen();
+          $('#app').classList.remove('booting');
+          return;
+        }
+      }
       await restoreCachedStartup();
       localStartupReady = true;
       $('#app').classList.remove('booting');
@@ -1855,12 +2116,12 @@
     } catch (error) {
       console.error('initialization failed', error);
       if (error?.responseStatus === 401) return;
+      if (error?.code === 'server_instance_changed' && localStartupReady) return;
       if (localStartupReady) {
         markServerOffline();
       } else {
-        show(screens.login);
+        showLoginScreen();
         $('#login-error').textContent = 'Could not start the app. Please reload.';
-        $('#login-form input').focus();
       }
     } finally {
       $('#app').classList.remove('booting');
@@ -1870,10 +2131,35 @@
   /* __VYLK_TEST_HOOKS__ */
   if (!globalThis.__vylkDisableAutoInit) init();
 
+  async function refreshInsecureVaultAccess() {
+    if (
+      window.isSecureContext !== false ||
+      !vaultSession.config() ||
+      !screens.login.classList.contains('hidden')
+    )
+      return;
+    try {
+      await vaultSession.bootstrap();
+      if (!vaultSession.requiresSecureContext()) return;
+      if (isDirty && !(await saveCurrentNote(false))) {
+        showToast('Save or copy your open note before leaving this page.', 'warning');
+        return;
+      }
+      syncCoordinator.cancelScheduled();
+      cancelActiveSyncRequests();
+      disconnectServerEvents();
+      vaultSession.lock();
+      closeModal($('#prefs-modal'));
+      showLoginScreen();
+    } catch (error) {
+      console.warn('could not check vault access', error);
+    }
+  }
+
   $$('.offline-retry').forEach((retry) =>
     retry.addEventListener('click', async () => {
       showOfflineNotice(true);
-      const ok = await syncNow({preserveSnackbar: true});
+      const ok = await syncNow({preserveSnackbar: true, retryPaused: true});
       if (ok) showSyncCompleteToast();
     }),
   );
@@ -1882,30 +2168,41 @@
   function registerServiceWorker(revision = feedback.currentRevision()) {
     if (!('serviceWorker' in navigator)) return;
     const requestedRevision = /^[A-Za-z0-9._-]{1,128}$/.test(revision || '') ? revision : 'legacy';
-    if (registeredServiceWorkerRevision === requestedRevision) return;
+    if (registeredServiceWorkerRevision === requestedRevision)
+      return serviceWorkerRegistrationPromise;
     registeredServiceWorkerRevision = requestedRevision;
-    navigator.serviceWorker
+    serviceWorkerRegistrationPromise = navigator.serviceWorker
       .register(`/sw.js?revision=${encodeURIComponent(requestedRevision)}`, {
         updateViaCache: 'none',
       })
       .catch((error) => {
         registeredServiceWorkerRevision = null;
         console.warn('service worker registration failed', error);
+        return null;
       });
+    return serviceWorkerRegistrationPromise;
   }
 
   window.addEventListener('online', async () => {
+    if (window.isSecureContext === false) {
+      await refreshInsecureVaultAccess();
+      if (!screens.login.classList.contains('hidden')) return;
+    }
     connectServerEvents();
     scheduleSync({reconcile: true});
   });
 
-  document.addEventListener('visibilitychange', () => {
+  document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'hidden') {
       if (isDirty) saveCurrentNote(false);
       syncCoordinator.cancelScheduled();
       cancelActiveSyncRequests();
     }
     if (document.visibilityState === 'visible') {
+      if (window.isSecureContext === false) {
+        await refreshInsecureVaultAccess();
+        if (!screens.login.classList.contains('hidden')) return;
+      }
       connectServerEvents();
       scheduleSync();
     }

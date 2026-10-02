@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"vylk/internal/httpx"
 	notepkg "vylk/internal/note"
@@ -137,18 +139,17 @@ func (a *app) loadNoteWithContent(id string) (noteWithContent, error) {
 	if err != nil {
 		return noteWithContent{}, err
 	}
-	enc, err := os.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return noteWithContent{}, sql.ErrNoRows
 		}
 		return noteWithContent{}, fmt.Errorf("read note file: %w", err)
 	}
-	plain, err := a.encryption.Decrypt(enc, id)
-	if err != nil {
-		return noteWithContent{}, err
+	if !utf8.Valid(data) || bytes.HasPrefix(data, []byte("MDN2\x01")) {
+		return noteWithContent{}, fmt.Errorf("note %q is not plaintext Markdown; server-side encryption is no longer supported", id)
 	}
-	content := string(plain)
+	content := string(data)
 	a.noteCache.Set(id, content)
 	return noteWithContent{
 		note:    *n,
@@ -292,6 +293,9 @@ func (a *app) handleSaveNote(w http.ResponseWriter, r *http.Request) {
 
 	a.noteMu.Lock()
 	defer a.noteMu.Unlock()
+	if !a.requireLegacyWrite(w) {
+		return
+	}
 	if !a.prepareNoteFileOperation(w, id) {
 		return
 	}
@@ -327,6 +331,9 @@ func (a *app) handleDeleteNote(w http.ResponseWriter, r *http.Request) {
 	}
 	a.noteMu.Lock()
 	defer a.noteMu.Unlock()
+	if !a.requireLegacyWrite(w) {
+		return
+	}
 	if !a.prepareNoteFileOperation(w, id) {
 		return
 	}

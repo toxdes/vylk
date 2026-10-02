@@ -76,6 +76,119 @@ describe('sync scheduling while hidden', () => {
 });
 
 describe('server change invalidation', () => {
+  test('retries an incomplete replacement snapshot even after its identity was recorded', async () => {
+    let snapshots = 0;
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) => {
+          if (String(path).startsWith('/api/sync?'))
+            return response(200, {
+              changes: [],
+              nextSequence: 0,
+              hasMore: false,
+              instance_id: 'replacement',
+            });
+          if (String(path) === '/api/notes') {
+            if (++snapshots === 1) throw new TypeError('snapshot download interrupted');
+            return response(200, []);
+          }
+          throw new Error(`unexpected request: ${path}`);
+        },
+      }),
+    );
+    await app.hooks.setOfflineState('serverInstanceID', 'original');
+    await expect(app.hooks.syncNow()).resolves.toBe(false);
+    await expect(app.hooks.getOfflineState('serverReconciliationRequired')).resolves.toBe(true);
+    await expect(app.hooks.syncNow()).resolves.toBe(true);
+    expect(snapshots).toBe(2);
+    expect(await app.hooks.getOfflineState('serverReconciliationRequired')).toBeFalsy();
+    app.hooks.cancelScheduledSync();
+  });
+
+  test('preserves pending edits and pauses until the original database returns', async () => {
+    let instance = 'replacement';
+    let pushes = 0;
+    const app = track(
+      await createApp({
+        fetchImpl: async (path, options) => {
+          if (String(path).startsWith('/api/sync?'))
+            return response(200, {
+              changes: [],
+              nextSequence: 0,
+              hasMore: false,
+              instance_id: instance,
+            });
+          if (String(path) === '/api/notes') return response(200, []);
+          if (String(path) === '/api/sync/push') {
+            pushes++;
+            expect(options.headers['X-Vylk-Instance-ID']).toBe('original');
+            return response(200, {
+              acknowledged: JSON.parse(options.body).operations.map((op) => ({
+                op_id: op.op_id,
+                status: 'applied',
+                revision: 1,
+              })),
+            });
+          }
+          throw new Error(`unexpected request: ${path}`);
+        },
+      }),
+    );
+    await app.hooks.setOfflineState('serverInstanceID', 'original');
+    await app.hooks.setOfflineState('syncSequence', 42);
+    await app.hooks.queueOperation({
+      type: 'note.save',
+      note_id: 'pending-note',
+      base_revision: 0,
+      note: {id: 'pending-note', title: 'Offline note', content: 'keep this', tags: ''},
+    });
+    await expect(app.hooks.syncNow()).resolves.toBe(false);
+    expect(pushes).toBe(0);
+    await expect(app.hooks.getOfflineState('serverInstanceID')).resolves.toBe('original');
+    await expect(app.hooks.getOfflineState('syncSequence')).resolves.toBe(42);
+    expect(await app.hooks.pendingOperations()).toHaveLength(1);
+    await expect(app.hooks.syncNow({retryPaused: true})).resolves.toBe(false);
+    expect(pushes).toBe(0);
+    instance = 'original';
+    await app.hooks.setOfflineState('syncSequence', 0);
+    await expect(app.hooks.syncNow({retryPaused: true})).resolves.toBe(true);
+    expect(pushes).toBe(1);
+    expect(await app.hooks.pendingOperations()).toHaveLength(0);
+  });
+
+  test('drops events from a replaced database before checking for more changes', async () => {
+    let pulls = 0;
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) => {
+          if (String(path).startsWith('/api/sync?')) {
+            pulls++;
+            if (pulls > 8) throw new Error('sync kept polling an empty replacement database');
+            return response(200, {
+              changes: [],
+              nextSequence: 0,
+              hasMore: false,
+              instance_id: 'replacement-database',
+            });
+          }
+          if (String(path) === '/api/notes') return response(200, []);
+          throw new Error(`unexpected request: ${path}`);
+        },
+      }),
+    );
+    app.window.console.warn = () => {};
+    Object.defineProperty(app.window.document, 'visibilityState', {
+      value: 'visible',
+      configurable: true,
+    });
+    await app.hooks.applyRemoteChangePage([], new Map(), 42);
+    await app.hooks.handleServerChangeEvent({type: 'notes', sequence: 43});
+
+    await expect(app.hooks.syncNow()).resolves.toBe(true);
+    expect(pulls).toBe(1);
+    await expect(app.hooks.getOfflineState('syncSequence')).resolves.toBe(0);
+  });
+
   test('resets the sync cursor when the server database instance changes', async () => {
     const requests = [];
     const app = track(
@@ -186,15 +299,21 @@ describe('server change invalidation', () => {
 });
 
 describe('sync coordinator', () => {
-  test('reports a durable queued edit as saved but waiting to sync', async () => {
+  test('keeps a durable queued edit in Saving until the server acknowledges it', async () => {
     const app = track(await createApp());
     app.hooks.setEditorState({
       id: 'note-a',
-      dirty: true,
+      dirty: false,
       title: 'Note',
       content: 'local edit',
       savedSnapshot: {title: '', tags: '', content: ''},
     });
+
+    app.hooks.markDirty();
+    expect(app.window.document.querySelector('#editor-status').dataset.state).toBe('saving');
+    expect(
+      app.window.document.querySelector('#editor-status .sync-indicator-label').textContent,
+    ).toBe('Saving');
 
     await app.hooks.saveCurrentNote(false);
     await vi.waitFor(() => {
@@ -203,9 +322,30 @@ describe('sync coordinator', () => {
         dataset: expect.objectContaining({state: 'local'}),
         title: 'Saved on this device; waiting to sync',
       });
-      expect(status.querySelector('.sync-indicator-label').textContent).toBe('Saved');
+      expect(status.querySelector('.sync-indicator-label').textContent).toBe('Saving');
       expect(status.getAttribute('aria-label')).toBe('Saved on this device; waiting to sync');
     });
+  });
+
+  test('does not claim an edit was saved when local persistence fails', async () => {
+    const app = track(await createApp());
+    app.window.console.error = () => {};
+    app.window.__vylkDependencies.saveLocalNoteAndQueue = async () => {
+      throw new Error('storage unavailable');
+    };
+    app.hooks.setEditorState({
+      id: 'note-a',
+      title: 'Note',
+      content: 'unsaved edit',
+      savedSnapshot: {title: '', tags: '', content: ''},
+    });
+
+    app.hooks.markDirty();
+    expect(app.window.document.querySelector('#editor-status').dataset.state).toBe('saving');
+    await expect(app.hooks.saveCurrentNote(false)).resolves.toBe(false);
+    const status = app.window.document.querySelector('#editor-status');
+    expect(status.dataset.state).toBe('unsaved');
+    expect(status.querySelector('.sync-indicator-label').textContent).toBe('Not saved');
   });
 
   test('does not run a redundant follow-up for requests made during an idle sync', async () => {

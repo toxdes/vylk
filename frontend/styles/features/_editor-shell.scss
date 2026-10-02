@@ -22,8 +22,18 @@
   flex-direction: column;
   gap: 0.625rem;
   width: 100%;
-  padding: 0.75rem 1.25rem 1rem;
+  padding: 0.75rem var(--page-gutter) 1rem;
   overflow: hidden;
+}
+
+#editor:not(.hidden) .editor-body {
+  animation: app-content-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #editor:not(.hidden) .editor-body {
+    animation: none;
+  }
 }
 
 .meta-pane {
@@ -55,6 +65,10 @@
   background: var(--surface-hover);
 }
 
+.meta-toggle:focus-visible {
+  outline-offset: -3px;
+}
+
 .meta-toggle .icon {
   width: 1rem;
   height: 1rem;
@@ -75,51 +89,6 @@
 
 .meta-pane.collapsed .meta-body {
   display: none;
-}
-
-.input-label {
-  margin-top: 0.15rem;
-  color: var(--muted);
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-#note-title,
-#note-tags {
-  width: 100%;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  background: var(--card-bg);
-  color: var(--fg);
-  outline: none;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
-}
-
-#note-title:hover,
-#note-tags:hover {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-strong));
-}
-
-#note-title:focus,
-#note-tags:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-
-#note-title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  line-height: 1.35;
-}
-
-#note-tags {
-  font-size: 0.9375rem;
-  line-height: 1.4;
 }
 
 .editor-panels {

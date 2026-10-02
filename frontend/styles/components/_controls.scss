@@ -1,6 +1,7 @@
 /* Shared controls */
 .btn-text,
 .btn-primary,
+.btn-secondary,
 .prefs-btn {
   display: inline-flex;
   align-items: center;
@@ -56,6 +57,29 @@
 .btn-primary:active {
   box-shadow: none;
   transform: translateY(1px);
+}
+
+.btn-primary.danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--danger) 28%, transparent);
+}
+
+.btn-primary.danger:hover {
+  border-color: var(--danger-hover);
+  background: var(--danger-hover);
+}
+
+.btn-secondary {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border-strong);
+  background: var(--card-bg);
+  color: var(--fg);
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  background: var(--surface-hover);
 }
 
 .prefs-btn {

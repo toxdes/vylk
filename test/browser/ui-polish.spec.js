@@ -46,6 +46,76 @@ test('heading toolbar uses one compact picker for levels one through five', asyn
   expect(popup.x + popup.width).toBeLessThanOrEqual(390);
 });
 
+test('login, dashboard, and editor use the shared page background', async ({page}) => {
+  await signIn(page);
+
+  const themes = await page.evaluate(() => window.VylkThemes.map(({id, vars}) => ({id, vars})));
+  const pageSelectors = ['#login-screen', '#dashboard', '#editor'];
+  for (const {id, vars} of themes) {
+    const colors = await page.evaluate(
+      ({themeID, themeVars, selectors}) => {
+        const root = document.documentElement;
+        root.dataset.theme = themeID;
+        root.classList.toggle('dark', window.VylkThemes.find(({id}) => id === themeID).dark);
+        Object.entries(themeVars).forEach(([name, value]) => {
+          const kebabName = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+          root.style.setProperty(`--${kebabName}`, value);
+        });
+        return {
+          page: getComputedStyle(document.body).backgroundColor,
+          surfaces: selectors.map((selector) => ({
+            selector,
+            color: getComputedStyle(document.querySelector(selector)).backgroundColor,
+          })),
+        };
+      },
+      {themeID: id, themeVars: vars, selectors: pageSelectors},
+    );
+    for (const surface of colors.surfaces) {
+      expect(surface.color, `${id} ${surface.selector} should use the page canvas`).toBe(
+        colors.page,
+      );
+    }
+  }
+});
+
+test('preferences modal and sidebar use their theme surfaces', async ({page}) => {
+  await signIn(page);
+  await page.locator('#prefs-btn').click();
+
+  const themes = await page.evaluate(() => window.VylkThemes.map(({id, vars}) => ({id, vars})));
+  for (const {id, vars} of themes) {
+    const colors = await page.evaluate(
+      ({themeID, themeVars}) => {
+        const root = document.documentElement;
+        root.dataset.theme = themeID;
+        root.classList.toggle('dark', window.VylkThemes.find(({id}) => id === themeID).dark);
+        Object.entries(themeVars).forEach(([name, value]) => {
+          const kebabName = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+          root.style.setProperty(`--${kebabName}`, value);
+        });
+        return {
+          card: getComputedStyle(document.querySelector('#login-form')).backgroundColor,
+          modal: getComputedStyle(document.querySelector('#prefs-modal .prefs-modal-body'))
+            .backgroundColor,
+          surface: (() => {
+            const sample = document.createElement('div');
+            sample.style.background = 'var(--surface)';
+            document.body.append(sample);
+            const color = getComputedStyle(sample).backgroundColor;
+            sample.remove();
+            return color;
+          })(),
+          sidebar: getComputedStyle(document.querySelector('.prefs-sidebar')).backgroundColor,
+        };
+      },
+      {themeID: id, themeVars: vars},
+    );
+    expect(colors.modal, `${id} preferences modal`).toBe(colors.card);
+    expect(colors.sidebar, `${id} preferences sidebar`).toBe(colors.surface);
+  }
+});
+
 test('note cards stay stationary on hover', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
@@ -78,6 +148,265 @@ test('preferences headers align and Account owns the restore confirmation', asyn
   await page.keyboard.press('Escape');
   await expect(page.locator('#restore-defaults-modal')).toBeHidden();
   await expect(page.locator('#prefs-modal')).toBeVisible();
+});
+
+test('preference rows and shortcut reset use consistent feedback', async ({page}) => {
+  await signIn(page);
+  await page.locator('#prefs-btn').click();
+
+  const appearanceWidth = page.locator('#prefs-panel-appearance .pref-control').first();
+  await expect(appearanceWidth).toHaveCSS('border-top-width', '0px');
+  await appearanceWidth.hover();
+  const selectRowColor = await appearanceWidth
+    .locator('strong')
+    .first()
+    .evaluate((element) => getComputedStyle(element).color);
+
+  await page.locator('#prefs-tab-zen').click();
+  await expect(page.locator('#prefs-panel-zen .pref-control').first()).toHaveCSS(
+    'border-top-width',
+    '0px',
+  );
+  const toggleRow = page.locator('#prefs-panel-zen .pref-row').first();
+  await toggleRow.hover();
+  await expect(toggleRow.locator('strong')).toHaveCSS('color', selectRowColor);
+
+  await page.locator('#prefs-tab-shortcuts').click();
+  await expect(page.locator('.shortcut-reset-row')).toContainText('Default shortcuts');
+  await expect(page.locator('.shortcut-reset-row')).toHaveCSS('border-bottom-width', '1px');
+  await expect(page.locator('.shortcut-prefix-row')).toHaveCSS('border-top-width', '0px');
+  await page.locator('#shortcut-reset').click();
+  await expect(page.locator('#shortcut-reset-modal')).toBeVisible();
+  await page.locator('#shortcut-reset-cancel').click();
+  await expect(page.locator('#shortcut-reset-modal')).toBeHidden();
+  await page.locator('#shortcut-reset').click();
+  await page.locator('#shortcut-reset-confirm').click();
+  await expect(page.locator('.toast.success')).toContainText('Default shortcuts restored.');
+  await expect(page.locator('#shortcut-recorder-status')).toBeEmpty();
+});
+
+test('dashboard and editor share page gutters while Preferences fits the viewport', async ({
+  page,
+}) => {
+  const viewports = [
+    {width: 390, height: 844},
+    {width: 768, height: 900},
+    {width: 1440, height: 960},
+  ];
+  const contentEdges = (selector) =>
+    page.locator(selector).evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        left: bounds.left + Number.parseFloat(style.paddingLeft),
+        right: bounds.right - Number.parseFloat(style.paddingRight),
+      };
+    });
+  const expectEdgesToMatch = (first, second) => {
+    expect(Math.abs(first.left - second.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(first.right - second.right)).toBeLessThanOrEqual(1);
+  };
+
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-title').fill('Aligned page rails');
+  await page.locator('#note-content').fill('This note provides a visible card edge.');
+  await page.locator('#save-btn').click();
+  await page.locator('#back-btn').click();
+
+  const unconvertedFields = await page
+    .locator(
+      '#app input[type="text"]:not(.label-input__control), #app input[type="password"]:not(.label-input__control)',
+    )
+    .count();
+  expect(unconvertedFields).toBe(0);
+
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await page.locator('#dashboard .dashboard-body').evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    });
+
+    const dashboardHeader = await contentEdges('#dashboard .header-inner');
+    const dashboardCard = await page
+      .locator('.note-item')
+      .filter({hasText: 'Aligned page rails'})
+      .boundingBox();
+    expect(dashboardCard).not.toBeNull();
+    expect(Math.abs(dashboardCard.x - dashboardHeader.left)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(dashboardCard.x + dashboardCard.width - dashboardHeader.right),
+    ).toBeLessThanOrEqual(1);
+
+    await page.locator('#new-note-btn').click();
+    await page.locator('#editor .editor-body').evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    });
+    const editorHeader = await contentEdges('#editor > header .header-inner');
+    expectEdgesToMatch(dashboardHeader, editorHeader);
+    const editorPanel = await page.locator('#editor .meta-pane').boundingBox();
+    expect(editorPanel).not.toBeNull();
+    expect(Math.abs(editorPanel.x - dashboardHeader.left)).toBeLessThanOrEqual(1);
+    expect(Math.abs(editorPanel.x + editorPanel.width - dashboardHeader.right)).toBeLessThanOrEqual(
+      1,
+    );
+    await page.locator('#back-btn').click();
+
+    await page.locator('#prefs-btn').click();
+    await page.locator('#prefs-modal .prefs-modal-body').evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+    });
+    const prefsHeadingBox = await page.locator('.prefs-content-header h2').boundingBox();
+    const prefsCloseBox = await page.locator('#prefs-close').boundingBox();
+    const prefsControlBox = await page
+      .locator('.prefs-section.active .pref-control')
+      .first()
+      .boundingBox();
+    expect(prefsHeadingBox).not.toBeNull();
+    expect(prefsCloseBox).not.toBeNull();
+    expect(prefsControlBox).not.toBeNull();
+    expect(Math.abs(prefsControlBox.x - prefsHeadingBox.x)).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(prefsControlBox.x + prefsControlBox.width - prefsCloseBox.x - prefsCloseBox.width),
+    ).toBeLessThanOrEqual(1);
+    const prefsShell = await page.locator('#prefs-modal .prefs-modal-body').boundingBox();
+    expect(prefsShell).not.toBeNull();
+    expect(prefsShell.x).toBeGreaterThanOrEqual(0);
+    expect(prefsShell.y).toBeGreaterThanOrEqual(0);
+    expect(prefsShell.x + prefsShell.width).toBeLessThanOrEqual(viewport.width);
+    expect(prefsShell.y + prefsShell.height).toBeLessThanOrEqual(viewport.height);
+    if (viewport.width <= 640) {
+      const prefsRail = await page.locator('.prefs-tabs-scroll').boundingBox();
+      expect(prefsRail).not.toBeNull();
+      expect(prefsRail.x).toBeGreaterThanOrEqual(prefsShell.x);
+      expect(prefsRail.x + prefsRail.width).toBeLessThanOrEqual(prefsShell.x + prefsShell.width);
+    }
+    await page.locator('#prefs-close').click();
+  }
+});
+
+test('label inputs float their labels and toggle password visibility', async ({page}) => {
+  await page.goto('/');
+  const passwordInput = page.locator('#login-password');
+  const label = page.locator('label[for="login-password"]');
+  const toggle = page.locator('[data-password-toggle="login-password"]');
+
+  await expect(passwordInput).toHaveAttribute('placeholder', ' ');
+  await expect(label).toHaveText('Password');
+  await expect(passwordInput).toHaveAttribute('type', 'password');
+  await passwordInput.focus();
+  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).top)).toBe('0px');
+
+  await passwordInput.fill('browser-test-password');
+  await passwordInput.blur();
+  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).top)).toBe('0px');
+
+  await toggle.click();
+  await expect(passwordInput).toHaveAttribute('type', 'text');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle).toHaveAttribute('aria-label', 'Hide password');
+  await toggle.click();
+  await expect(passwordInput).toHaveAttribute('type', 'password');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+  await page.locator('#login-form button[type="submit"]').click();
+  await expect(page.locator('#dashboard')).toBeVisible();
+  const badge = page.locator('#sync-status');
+  await expect(badge).toHaveCSS('border-top-width', '0px');
+  await expect(badge).toHaveCSS('border-top-left-radius', '4px');
+  await expect(badge).toHaveCSS('font-size', '12px');
+  await expect(badge).toHaveCSS('font-weight', '500');
+  await expect(badge).toHaveCSS('line-height', '12px');
+  await expect(badge).toHaveCSS('padding', '4px 6px');
+  await expect(badge).toHaveCSS('gap', '4px');
+
+  const dot = page.locator('#sync-status .sync-indicator-dot');
+  await expect(dot).toHaveCSS('width', '6px');
+  await expect(dot).toHaveCSS('height', '6px');
+  await expect(dot).toHaveCSS('border-radius', '50%');
+  await expect(dot).toHaveCSS('box-shadow', 'none');
+  await expect(badge).toHaveCSS('margin', '0px');
+
+  await page.evaluate(() => {
+    document.documentElement.dataset.statusDisplay = 'compact';
+  });
+  await expect(badge).toHaveCSS('padding', '4px');
+  await expect(badge).toHaveCSS('width', '14px');
+});
+
+test('encryption inputs use one focus ring', async ({page}) => {
+  await signIn(page);
+  await page.locator('#prefs-btn').click();
+  await page.locator('#prefs-tab-encryption').click();
+  await page.locator('#vault-open-setup').click();
+
+  const password = page.locator('#vault-old-password');
+  await password.focus();
+  await expect(password).toHaveCSS('outline-style', 'none');
+  await expect
+    .poll(async () =>
+      password.evaluate((element) => {
+        const accentSample = document.createElement('span');
+        accentSample.style.color = 'var(--accent)';
+        document.body.append(accentSample);
+        const accent = getComputedStyle(accentSample).color;
+        accentSample.remove();
+        return getComputedStyle(element).borderColor === accent;
+      }),
+    )
+    .toBe(true);
+  await expect(password).not.toHaveCSS('box-shadow', 'none');
+});
+
+test('status badge colors come from every theme palette', async ({page}) => {
+  await signIn(page);
+
+  const result = await page.evaluate(() => {
+    const badge = document.querySelector('#sync-status');
+    const root = document.documentElement;
+    const stateTokens = {
+      online: 'online',
+      local: 'syncing',
+      syncing: 'syncing',
+      offline: 'offline',
+    };
+    const toRGB = (hex) => {
+      const digits = hex.slice(1);
+      const full =
+        digits.length === 3 ? [...digits].map((digit) => digit + digit).join('') : digits;
+      const values = full.match(/.{2}/g).map((value) => Number.parseInt(value, 16));
+      return `rgb(${values.join(', ')})`;
+    };
+
+    return window.VylkThemes.map((theme) => {
+      Object.entries(theme.vars).forEach(([name, value]) => {
+        const property = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+        root.style.setProperty(`--${property}`, value);
+      });
+
+      const states = Object.entries(stateTokens).map(([state, token]) => {
+        badge.dataset.state = state;
+        const style = getComputedStyle(badge);
+        return {
+          state,
+          expected: theme.vars[token] ? toRGB(theme.vars[token]) : null,
+          actual: style.color,
+          background: style.backgroundColor,
+          card: getComputedStyle(root).getPropertyValue('--card-bg').trim(),
+        };
+      });
+      return {id: theme.id, states};
+    });
+  });
+
+  expect(result.length).toBeGreaterThan(0);
+  for (const theme of result) {
+    for (const state of theme.states) {
+      expect(state.expected, `${theme.id} must define ${state.state} status color`).not.toBeNull();
+      expect(state.actual, `${theme.id} ${state.state} badge text`).toBe(state.expected);
+      expect(state.background, `${theme.id} ${state.state} badge tint`).not.toBe(state.card);
+    }
+  }
 });
 
 test('sign out confirms and returns to the login screen', async ({page}) => {
@@ -121,9 +450,93 @@ test('scrollbars reserve their own space and stay below mobile preference tabs',
 
   expect(metrics.bodyGutter).toBe('stable');
   expect(metrics.sectionGutter).toBe('stable');
-  expect(metrics.sectionPaddingRight).toBe('0px');
+  expect(Number.parseFloat(metrics.sectionPaddingRight)).toBeGreaterThanOrEqual(8);
   expect(metrics.railOverflow).toBe('auto');
-  expect(metrics.tabRailGap).toBeGreaterThanOrEqual(7);
+  expect(metrics.tabRailGap).toBeGreaterThanOrEqual(9.5);
+});
+
+test('preference sections enter quickly and respect reduced motion', async ({page}) => {
+  await signIn(page);
+  await page.locator('#prefs-btn').click();
+  await page.locator('#prefs-tab-editor').click();
+  await expect(page.locator('#prefs-panel-editor')).toBeVisible();
+  await expect(page.locator('#prefs-panel-editor')).toHaveCSS('animation-name', 'app-content-in');
+
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await page.locator('#prefs-tab-encryption').click();
+  await expect(page.locator('#prefs-panel-encryption')).toBeVisible();
+  await expect(page.locator('#prefs-panel-encryption')).toHaveCSS('animation-name', 'none');
+});
+
+test('dashboard and editor content enter on navigation and respect reduced motion', async ({
+  page,
+}) => {
+  await signIn(page);
+  await expect(page.locator('#dashboard .dashboard-body')).toHaveCSS(
+    'animation-name',
+    'app-content-in',
+  );
+  await page.evaluate(() => {
+    window.screenEntrances = {dashboard: 0, editor: 0};
+    for (const screen of ['dashboard', 'editor']) {
+      const body = document.querySelector(`#${screen} .${screen}-body`);
+      const animationName = screen === 'dashboard' ? 'app-content-return' : 'app-content-in';
+      // The sign-in entrance may start after this listener is installed, and
+      // animation events from descendants bubble. Count only this navigation.
+      body.addEventListener('animationstart', (event) => {
+        if (event.target === body && event.animationName === animationName) {
+          window.screenEntrances[screen]++;
+        }
+      });
+    }
+    // Reproduce irrelevant events deterministically instead of depending on
+    // whether the browser delivers the sign-in entrance before this listener.
+    const dashboardBody = document.querySelector('#dashboard .dashboard-body');
+    dashboardBody.dispatchEvent(
+      new AnimationEvent('animationstart', {animationName: 'app-content-in'}),
+    );
+    const child = dashboardBody.appendChild(document.createElement('span'));
+    child.dispatchEvent(
+      new AnimationEvent('animationstart', {animationName: 'app-content-return', bubbles: true}),
+    );
+    child.remove();
+  });
+  expect(await page.evaluate(() => window.screenEntrances)).toEqual({dashboard: 0, editor: 0});
+
+  await page.locator('#new-note-btn').click();
+  await expect(page.locator('#editor .editor-body')).toHaveCSS('animation-name', 'app-content-in');
+  await expect.poll(() => page.evaluate(() => window.screenEntrances.editor)).toBe(1);
+
+  await page.locator('#back-btn').click();
+  await expect(page.locator('#dashboard')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.screenEntrances.dashboard)).toBe(1);
+
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await page.locator('#new-note-btn').click();
+  await expect(page.locator('#editor .editor-body')).toHaveCSS('animation-name', 'none');
+  await page.locator('#back-btn').click();
+  await expect(page.locator('#dashboard .dashboard-body')).toHaveCSS('animation-name', 'none');
+});
+
+test('clipped editor controls keep their focus rings inside and clear the scrollbar', async ({
+  page,
+}) => {
+  await page.setViewportSize({width: 390, height: 844});
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page.keyboard.press('Tab');
+  await page.locator('.meta-toggle').focus();
+  await expect(page.locator('.meta-toggle')).toHaveCSS('outline-offset', '-3px');
+
+  const toolbar = page.locator('#editor .fmt-bar');
+  await expect(toolbar).toHaveCSS('scrollbar-gutter', 'stable');
+  const bottomPadding = await toolbar.evaluate((element) =>
+    Number.parseFloat(getComputedStyle(element).paddingBottom),
+  );
+  expect(bottomPadding).toBeGreaterThanOrEqual(8);
+  const firstFormattingButton = toolbar.locator('button').first();
+  await firstFormattingButton.focus();
+  await expect(firstFormattingButton).toHaveCSS('outline-offset', '-2px');
 });
 
 test('editor offline notice follows the configured content rail', async ({page}) => {

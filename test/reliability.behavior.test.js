@@ -551,6 +551,8 @@ describe('preference sync coordination', () => {
       theme: 'solarized-dark',
       revision: 2,
     });
+    expect(app.window.document.documentElement.dataset.theme).toBe('solarized-dark');
+    expect(app.window.document.querySelector('#pref-theme').value).toBe('solarized-dark');
     expect(app.window.document.querySelector('#toast-region').textContent).toContain(
       'Some preferences changed on another device',
     );
@@ -594,6 +596,7 @@ describe('logout storage cleanup', () => {
     Object.defineProperty(first.window, 'indexedDB', {
       configurable: true,
       value: {
+        open: (...args) => originalIndexedDB.open(...args),
         deleteDatabase: () => {
           deleteRequest = {};
           queueMicrotask(() => {

@@ -3,7 +3,7 @@
 
   function create({
     databaseName = 'vylk-offline',
-    databaseVersion = 4,
+    databaseVersion = 5,
     indexedDB: configuredIndexedDB,
     createID,
     onBlocked = () => {},
@@ -12,12 +12,17 @@
     beforeClear = () => {},
   }) {
     const operationIDPattern = /^[A-Za-z0-9_-]{1,128}$/;
-    const {requestValue, transactionComplete, withTransaction} = root.VylkIndexedDB;
+    const {encryptedStores, requestValue, transactionComplete, withTransaction} =
+      root.VylkIndexedDB;
     let databasePromise;
+    let localCryptor = null;
+    let localVaultID = null;
+    let localVaultEpoch = null;
     const databaseAPI = () => configuredIndexedDB || root.indexedDB;
 
     function openOfflineDB() {
       if (databasePromise) return databasePromise;
+      let repairRequired = false;
       databasePromise = new Promise((resolve, reject) => {
         // Do not request a fixed database version here. A browser may have a
         // newer local schema from a prior build; opening it with an older version
@@ -25,6 +30,7 @@
         const request = databaseAPI().open(databaseName, databaseVersion);
         request.onupgradeneeded = (event) => {
           const db = request.result;
+          repairRequired = event.oldVersion > 0 && event.oldVersion < 5;
           if (event.oldVersion < 1 && !db.objectStoreNames.contains('notes')) {
             db.createObjectStore('notes', {keyPath: 'id'});
           }
@@ -42,6 +48,9 @@
             if (!queue.indexNames.contains('client_sequence'))
               queue.createIndex('client_sequence', 'client_sequence', {unique: false});
           }
+          if (event.oldVersion < 5 && !db.objectStoreNames.contains('keys')) {
+            db.createObjectStore('keys', {keyPath: 'id'});
+          }
         };
         request.onsuccess = async () => {
           request.result.onversionchange = () => {
@@ -49,7 +58,13 @@
             databasePromise = undefined;
           };
           try {
-            await repairOfflineQueue(request.result);
+            const marker = await requestValue(
+              request.result
+                .transaction('state', 'readonly')
+                .objectStore('state')
+                .get('vault-local-format'),
+            );
+            if (!marker?.value && repairRequired) await repairOfflineQueue(request.result);
             resolve(request.result);
           } catch (error) {
             request.result.close();
@@ -159,7 +174,33 @@
 
     async function withOfflineStore(names, mode, work) {
       try {
-        return await withTransaction(openOfflineDB, names, mode, work);
+        // Include the format marker in the same transaction as every operation.
+        // IndexedDB then serializes it with migration's marker write, so a tab
+        // opened before cutover cannot write plaintext after conversion starts.
+        return await withTransaction(
+          openOfflineDB,
+          [...new Set([...names, 'state'])],
+          mode,
+          async (stores, transaction) => {
+            const marker = await requestValue(stores.state.get('vault-local-format'));
+            if (marker?.value === 2) throw new Error('local vault migration in progress');
+            if (marker?.value === 1) {
+              if (
+                !localCryptor ||
+                (marker.vaultID && marker.vaultID !== localVaultID) ||
+                (marker.epoch && marker.epoch !== localVaultEpoch)
+              ) {
+                throw new Error('local vault is locked');
+              }
+            } else if (localCryptor) {
+              throw new Error('local vault has changed');
+            }
+            const selected = Object.fromEntries(names.map((name) => [name, stores[name]]));
+            return work(
+              localCryptor ? encryptedStores(selected, localCryptor, transaction) : selected,
+            );
+          },
+        );
       } catch (error) {
         if (
           error?.name === 'QuotaExceededError' ||
@@ -170,6 +211,210 @@
         }
         throw error;
       }
+    }
+
+    async function vaultLocalFormat() {
+      const db = await openOfflineDB();
+      const marker = await requestValue(
+        db.transaction('state', 'readonly').objectStore('state').get('vault-local-format'),
+      );
+      return marker?.value === 1 || marker?.value === 2;
+    }
+
+    async function checkServerIdentity(instanceID) {
+      return withOfflineStore(['queue', 'state'], 'readwrite', async (stores) => {
+        const previous = (await requestValue(stores.state.get('serverInstanceID')))?.value;
+        const changed = previous !== instanceID;
+        if (previous && changed) {
+          const records = await requestValue(stores.state.getAll());
+          const pending = await requestValue(stores.queue.openCursor());
+          const guarded = records.some(
+            ({key}) => key.startsWith('unresolvedConflict:') || key.startsWith('rejectedSync:'),
+          );
+          if (pending || guarded) return {blocked: true};
+        }
+        if (changed) {
+          // Persist reconciliation with the identity: a failed snapshot must be
+          // retried on the next visit, even if another tab already saw this ID.
+          await requestValue(stores.state.put({key: 'syncSequence', value: 0}));
+          await requestValue(stores.state.put({key: 'serverInstanceID', value: instanceID}));
+          await requestValue(stores.state.put({key: 'serverReconciliationRequired', value: true}));
+        }
+        return {
+          changed,
+          reconcile:
+            changed ||
+            Boolean((await requestValue(stores.state.get('serverReconciliationRequired')))?.value),
+        };
+      });
+    }
+
+    async function vaultLocalMetadata() {
+      const db = await openOfflineDB();
+      return requestValue(
+        db.transaction('state', 'readonly').objectStore('state').get('vault-local-format'),
+      );
+    }
+
+    async function forgetRememberedVaultRoot() {
+      await withTransaction(openOfflineDB, ['keys'], 'readwrite', (stores) =>
+        requestValue(stores.keys.delete('root')),
+      );
+    }
+
+    async function rememberedVaultRoot() {
+      return withTransaction(openOfflineDB, ['keys'], 'readonly', (stores) =>
+        requestValue(stores.keys.get('root')),
+      );
+    }
+
+    async function cachedVaultBootstrap() {
+      const db = await openOfflineDB();
+      const saved = await requestValue(
+        db.transaction('keys', 'readonly').objectStore('keys').get('bootstrap'),
+      );
+      return saved?.value || null;
+    }
+
+    async function cacheVaultBootstrap(value) {
+      const db = await openOfflineDB();
+      const tx = db.transaction('keys', 'readwrite');
+      const complete = transactionComplete(tx);
+      tx.objectStore('keys').put({id: 'bootstrap', value});
+      await complete;
+    }
+
+    async function cachedVaultWrappers() {
+      const db = await openOfflineDB();
+      const saved = await requestValue(
+        db.transaction('keys', 'readonly').objectStore('keys').get('wrappers'),
+      );
+      return saved?.value || null;
+    }
+
+    async function cacheVaultWrappers(value) {
+      const db = await openOfflineDB();
+      const tx = db.transaction('keys', 'readwrite');
+      const complete = transactionComplete(tx);
+      tx.objectStore('keys').put({id: 'wrappers', value});
+      await complete;
+    }
+
+    async function migrateVaultLocal(cryptor, vaultID, epoch) {
+      const matchesVault = (marker) => marker.vaultID === vaultID && marker.epoch === epoch;
+      const needsMigration = await withTransaction(
+        openOfflineDB,
+        ['state'],
+        'readwrite',
+        async (stores) => {
+          const marker = await requestValue(stores.state.get('vault-local-format'));
+          if (marker?.value === 1 && matchesVault(marker)) return false;
+          if (
+            marker?.value === 1 ||
+            (marker?.value === 2 && marker.vaultID && !matchesVault(marker))
+          )
+            throw new Error('local vault changed during migration');
+          await requestValue(
+            stores.state.put({key: 'vault-local-format', value: 2, vaultID, epoch}),
+          );
+          return true;
+        },
+      );
+      if (!needsMigration) return;
+      for (const name of ['notes', 'queue', 'state']) {
+        await withTransaction(
+          openOfflineDB,
+          [...new Set([name, 'state'])],
+          'readwrite',
+          async (stores) => {
+            const marker = await requestValue(stores.state.get('vault-local-format'));
+            if (marker?.value === 1 && matchesVault(marker)) return;
+            if (marker?.value !== 2 || !matchesVault(marker))
+              throw new Error('local vault changed during migration');
+            await new Promise((resolve, reject) => {
+              const cursorRequest = stores[name].openCursor();
+              cursorRequest.onerror = () => reject(cursorRequest.error);
+              cursorRequest.onsuccess = () => {
+                const cursor = cursorRequest.result;
+                if (!cursor) {
+                  resolve();
+                  return;
+                }
+                try {
+                  if (
+                    !cursor.value.vault_ciphertext &&
+                    !(name === 'state' && cursor.value.key === 'vault-local-format')
+                  ) {
+                    cursor.update(cryptor.encryptRecord(name, cursor.value));
+                  }
+                  cursor.continue();
+                } catch (error) {
+                  reject(error);
+                }
+              };
+            });
+          },
+        );
+      }
+      await withTransaction(openOfflineDB, ['state'], 'readwrite', async (stores) => {
+        const marker = await requestValue(stores.state.get('vault-local-format'));
+        if (marker?.value === 1 && matchesVault(marker)) return;
+        if (marker?.value !== 2 || !matchesVault(marker))
+          throw new Error('local vault changed during migration');
+        await requestValue(stores.state.put({key: 'vault-local-format', value: 1, vaultID, epoch}));
+      });
+    }
+
+    async function unlockVaultLocal(rootKey, vaultID, remember = false, epoch = 1) {
+      let marker = await vaultLocalMetadata();
+      let encrypted = marker?.value === 1;
+      const previousEpochDiffers =
+        marker?.epoch === undefined ? encrypted && epoch > 1 : marker.epoch !== epoch;
+      if (
+        (encrypted || marker?.value === 2) &&
+        ((marker.vaultID && marker.vaultID !== vaultID) || previousEpochDiffers)
+      ) {
+        await discardVaultLocalData({vaultID, epoch});
+        marker = null;
+        encrypted = false;
+      }
+      const cryptor = await root.VylkVaultLocal.fromRoot(rootKey, vaultID, {
+        allowPlaintext: !encrypted,
+      });
+      try {
+        if (!encrypted) await migrateVaultLocal(cryptor, vaultID, epoch);
+        cryptor.setAllowPlaintext(false);
+        await withTransaction(openOfflineDB, ['keys', 'state'], 'readwrite', async (stores) => {
+          const current = await requestValue(stores.state.get('vault-local-format'));
+          if (
+            current?.value !== 1 ||
+            (current.vaultID && current.vaultID !== vaultID) ||
+            (current.epoch && current.epoch !== epoch)
+          ) {
+            throw new Error('local vault changed during unlock');
+          }
+          if (remember)
+            await requestValue(stores.keys.put({id: 'root', vaultID, epoch, key: rootKey}));
+          else await requestValue(stores.keys.delete('root'));
+          await requestValue(
+            stores.state.put({key: 'vault-local-format', value: 1, vaultID, epoch}),
+          );
+        });
+        localCryptor?.close();
+        localCryptor = cryptor;
+        localVaultID = vaultID;
+        localVaultEpoch = epoch;
+      } catch (error) {
+        cryptor.close();
+        throw error;
+      }
+    }
+
+    function lockVaultLocal() {
+      localCryptor?.close();
+      localCryptor = null;
+      localVaultID = null;
+      localVaultEpoch = null;
     }
 
     function getLocalNote(id) {
@@ -527,31 +772,94 @@
     async function rebaseQueuedNoteOperations(noteID, acknowledgedID, revision, baseNote) {
       return withOfflineStore(['queue'], 'readwrite', async (stores) => {
         const operations = await requestValue(stores.queue.index('note_id').getAll(noteID));
-        let hasLater = false;
-        operations.forEach((operation) => {
-          if (
-            operation.id === acknowledgedID ||
-            operation.client_sequence < 1 ||
-            operation.attempted_at
-          )
-            return;
-          if (
-            operation.type === 'note.save' ||
-            operation.type === 'note.delete' ||
-            operation.type === 'note.pin'
-          ) {
-            operation.base_revision = revision;
-            if (operation.note) {
-              operation.note.base_revision = revision;
-              operation.note.base_content = baseNote.content;
-              operation.note.base_title = baseNote.title;
-              operation.note.base_tags = baseNote.tags;
-            }
-            stores.queue.put(operation);
-            hasLater = true;
+        return rebaseNoteOperations(stores.queue, operations, acknowledgedID, revision, baseNote);
+      });
+    }
+
+    function rebaseNoteOperations(queue, operations, acknowledgedID, revision, baseNote) {
+      let hasLater = false;
+      operations.forEach((operation) => {
+        if (
+          operation.id === acknowledgedID ||
+          operation.client_sequence < 1 ||
+          operation.attempted_at
+        )
+          return;
+        if (
+          operation.type === 'note.save' ||
+          operation.type === 'note.delete' ||
+          operation.type === 'note.pin'
+        ) {
+          operation.base_revision = revision;
+          if (operation.note) {
+            operation.note.base_revision = revision;
+            operation.note.base_content = baseNote.content;
+            operation.note.base_title = baseNote.title;
+            operation.note.base_tags = baseNote.tags;
           }
-        });
-        return hasLater;
+          queue.put(operation);
+          hasLater = true;
+        }
+      });
+      return hasLater;
+    }
+
+    function commitNoteAcknowledgement(operation, acknowledgement) {
+      // Serialize the entire read/modify/write with saves in every tab. Separate
+      // transactions can overwrite a newer edit with the acknowledgement's read.
+      return withOfflineStore(['notes', 'queue'], 'readwrite', async (stores) => {
+        const queued = await requestValue(stores.queue.get(operation.id));
+        if (
+          !queued ||
+          queued.op_id !== operation.op_id ||
+          queued.client_sequence !== operation.client_sequence ||
+          queueOperationPayload(queued) !== queueOperationPayload(operation)
+        )
+          return null;
+        const operations = await requestValue(
+          stores.queue.index('note_id').getAll(operation.note_id),
+        );
+        const local = await requestValue(stores.notes.get(operation.note_id));
+        const revision = acknowledgement.revision;
+        const baseNote = operation.type === 'note.save' ? operation.note : local;
+        if (baseNote)
+          rebaseNoteOperations(stores.queue, operations, operation.id, revision, baseNote);
+        const hasLater = operations.some(
+          (item) =>
+            item.client_sequence > operation.client_sequence &&
+            ['note.save', 'note.pin', 'note.delete'].includes(item.type),
+        );
+        const laterPin = latestLaterOperation(operations, operation, 'note.pin');
+        if (local) {
+          const pinned =
+            operation.type === 'note.pin' && !laterPin
+              ? Boolean(operation.pinned)
+              : Boolean(local.pinned);
+          const pinOrder = laterPin
+            ? local.pin_order
+            : pinned
+              ? acknowledgement.pin_order || local.pin_order || 0
+              : 0;
+          await requestValue(
+            stores.notes.put({
+              ...local,
+              revision,
+              pinned,
+              pin_order: pinOrder,
+              pending: hasLater,
+              base_revision: hasLater ? revision : null,
+              ...(operation.type === 'note.save'
+                ? {
+                    base_content: hasLater ? operation.note.content : null,
+                    base_title: hasLater ? operation.note.title : null,
+                    base_tags: hasLater ? operation.note.tags : null,
+                  }
+                : {}),
+            }),
+          );
+        }
+        await requestValue(stores.queue.delete(operation.id));
+        return {revision, baseRevision: hasLater ? revision : null};
       });
     }
 
@@ -569,6 +877,15 @@
 
     async function clearOfflineData() {
       beforeClear();
+      if (await vaultLocalFormat()) {
+        lockVaultLocal();
+        const db = await openOfflineDB();
+        const tx = db.transaction('keys', 'readwrite');
+        const complete = transactionComplete(tx);
+        tx.objectStore('keys').delete('root');
+        await complete;
+        return;
+      }
       const dbPromise = databasePromise;
       databasePromise = undefined;
       if (dbPromise) {
@@ -593,7 +910,35 @@
       });
     }
 
+    async function discardVaultLocalData(preserveMetadataFor = null) {
+      beforeClear();
+      lockVaultLocal();
+      const db = await openOfflineDB();
+      const names = ['notes', 'queue', 'state', 'keys'].filter((name) =>
+        db.objectStoreNames.contains(name),
+      );
+      await withTransaction(openOfflineDB, names, 'readwrite', async (stores) => {
+        // Sign-in may already have cached the incoming vault's bootstrap and
+        // wrappers. Keep only those matching it, never the old root or note data.
+        const retained = [];
+        if (preserveMetadataFor && stores.keys) {
+          for (const id of ['bootstrap', 'wrappers']) {
+            const record = await requestValue(stores.keys.get(id));
+            if (
+              record?.value?.vault_id === preserveMetadataFor.vaultID &&
+              record.value.epoch === preserveMetadataFor.epoch
+            )
+              retained.push(record);
+          }
+        }
+        for (const name of names) stores[name].clear();
+        for (const record of retained) stores.keys.put(record);
+        stores.state.put({key: 'vault-local-format', value: 2});
+      });
+    }
+
     async function closeOfflineDatabaseConnection() {
+      lockVaultLocal();
       const dbPromise = databasePromise;
       databasePromise = undefined;
       if (!dbPromise) return;
@@ -603,9 +948,16 @@
     }
 
     return Object.freeze({
+      checkServerIdentity,
       claimQueueOperation,
+      cachedVaultBootstrap,
+      cachedVaultWrappers,
+      cacheVaultBootstrap,
+      cacheVaultWrappers,
       clearOfflineData,
+      discardVaultLocalData,
       closeOfflineDatabaseConnection,
+      commitNoteAcknowledgement,
       getAllLocalNotes,
       getLocalNote,
       getLocalNotes,
@@ -614,6 +966,7 @@
       getUnresolvedConflict,
       hasPendingOperation,
       latestLaterOperation,
+      lockVaultLocal,
       nextLocalPinOrder,
       openOfflineDB,
       pendingOperations,
@@ -636,6 +989,11 @@
       supersedeQueuedNoteOperations,
       syncDeviceID,
       unresolvedConflictKey,
+      unlockVaultLocal,
+      forgetRememberedVaultRoot,
+      rememberedVaultRoot,
+      vaultLocalFormat,
+      vaultLocalMetadata,
       withOfflineStore,
     });
   }

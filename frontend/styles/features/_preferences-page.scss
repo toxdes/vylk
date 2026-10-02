@@ -1,28 +1,38 @@
-/* Preferences are intentionally sectioned so future settings have a stable home. */
+/* Preferences stays over the current screen while its sections share one navigator. */
 .prefs-modal-body {
-  display: flex;
-  width: min(92vw, 62rem);
-  height: min(42rem, calc(100dvh - 2rem));
+  width: min(100%, 68rem);
+  height: min(46rem, calc(100dvh - 2rem));
   max-height: calc(100dvh - 2rem);
   padding: 0;
   overflow: hidden;
-  border-radius: 10px;
+}
+
+.prefs-page-body {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .prefs-sidebar {
   display: flex;
-  flex: 0 0 11rem;
+  flex: 0 0 14rem;
   flex-direction: column;
-  padding: 1.25rem 0.75rem;
+  padding: 1.5rem 1rem;
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
 
 .prefs-sidebar-title {
-  padding: 0.35rem 0.65rem 1.15rem;
-  font-size: 1.05rem;
-  font-weight: 750;
+  display: flex;
+  align-items: center;
+  margin: 0 0 1.5rem;
+  padding: 0 0.65rem;
+  font-size: 1.15rem;
+  font-weight: 700;
   letter-spacing: -0.015em;
+  line-height: 1.25;
 }
 
 .prefs-sidebar nav {
@@ -57,7 +67,7 @@
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  padding: 1.5rem 1.5rem 2rem;
+  padding: 1.5rem 1.75rem 2rem;
   overflow: hidden;
 }
 
@@ -66,17 +76,24 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.1rem;
+  margin-bottom: 1.25rem;
   flex: none;
+  width: 100%;
+  padding-inline: 0.5rem;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
 }
 
-.prefs-content-header h3 {
+.prefs-content-header .modal-close:focus-visible {
+  outline-offset: -2px;
+}
+
+.prefs-content-header h2 {
   margin: 0;
-  font-size: 1.2rem;
-}
-
-.prefs-content-header .btn-text {
-  padding: 0.35rem 0.5rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
 }
 
 .prefs-section {
@@ -85,16 +102,14 @@
 
 .prefs-section.active {
   display: block;
+  box-sizing: border-box;
   min-height: 0;
+  width: 100%;
+  padding: 0.5rem 0.5rem 1rem;
   overflow-y: auto;
+  scroll-padding: 0.5rem;
   scrollbar-gutter: stable;
-}
-
-.prefs-section-intro {
-  margin: 0 0 1.2rem;
-  color: var(--muted);
-  font-size: 0.875rem;
-  line-height: 1.45;
+  animation: app-content-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .sync-indicator-label {
@@ -126,6 +141,15 @@
   padding: 1rem 0;
   border-top: 1px solid var(--border);
   font-size: 0.9375rem;
+}
+
+.prefs-section > .pref-control:first-child {
+  padding-top: 0.5rem;
+  border-top: 0;
+}
+
+.prefs-content :is(.pref-control, .pref-row):is(:hover, :focus-within) > span strong {
+  color: var(--accent);
 }
 
 .pref-control > span {
@@ -211,24 +235,12 @@
 
 @media (max-width: 640px) {
   .prefs-modal-body {
-    min-height: calc(100dvh - 2rem);
-    flex-direction: column;
-  }
-
-  .prefs-sidebar {
-    flex: 0 0 auto;
-    padding: 0.75rem;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .prefs-sidebar-title {
-    padding: 0.2rem 0.35rem 0.65rem;
+    height: calc(100dvh - 2rem);
   }
 
   .prefs-tabs-scroll {
-    margin: 0 -0.75rem;
-    padding-bottom: 0.45rem;
+    margin: 0;
+    padding-bottom: 0.625rem;
     overflow: auto hidden;
     scrollbar-gutter: stable;
     -webkit-overflow-scrolling: touch;
@@ -271,7 +283,7 @@
   }
 
   .prefs-content {
-    padding: 1.1rem 1.25rem 2rem;
+    padding: 1rem 1rem 1.5rem;
   }
 
   .pref-control {
@@ -294,42 +306,10 @@
   }
 }
 
-.modal-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.1rem;
-}
-
-.modal-heading h3 {
-  margin: 0;
-}
-
-.modal-close {
-  display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  padding: 0.5rem;
-  place-items: center;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-}
-
-.modal-close:hover {
-  background: var(--surface);
-  color: var(--fg);
-}
-
-.modal-close .icon {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-#prefs-close {
-  width: 2.25rem;
-  margin-top: 0;
+@media (prefers-reduced-motion: reduce) {
+  .prefs-section.active {
+    animation: none;
+  }
 }
 
 .toast:has(.toast-action) {
@@ -403,39 +383,6 @@ body {
 
 .preview .highlight {
   background: transparent;
-}
-
-.prefs-sidebar {
-  padding-top: 1.5rem;
-}
-
-.prefs-sidebar-title,
-.prefs-content-header {
-  box-sizing: border-box;
-  height: 2.25rem;
-  min-height: 2.25rem;
-}
-
-.prefs-sidebar-title {
-  display: flex;
-  align-items: center;
-  margin: 0 0 1.15rem;
-  padding: 0 0.65rem;
-  font-size: 1.2rem;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  line-height: 1.25;
-}
-
-.prefs-content-header {
-  align-items: center;
-  margin-bottom: 1.1rem;
-}
-
-.prefs-content-header h3 {
-  font-size: 1.2rem;
-  font-weight: 700;
-  line-height: 1.25;
 }
 
 .about-list {
@@ -526,151 +473,21 @@ body {
 }
 
 @media (max-width: 640px) {
+  .prefs-page-body {
+    flex-direction: column;
+  }
+
   .prefs-sidebar {
-    padding-top: 0.75rem;
+    flex: 0 0 auto;
+    padding: 1rem 1rem 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
   }
 
   .prefs-sidebar-title {
-    height: auto;
-    min-height: 0;
-    margin-bottom: 0.65rem;
-    padding: 0.2rem 0.35rem 0;
-    font-size: 1.05rem;
-  }
-
-  .prefs-modal-body > #prefs-close,
-  #prefs-close {
-    position: absolute;
-    top: 0.75rem;
-    right: 0.75rem;
-    z-index: 2;
-  }
-}
-
-@media (max-width: 640px) {
-  #prefs-modal {
-    align-items: end;
+    margin-bottom: 0.75rem;
     padding: 0;
-  }
-
-  #prefs-modal .prefs-modal-body {
-    width: 100%;
-    max-width: none;
-    height: 85dvh;
-    max-height: 85dvh;
-    min-height: 85dvh;
-    overflow: hidden;
-    border-radius: 16px 16px 0 0;
-    padding-bottom: max(1rem, env(safe-area-inset-bottom));
-    box-shadow: 0 -12px 32px rgb(15 23 42 / 0.18);
-  }
-
-  #prefs-modal:not(.hidden) .prefs-modal-body {
-    animation: prefs-sheet-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  }
-
-  #prefs-modal.is-closing .prefs-modal-body {
-    animation: prefs-sheet-out 0.18s ease both;
-  }
-}
-
-@keyframes prefs-sheet-in {
-  from {
-    opacity: 0;
-    transform: translateY(100%);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes prefs-sheet-out {
-  from {
-    opacity: 1;
-    transform: none;
-  }
-
-  to {
-    opacity: 0;
-    transform: translateY(100%);
-  }
-}
-
-@keyframes modal-backdrop-in {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes modal-backdrop-out {
-  from {
-    opacity: 1;
-  }
-
-  to {
-    opacity: 0;
-  }
-}
-
-@keyframes modal-panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(0.35rem) scale(0.985);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes modal-panel-out {
-  from {
-    opacity: 1;
-    transform: none;
-  }
-
-  to {
-    opacity: 0;
-    transform: translateY(0.2rem) scale(0.99);
-  }
-}
-
-.modal:not(.hidden) .modal-backdrop {
-  animation: modal-backdrop-in 0.16s ease both;
-  will-change: opacity;
-}
-
-.modal:not(.hidden) .modal-body {
-  animation: modal-panel-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  backface-visibility: hidden;
-  will-change: opacity, transform;
-}
-
-.modal.is-closing .modal-backdrop {
-  animation: modal-backdrop-out 0.16s ease both;
-  will-change: opacity;
-}
-
-.modal.is-closing .modal-body {
-  animation: modal-panel-out 0.18s ease both;
-  backface-visibility: hidden;
-  will-change: opacity, transform;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .modal:not(.hidden) .modal-backdrop,
-  .modal:not(.hidden) .modal-body,
-  .modal.is-closing .modal-backdrop,
-  .modal.is-closing .modal-body {
-    animation: none;
-    will-change: auto;
+    font-size: 1rem;
   }
 }
 
@@ -680,31 +497,10 @@ body {
   gap: 0.45rem;
 }
 
-.font-label {
-  display: grid;
-  gap: 0.2rem;
-  cursor: pointer;
-}
-
 .font-input-wrap {
   display: grid;
   gap: 0.3rem;
   width: 100%;
-}
-
-.font-control input[type='text'] {
-  width: 100%;
-  padding: 0.45rem 0.55rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--card-bg);
-  color: var(--fg);
-  outline: none;
-}
-
-.font-control input[type='text']:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .font-fetch-toggle {

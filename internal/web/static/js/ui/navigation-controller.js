@@ -6,7 +6,7 @@
     cancelPreviewDelay,
     cancelPreviewRender,
     clearCurrentNote,
-    closeModal,
+    dismissPreferences,
     document,
     getCurrentNoteID,
     getLocalNote,
@@ -119,42 +119,85 @@
     async function restoreRoute({fetchRemote = false} = {}) {
       const generation = ++routeRestoreGeneration;
       const isCurrent = () => generation === routeRestoreGeneration;
-      if (
+      const leavingPreferences =
         !routes.isPreferences() &&
-        !document.querySelector('#prefs-modal').classList.contains('hidden')
-      ) {
-        closeModal(document.querySelector('#prefs-modal'));
-        if (routes.isDashboard() && isDashboardVisible()) return;
-        if (
-          routes.isNote() &&
-          isEditorVisible() &&
-          getCurrentNoteID() === window.history.state.noteID
-        ) {
-          if (isDirty()) await saveCurrentNote(false);
-          return;
-        }
-      }
-
+        !document.querySelector('#prefs-modal').classList.contains('hidden');
+      const visibleDetail = () =>
+        [
+          ['setup', '#vault-setup-modal'],
+          ['passphrase', '#vault-master-modal'],
+          ['recovery', '#vault-recovery-modal'],
+        ].find(
+          ([, selector]) => !document.querySelector(selector).classList.contains('hidden'),
+        )?.[0];
       if (routes.isPreferences()) {
         const returnRoute = window.history.state?.returnRoute;
         const noteID = returnRoute?.screen === 'note' ? returnRoute.noteID : null;
+        if (noteID && getCurrentNoteID() === noteID && isDirty()) {
+          const saved = await saveCurrentNote(false);
+          if (!isCurrent()) return;
+          if (!saved) {
+            const section =
+              document.querySelector('.prefs-nav.active')?.dataset.prefSection || 'appearance';
+            const detail = visibleDetail();
+            routes.setPreferences({section, detail, replace: true});
+            openPreferences({route: 'none', section, detail});
+            return;
+          }
+        }
+        if (
+          (noteID && getCurrentNoteID() === noteID && isEditorVisible()) ||
+          (!noteID && isDashboardVisible())
+        ) {
+          openPreferences({
+            route: 'none',
+            section: window.history.state?.section,
+            detail: window.history.state?.detail,
+          });
+          return;
+        }
         const result = await restoreNote(noteID, fetchRemote, isCurrent);
         if (!isCurrent() || result === 'stale') return;
         if (result === 'loaded') {
-          if (isCurrent()) openPreferences({route: 'none'});
+          openPreferences({
+            route: 'none',
+            section: window.history.state?.section,
+            detail: window.history.state?.detail,
+          });
           return;
         }
         if (result === 'failed') return;
         if (noteID) routes.setDashboard({replace: true});
         clearCurrentNote();
         await loadDashboard({sync: false});
-        if (isCurrent() && !noteID) openPreferences({route: 'none'});
+        if (isCurrent() && !noteID)
+          openPreferences({
+            route: 'none',
+            section: window.history.state?.section,
+            detail: window.history.state?.detail,
+          });
         return;
       }
 
       const noteID = routes.noteID();
-      if (isEditorVisible() && isDirty()) await saveCurrentNote(false);
+      if (leavingPreferences && routes.isNote() && getCurrentNoteID() === noteID && isDirty()) {
+        const saved = await saveCurrentNote(false);
+        if (!isCurrent()) return;
+        if (!saved) {
+          const section =
+            document.querySelector('.prefs-nav.active')?.dataset.prefSection || 'appearance';
+          const detail = visibleDetail();
+          routes.setPreferences({section, detail, replace: true});
+          openPreferences({route: 'none', section, detail});
+          return;
+        }
+      } else if (isEditorVisible() && isDirty()) {
+        await saveCurrentNote(false);
+      }
       if (!isCurrent()) return;
+      if (leavingPreferences) dismissPreferences();
+      if (routes.isNote() && getCurrentNoteID() === noteID && isEditorVisible()) return;
+      if (!noteID && isDashboardVisible()) return;
       const result = await restoreNote(noteID, fetchRemote, isCurrent);
       if (!isCurrent() || result === 'stale') return;
       if (result === 'loaded' || result === 'failed') return;

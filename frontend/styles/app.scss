@@ -2,6 +2,7 @@
 @use 'settings/tokens';
 @use 'generic/base';
 @use 'components/controls';
+@use 'components/modal';
 @use 'features/auth';
 @use 'features/dashboard';
 @use 'features/editor-shell';
@@ -13,3 +14,4 @@
 @use 'settings/refinements';
 @use 'features/editor-overlay';
 @use 'features/shortcuts';
+@use 'components/labeled-input';

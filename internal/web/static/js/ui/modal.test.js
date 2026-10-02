@@ -12,6 +12,11 @@ function setup() {
         <button id="last">Continue</button>
       </div>
     </div>
+    <div id="child-modal" class="hidden" aria-hidden="true">
+      <div role="dialog" tabindex="-1">
+        <button id="child-close" class="modal-close">Close child</button>
+      </div>
+    </div>
   `);
   dom.window.matchMedia = () => ({matches: true});
   const escaped = [];
@@ -59,5 +64,25 @@ describe('modal controller', () => {
       }),
     );
     expect(context.escaped).toEqual(['modal']);
+  });
+
+  test('keeps only the top modal available while a child dialog is open', () => {
+    const context = setup();
+    const parent = context.document.querySelector('#modal');
+    const child = context.document.querySelector('#child-modal');
+    const opener = context.document.querySelector('#last');
+    context.controller.open(parent);
+    opener.focus();
+
+    context.controller.open(child);
+    expect(parent.getAttribute('aria-hidden')).toBe('true');
+    expect(parent.hasAttribute('inert')).toBe(true);
+    expect(child.getAttribute('aria-hidden')).toBe('false');
+    expect(child.hasAttribute('inert')).toBe(false);
+
+    context.controller.close(child);
+    expect(parent.getAttribute('aria-hidden')).toBe('false');
+    expect(parent.hasAttribute('inert')).toBe(false);
+    expect(context.document.activeElement).toBe(opener);
   });
 });

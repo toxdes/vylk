@@ -3,6 +3,7 @@
 
   function create({
     cacheVersion,
+    onAuthenticationRequired = () => {},
     getOfflineState,
     getPreferenceRevision,
     isSyncInFlight,
@@ -80,6 +81,10 @@
       heartbeatAt = Date.now();
       const connection = new window.EventSource('/api/events');
       events = connection;
+      connection.addEventListener('session-expired', () => {
+        disconnect();
+        onAuthenticationRequired();
+      });
       connection.addEventListener('server', (event) => {
         try {
           cacheVersion(JSON.parse(event.data));
@@ -110,16 +115,20 @@
       }
     }
 
+    function resetPendingChanges() {
+      if (changeTimer) window.clearTimeout(changeTimer);
+      changeTimer = null;
+      changePending = false;
+      pendingSequence = 0;
+    }
+
     function disconnect() {
       events?.close();
       events = null;
       heartbeatAt = 0;
       if (watchdog) window.clearInterval(watchdog);
       watchdog = null;
-      if (changeTimer) window.clearTimeout(changeTimer);
-      changeTimer = null;
-      changePending = false;
-      pendingSequence = 0;
+      resetPendingChanges();
     }
 
     function workRemains(cursor) {
@@ -133,6 +142,7 @@
       disconnect,
       handleChange,
       healthy,
+      resetPendingChanges,
       workRemains,
     };
   }
