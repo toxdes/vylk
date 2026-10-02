@@ -1,22 +1,26 @@
 # vylk
 
-Lightweight, low-resource single-binary Markdown editor with local-first sync and optional client-side vault encryption.
+Lightweight, low-resource single-binary Markdown editor with local-first sync and optional end-to-end encryption.
 
 ## Features
 
 - Live markdown preview via marked.js with cursor-position block highlighting
-- Formatting toolbar: bold, italic, strike, code, code blocks, headings (h1-h4), links, images, lists, blockquotes, horizontal rules, tables
-- Single-panel editor and preview views, plus Zen mode for focused writing
+- Formatting toolbar: bold, italic, strike, code, code blocks, headings (h1-h5), links, images, lists, blockquotes, horizontal rules, tables
+- Resizable split view, single-panel editor and preview views, and Zen mode with smooth caret-following and reduced-motion support
+- Interactive preview with task checkboxes, block editing, and drag-to-reorder controls
 - Tags support with filtering
-- Mobile-friendly responsive layout with dark theme
-- Autosave (2s debounce) with manual save
-- Versioned AES-256-GCM encryption on disk with Argon2id password mode or a random 32-byte key
-- Optional client-side vault encryption for note titles, tags, bodies, and offline edits
-- Session-based authentication (VYLK_PASSWORD)
+- Mobile-friendly responsive layout with light/dark and custom themes, fonts, and font sizes
+- Configurable autosave with manual save
+- Optional end-to-end encryption for note titles, tags, bodies, and offline edits, with a 24-word recovery key
+- Session-based authentication with remembered browser unlocks and device management
 - PWA-ready (manifest, service worker, installable app)
 - Offline-first notes: the installed app caches its shell, saves edits in IndexedDB, and synchronizes them after reconnection
 
 ## Usage
+
+Native-client implementers: see the [backend API reference](docs/api/README.md),
+[OpenAPI specification](docs/api/openapi.json), and
+[authentication, sync, and encryption protocol guide](docs/api/client-protocol.md).
 
 ```
 VYLK_PASSWORD=<password> ./vylk
@@ -46,9 +50,13 @@ Optional environment variables:
 
 The sign-in password also accepts a `_FILE` form: `VYLK_PASSWORD_FILE=/run/secrets/vylk_password`. This is preferred for Docker or Kubernetes secrets.
 
-## Client-side vault encryption
+## End-to-end encryption
+
+E2EE is optional and enabled in **Preferences → Encryption**, not through a server-side encryption key. It requires a browser secure context: HTTPS for remote devices, or HTTP on `localhost`/a loopback address on the server's own machine. Plain HTTP on a LAN IP cannot unlock an encrypted vault. The app blocks encrypted sign-in in that context and directs you to the [E2EE setup guide](https://vylk.toxdes.com/docs/#end-to-end-encryption). Vylk does not provide TLS certificates or HTTPS termination itself.
 
 An existing installation remains in its legacy mode after upgrade. Sign in, open **Preferences → Encryption**, choose a passphrase, and write down the 24-word recovery key before starting conversion. The words are generated from 256 random bits on the device using the public BIP39 English wordlist. The current Vylk password is needed once to authorize conversion. The app makes a private temporary backup, encrypts and checks every note on the device, encrypts existing offline edits, switches the active database to ciphertext, and removes the temporary backup. Conversion can be resumed with the current password, passphrase, and recovery key after an interruption. Note writes are paused while conversion is in progress. Update and unlock each other device to convert its existing local cache; an unopened device may still hold its old plaintext cache until then.
+
+The recovery key is shown as numbered words and can be downloaded as `vylk-recovery-key-YYYYMMDDHHMM.txt`. Store it somewhere safe, separate from the server. Setup hides the words while you confirm them one at a time and asks you to acknowledge the risk of losing access before enabling encryption. Recovery entry also supports removing and rearranging words; bulk pasting is intentionally unavailable.
 
 Once conversion finishes, each device unlocks with the passphrase or recovery key. The passphrase derives a wrapping key with Argon2id; a random vault key encrypts notes with AES-256-GCM. The server stores a wrapped copy of that key and an authentication verifier. It never receives the passphrase or recovery key. The browser encrypts local notes and pending operations before storing them in IndexedDB. Signing in remembers a non-extractable browser key for refreshes, other tabs, and later visits. Sign-out forgets that key but keeps encrypted offline edits for the next unlock. Remembering the device lets same-origin code use that key without another passphrase prompt; sign out on shared devices.
 
@@ -92,7 +100,7 @@ The preview recognizes `[[Wiki Links]]`: clicking a matching note title opens th
 
 Markdown preview treats raw HTML as text rather than rendering it. Links are limited to HTTP, HTTPS, and mailto URLs, and images are limited to HTTP and HTTPS URLs. Remote images load lazily and asynchronously.
 
-While the signed-in app is open, it keeps an authenticated SSE stream to the server. A 25-second heartbeat drives the Online/Offline indicator, and content-free change hints trigger normal HTTP sync promptly on other open devices. A missing heartbeat for 70 seconds is treated as offline, and reconnection runs a full cache reconciliation before replaying local work.
+While the signed-in app is open, it keeps an authenticated SSE stream to the server. A 25-second heartbeat tracks connectivity, and content-free change hints trigger normal HTTP sync promptly on other open devices. A missing heartbeat for 70 seconds is treated as offline, and reconnection runs a full cache reconciliation before replaying local work. The status badge reports Offline, Saving, or Saved; Saved means the pending changes have reached the server, not merely local storage.
 
 Sync history is bounded for small deployments: the server retains up to 100,000 change records and acknowledgements, and caps stored full operation payloads at 32 MiB. A device older than the retained change feed performs a full server refresh before replaying any local work; old acknowledged retries receive a safe compacted acknowledgement and rebase from the server state.
 
@@ -114,7 +122,7 @@ Cross-compile all targets (Linux binaries compressed with UPX):
 
 - `cmd/vylk` contains the executable entry point.
 - `internal/server` composes HTTP handlers and application workflows.
-- Focused `internal` packages own authentication, notes, sync, preferences, persistence, events, encryption, and embedded web assets.
+- Focused `internal` packages own authentication, notes, sync, preferences, persistence, events, and embedded web assets. E2EE cryptography runs in browser modules; the server stores and relays ciphertext.
 - `frontend/styles` contains authored SCSS; `internal/web/static` contains the browser application and generated CSS served by the binary.
 - `test` contains frontend behavior and browser tests; package-local tests stay beside their implementation.
 
@@ -138,7 +146,7 @@ Install frontend dependencies with `bun ci`, run linting with `bun run lint`, an
 
 ## Continuous integration
 
-GitHub Actions runs the full Go and frontend checks for pull requests. Before enabling branch protection, create a required-reviewer environment named `ci-approval` in the repository settings and add the repository owner as its required reviewer. Leave "Prevent self-review" disabled if the PR author should be able to approve this CI gate; this environment approval is separate from a pull-request code review and does not count as one.
+GitHub Actions runs Go formatting, module verification, vet, Staticcheck, tests, and builds, plus frontend formatting, generated-CSS verification, linting, unit tests, browser tests, and release-workflow tests for pull requests. There is no manual deployment-approval gate.
 
 Protect `main` by requiring pull requests, requiring the `CI / checks` status check, requiring the check to pass for the latest commit, and disabling force pushes and deletions. Direct pushes should remain disabled so changes arrive through pull requests.
 

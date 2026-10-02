@@ -85,6 +85,10 @@ test('encrypts an existing note and syncs ciphertext between independent devices
     'Open Vylk over HTTPS to set up end-to-end encryption.',
   );
   await expect(insecureLegacyPage.locator('.vault-secure-context-note a')).toHaveText('Learn More');
+  await expect(insecureLegacyPage.locator('.vault-secure-context-note a')).toHaveAttribute(
+    'href',
+    'https://vylk.toxdes.com/docs/#end-to-end-encryption',
+  );
 
   await page.locator('#new-note-btn').click();
   await page.locator('#note-title').fill('Private browser title');
@@ -257,7 +261,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await expect(insecurePage.locator('#login-secure-context-notice a')).toHaveText('Learn More');
   await expect(insecurePage.locator('#login-secure-context-notice a')).toHaveAttribute(
     'href',
-    'https://vylk.toxdes.com/docs',
+    'https://vylk.toxdes.com/docs/#end-to-end-encryption',
   );
   await insecureContext.close();
 

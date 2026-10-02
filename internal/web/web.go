@@ -22,7 +22,7 @@ const (
 	DefaultName         = "VYLK"
 	AppNamePlaceholder  = "__VYLK_APP_NAME__"
 	SiteBaseURL         = "https://vylk.toxdes.com"
-	DocsURL             = SiteBaseURL + "/docs"
+	DocsURL             = SiteBaseURL + "/docs/#end-to-end-encryption"
 	DocsURLPlaceholder  = "__VYLK_DOCS_URL__"
 	MaxNameRunes        = 64
 	RevisionPlaceholder = "__VYLK_APP_REVISION__"

@@ -1,0 +1,1569 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "VYLK backend API",
+    "version": "development",
+    "description": "HTTP contracts for native and browser clients. Read client-protocol.md before implementing offline sync or encryption. The release build replaces the documentation version with its selected tag; no server URL or credential is embedded."
+  },
+  "servers": [{"url": "/", "description": "Your VYLK instance"}],
+  "security": [{"session": []}],
+  "tags": [
+    {"name": "Authentication"},
+    {"name": "Devices"},
+    {"name": "Notes"},
+    {"name": "Sync"},
+    {"name": "Preferences"},
+    {"name": "Encryption"},
+    {"name": "Migration"}
+  ],
+  "paths": {
+    "/api/login": {
+      "post": {
+        "operationId": "login",
+        "tags": ["Authentication"],
+        "summary": "Create a session",
+        "description": "Read bootstrap first. In legacy/preparing mode, send the configured server password. In encrypted/cleaning mode, omit password and send a derived proof or recovery_proof. Recovery proof takes precedence if both proofs are supplied. Limit: 16 KiB JSON. Preserve both response cookies in your cookie jar.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/Login"},
+              "example": {"password": "your-server-password"}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in. Sets session and vylk-device cookies.",
+            "headers": {"Set-Cookie": {"$ref": "#/components/headers/Cookies"}},
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/LoginResult"}}
+            }
+          },
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {
+            "description": "invalid_credentials",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/logout": {
+      "post": {
+        "operationId": "logout",
+        "tags": ["Authentication"],
+        "summary": "Sign out this browser profile",
+        "description": "Revokes all sessions grouped under this device cookie, not just this tab. Keep encrypted pending edits locally; logout does not upload them.",
+        "responses": {
+          "204": {
+            "description": "Signed out; empty body. Clears session cookie.",
+            "headers": {"Set-Cookie": {"$ref": "#/components/headers/Cookies"}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/check": {
+      "get": {
+        "operationId": "checkSession",
+        "tags": ["Authentication"],
+        "summary": "Check session and server identity",
+        "description": "Compare instance_id, vault_mode, and vault_epoch against persisted local state before resuming synchronization. revision is the application asset revision, not a note revision.",
+        "responses": {
+          "200": {
+            "description": "Current server identity.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/CheckResult"}}
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/devices": {
+      "get": {
+        "operationId": "listDevices",
+        "tags": ["Devices"],
+        "summary": "List signed-in devices",
+        "description": "Tabs sharing a vylk-device cookie appear as one device. last_seen_at is approximate; activity updates are throttled. Entries are ordered by recent activity.",
+        "responses": {
+          "200": {
+            "description": "Active browser-profile devices.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["devices"],
+                  "properties": {
+                    "devices": {"type": "array", "items": {"$ref": "#/components/schemas/Device"}}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/devices/{id}": {
+      "delete": {
+        "operationId": "revokeDevice",
+        "tags": ["Devices"],
+        "summary": "Revoke a device's sessions",
+        "description": "Idempotent for an unknown but valid device ID. Revocation cannot erase plaintext or keys already held by an offline device. Disabled by VYLK_DISABLE_VAULT_CHANGES.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Device ID, not a sync queue device_id.",
+            "schema": {"type": "string", "pattern": "^[a-f0-9]{32}$"}
+          }
+        ],
+        "responses": {
+          "204": {"description": "Sessions revoked; empty body."},
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/notes": {
+      "get": {
+        "operationId": "listNotes",
+        "tags": ["Notes"],
+        "summary": "List note summaries",
+        "description": "With limit, returns a page; without limit, returns an array and ignores cursor. Newest updated_at first. Plaintext tag filtering is exact; encrypted mode rejects tag with 409 client_search_required. Encrypted responses contain envelopes instead of title/tags/filename. The page response's nextCursor may be absent or empty at the end.",
+        "parameters": [
+          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Enable pagination. An empty limit is invalid in encrypted mode.",
+            "schema": {"type": "integer", "minimum": 1, "maximum": 100}
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "Opaque nextCursor from the preceding page; do not parse or invent it.",
+            "schema": {"type": "string"}
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "description": "Exact tag; plaintext mode only.",
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Summaries, never note bodies.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {"type": "array", "items": {"$ref": "#/components/schemas/NoteSummary"}},
+                    {"$ref": "#/components/schemas/NotesPage"}
+                  ]
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {"$ref": "#/components/responses/ClientSearch"},
+          "423": {"$ref": "#/components/responses/Locked"},
+          "426": {"$ref": "#/components/responses/ProtocolRequired"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      },
+      "post": {
+        "operationId": "saveNote",
+        "tags": ["Notes"],
+        "summary": "Create or replace a complete note",
+        "description": "Not a patch or text delta. Plaintext limit: 4 MiB JSON; encrypted limit: 8 MiB. Plaintext id may be omitted to generate an ID; supplying an ID requires base_revision (0 for a new note). Encrypted mode requires a client-generated ID, base_revision, epoch, summary, and body. Responses omit content/body. For offline clients prefer ordered sync/push, which supports replay acknowledgements and an instance fence.",
+        "parameters": [{"$ref": "#/components/parameters/VaultProtocol"}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {"$ref": "#/components/schemas/SaveNote"},
+                  {"$ref": "#/components/schemas/SaveEncryptedNote"}
+                ]
+              },
+              "example": {
+                "id": "my-note",
+                "base_revision": 0,
+                "title": "First note",
+                "tags": "personal,ideas",
+                "content": "# First note\n\nHello."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved metadata (also for creation; not 201).",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/NoteSummary"}}
+            }
+          },
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {
+            "description": "note_revision_conflict or stale_vault_epoch. Plaintext revision conflicts include note_id and current_revision; encrypted direct conflicts may contain only error/code.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "423": {"$ref": "#/components/responses/Locked"},
+          "426": {"$ref": "#/components/responses/ProtocolRequired"},
+          "503": {"$ref": "#/components/responses/RecoveryBlocked"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/notes/{id}": {
+      "get": {
+        "operationId": "getNote",
+        "tags": ["Notes"],
+        "summary": "Read a complete note",
+        "parameters": [
+          {"$ref": "#/components/parameters/NoteID"},
+          {"$ref": "#/components/parameters/VaultProtocol"}
+        ],
+        "responses": {
+          "200": {
+            "description": "Metadata and Markdown content, or summary/body envelopes in encrypted mode.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/CompleteNote"}}
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "423": {"$ref": "#/components/responses/Locked"},
+          "426": {"$ref": "#/components/responses/ProtocolRequired"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      },
+      "delete": {
+        "operationId": "deleteNote",
+        "tags": ["Notes"],
+        "summary": "Delete a note at a known revision",
+        "description": "Revision-checked deletion; not an unconditional idempotent delete. A repeat request may return conflict or not-found. Offline clients should use sync/push.",
+        "parameters": [
+          {"$ref": "#/components/parameters/NoteID"},
+          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "name": "base_revision",
+            "in": "query",
+            "required": true,
+            "description": "Last known note revision.",
+            "schema": {"type": "integer", "format": "int64", "minimum": 1}
+          }
+        ],
+        "responses": {
+          "204": {"description": "Deleted; empty body."},
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "409": {
+            "description": "note_revision_conflict",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "423": {"$ref": "#/components/responses/Locked"},
+          "426": {"$ref": "#/components/responses/ProtocolRequired"},
+          "503": {"$ref": "#/components/responses/RecoveryBlocked"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "operationId": "searchNotes",
+        "tags": ["Notes"],
+        "summary": "Search plaintext titles and tags",
+        "description": "Title/tag prefix search, not body search. Uses at most the first eight whitespace-separated terms, combined with AND; returns up to 50 ranked summaries. An empty query returns []; no matches for a nonempty query can return null. Encrypted mode returns 409 client_search_required; decrypt and search locally.",
+        "parameters": [
+          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Trimmed search text, at most 256 UTF-8 bytes.",
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ranked plaintext note summaries or null.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": ["array", "null"],
+                  "items": {"$ref": "#/components/schemas/PlainNote"}
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {"$ref": "#/components/responses/ClientSearch"},
+          "423": {"$ref": "#/components/responses/Locked"},
+          "426": {"$ref": "#/components/responses/ProtocolRequired"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "operationId": "listTags",
+        "tags": ["Notes"],
+        "summary": "List plaintext tags",
+        "description": "Encrypted mode returns 409 client_search_required. Build its tag index from decrypted summaries locally.",
+        "parameters": [{"$ref": "#/components/parameters/VaultProtocol"}],
+        "responses": {
+          "200": {
+            "description": "Distinct tags.",
+            "content": {
+              "application/json": {"schema": {"type": "array", "items": {"type": "string"}}}
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {"$ref": "#/components/responses/ClientSearch"},
+          "423": {"$ref": "#/components/responses/Locked"},
+          "426": {"$ref": "#/components/responses/ProtocolRequired"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/sync": {
+      "get": {
+        "operationId": "pullChanges",
+        "tags": ["Sync"],
+        "summary": "Read the durable note change feed",
+        "description": "since is exclusive. Store nextSequence only after committing the fetched changes locally. Follow hasMore; when false, stop fetching until a new hint/poll. resetRequired means the retained feed no longer covers the cursor: rebuild a snapshot without deleting pending edits. instance_id distinguishes replacement databases; do not infer identity from a cursor. See the protocol guide for snapshot races and reset handling.",
+        "parameters": [
+          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {"type": "integer", "format": "int64", "minimum": 0, "default": 0}
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ordered changes, tombstones, cursor and server identity.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/ChangesPage"}}
+            }
+          },
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "423": {"$ref": "#/components/responses/Locked"},
+          "426": {"$ref": "#/components/responses/ProtocolRequired"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/sync/notes": {
+      "get": {
+        "operationId": "fetchChangedNotes",
+        "tags": ["Sync"],
+        "summary": "Fetch complete notes in a small batch",
+        "description": "Up to 25 comma-separated IDs, counted before deduplication. Empty ids returns empty notes/missing arrays. A fetched revision may be newer than the change-feed entry; do not overwrite pending local edits.",
+        "parameters": [
+          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "name": "ids",
+            "in": "query",
+            "description": "Comma-separated note IDs; no spaces.",
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Existing complete notes and missing IDs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["notes", "missing"],
+                  "properties": {
+                    "notes": {
+                      "type": "array",
+                      "items": {"$ref": "#/components/schemas/CompleteNote"}
+                    },
+                    "missing": {"type": "array", "items": {"$ref": "#/components/schemas/ID"}}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "423": {"$ref": "#/components/responses/Locked"},
+          "426": {"$ref": "#/components/responses/ProtocolRequired"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/sync/push": {
+      "post": {
+        "operationId": "pushOperations",
+        "tags": ["Sync"],
+        "summary": "Apply ordered offline operations",
+        "description": "At most 100 operations; 4 MiB plaintext or 8 MiB encrypted JSON. Empty operations is allowed to read expected_sequence. Full-note saves, not text deltas. Sequence starts at 1 and is contiguous per device_id; preserve it and stable op_id across retries. Conflicts consume sequence numbers. A 409 sequence gap can acknowledge an already-committed prefix. Timeouts/5xx can also follow partial commits: retry the identical operations. Do not interpret every HTTP 200 as every operation applied. See the protocol guide.",
+        "parameters": [
+          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "name": "X-Vylk-Instance-ID",
+            "in": "header",
+            "description": "Strongly recommended: persisted server instance_id. A mismatch returns 409 before any writes. Omission is accepted for compatibility, not safe for offline replacement-database recovery.",
+            "schema": {"type": "string"}
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {"$ref": "#/components/schemas/PushRequest"},
+                  {"$ref": "#/components/schemas/EncryptedPushRequest"}
+                ]
+              },
+              "example": {
+                "device_id": "native-client-queue",
+                "operations": [
+                  {
+                    "client_sequence": 1,
+                    "op_id": "save-first-note",
+                    "type": "note.save",
+                    "note_id": "my-note",
+                    "base_revision": 0,
+                    "title": "First note",
+                    "tags": "ideas",
+                    "content": "Hello"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Inspect each acknowledgement status.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PushResult"}}}
+          },
+          "400": {
+            "description": "invalid_sync_request, invalid_sync_operation or invalid_encrypted_operation. Plaintext invalid_sync_operation includes permanent=true, operation_index, client_sequence and op_id.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {
+            "description": "Sequence gap (PushResult), invalid_replayed_operation, server_instance_changed, or stale_vault_epoch (Error, possibly epoch). A changed server requires a user decision; never silently renumber/re-upload pending edits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {"$ref": "#/components/schemas/PushResult"},
+                    {"$ref": "#/components/schemas/Error"}
+                  ]
+                }
+              }
+            }
+          },
+          "423": {"$ref": "#/components/responses/Locked"},
+          "426": {"$ref": "#/components/responses/ProtocolRequired"},
+          "503": {"$ref": "#/components/responses/RecoveryBlocked"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "operationId": "subscribeEvents",
+        "tags": ["Sync"],
+        "summary": "Subscribe to change and session hints",
+        "description": "Server-Sent Events, not a durable feed. Starts with retry: 3000, server and heartbeat events; heartbeats every 25 seconds. change events hint notes/preferences; session-expired closes the connection. No event IDs or Last-Event-ID replay. Reconnect with cookies and perform a durable pull after hints/reconnect. Plain-text 500 is possible before stream setup.",
+        "responses": {
+          "200": {
+            "description": "A long-lived UTF-8 SSE stream.",
+            "headers": {
+              "Cache-Control": {"schema": {"type": "string", "const": "no-cache"}},
+              "X-Accel-Buffering": {"schema": {"type": "string", "const": "no"}}
+            },
+            "content": {
+              "text/event-stream": {
+                "schema": {"type": "string"},
+                "example": "retry: 3000\n\nevent: server\ndata: {\"version\":\"3.0.4\",\"revision\":\"asset-revision\"}\n\nevent: change\ndata: {\"type\":\"notes\",\"sequence\":1}\n\n"
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "500": {
+            "description": "Stream setup failed.",
+            "content": {"text/plain": {"schema": {"type": "string"}}}
+          }
+        }
+      }
+    },
+    "/api/prefs": {
+      "get": {
+        "operationId": "getPreferences",
+        "tags": ["Preferences"],
+        "summary": "Read account preferences",
+        "description": "Preferences are not encrypted. Read revision from JSON; no ETag is emitted.",
+        "responses": {
+          "200": {
+            "description": "Current preferences with normalized defaults.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/Preferences"}}
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      },
+      "patch": {
+        "operationId": "replacePreferences",
+        "tags": ["Preferences"],
+        "summary": "Replace account preferences",
+        "description": "Despite PATCH, this is full replacement, not a partial merge. Read, modify, and send the complete object with If-Match. Missing fields can reset settings. Limit: 16 KiB JSON. _sync_patch/_sync_base only implement partial merging in sync prefs.save; this endpoint ignores those helpers.",
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "description": "Positive revision, plain or quoted. Missing or * permits unconditional replacement; avoid this in multi-device clients.",
+            "schema": {"type": "string"}
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Preferences"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "Saved preferences with new revision.",
+            "content": {
+              "application/json": {"schema": {"$ref": "#/components/schemas/Preferences"}}
+            }
+          },
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {
+            "description": "preferences_revision_conflict, with current_revision.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/bootstrap": {
+      "get": {
+        "operationId": "getVaultBootstrap",
+        "tags": ["Encryption"],
+        "summary": "Discover vault mode and derivation settings",
+        "security": [],
+        "description": "Public, no key wrappers. In legacy mode vault_id, epoch, and kdf are absent. reset_available does not override VYLK_DISABLE_VAULT_CHANGES; the reset API can still reject the operation.",
+        "responses": {
+          "200": {
+            "description": "Current encryption mode and public KDF settings.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Bootstrap"}}}
+          },
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/keys": {
+      "get": {
+        "operationId": "getWrappedKeys",
+        "tags": ["Encryption"],
+        "summary": "Read encrypted vault-key wrappers",
+        "responses": {
+          "200": {
+            "description": "Decrypt locally using the appropriate derived wrapping key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["vault_id", "epoch", "wrapped_key", "wrapped_recovery_key"],
+                  "properties": {
+                    "vault_id": {"$ref": "#/components/schemas/VaultID"},
+                    "epoch": {"type": "integer", "format": "int64"},
+                    "wrapped_key": {"$ref": "#/components/schemas/Envelope"},
+                    "wrapped_recovery_key": {"$ref": "#/components/schemas/Envelope"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {
+            "description": "vault_not_encrypted",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/credentials": {
+      "post": {
+        "operationId": "changeVaultCredentials",
+        "tags": ["Encryption"],
+        "summary": "Change passphrase or recovery credentials",
+        "description": "Limit: 32 KiB. Rewrap the SAME vault key; do not replace it. master requires fresh KDF parameters and updates the login proof; recovery updates the recovery proof/wrapper. current_recovery chooses which old proof authorizes the action, independent of kind. Always revokes the current session; sign_out_other_devices defaults true for either kind. Success requires a new login. Does not rotate the note key, vault ID, or epoch.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/CredentialChange"}}
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Credentials changed; session cookie cleared.",
+            "headers": {"Set-Cookie": {"$ref": "#/components/headers/Cookies"}},
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OK"}}}
+          },
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
+          "409": {
+            "description": "vault_unavailable",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/reset": {
+      "post": {
+        "operationId": "resetVault",
+        "tags": ["Encryption"],
+        "summary": "Start a new empty vault (destructive)",
+        "security": [],
+        "description": "Optional recovery-from-total-key-loss operation, NOT passphrase recovery or decryption. Requires configured VYLK_PASSWORD in the body, not a session/proof. Limit: 32 KiB. Archives the old database/ciphertext for 30 days, then replaces credentials, clears notes/feed/queue counters and revokes all sessions. Returns a new session. The old data still needs its old key. instance_id remains unchanged; vault_id changes and epoch increments. Confirm data-loss consequences before calling. Do not retry an ambiguous reset blindly.",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VaultReset"}}}
+        },
+        "responses": {
+          "200": {
+            "description": "New empty vault and new session.",
+            "headers": {"Set-Cookie": {"$ref": "#/components/headers/Cookies"}},
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["ok", "vault_id", "epoch", "archive_expires_at"],
+                  "properties": {
+                    "ok": {"type": "boolean", "const": true},
+                    "vault_id": {"$ref": "#/components/schemas/VaultID"},
+                    "epoch": {"type": "integer", "format": "int64"},
+                    "archive_expires_at": {"type": "string", "format": "date-time"}
+                  }
+                }
+              }
+            }
+          },
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {
+            "description": "vault_changes_disabled or vault_reset_unavailable (no server password).",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "409": {
+            "description": "vault_reset_unavailable (not an active encrypted vault).",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "503": {"$ref": "#/components/responses/RecoveryBlocked"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/migration/start": {
+      "post": {
+        "operationId": "startEncryptionMigration",
+        "tags": ["Migration"],
+        "summary": "Prepare plaintext-to-encrypted migration",
+        "description": "Limit: 32 KiB. Requires old_password even with a session. Generate a random vault key/ID and both credential wrappers locally. Creates a consistent backup and pauses plaintext writes. Repeating the same vault_id resumes setup; it does not replace previously stored credentials. Preserve the original setup secrets until commit. No abort or disable-encryption API exists.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/MigrationStart"}}
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Migration prepared.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["ok", "epoch"],
+                  "properties": {
+                    "ok": {"type": "boolean", "const": true},
+                    "epoch": {"type": "integer", "const": 1}
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_vault_setup, including incorrect old_password.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
+          "409": {
+            "description": "vault_setup_already_started or unexpected_note_files",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "503": {"$ref": "#/components/responses/RecoveryBlocked"},
+          "507": {
+            "description": "migration_backup_failed: free storage and retry same setup.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/migration/status": {
+      "get": {
+        "operationId": "getMigrationStatus",
+        "tags": ["Migration"],
+        "summary": "Read encryption migration progress",
+        "responses": {
+          "200": {
+            "description": "Progress counts and mode.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "mode",
+                    "backup_ready",
+                    "source_notes",
+                    "staged_notes",
+                    "verified_notes"
+                  ],
+                  "properties": {
+                    "mode": {"$ref": "#/components/schemas/VaultMode"},
+                    "backup_ready": {"type": "boolean"},
+                    "source_notes": {"type": "integer"},
+                    "staged_notes": {"type": "integer"},
+                    "verified_notes": {"type": "integer"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {"$ref": "#/components/responses/MigrationConflict"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/migration/next": {
+      "get": {
+        "operationId": "listMigrationNotes",
+        "tags": ["Migration"],
+        "summary": "List notes still needing verification",
+        "description": "Up to 100 notes in lexicographic ID order. Empty array means no remaining unverified notes. A source revision change invalidates its previous verification.",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Last ID from the preceding page, exclusive. This is an ID, not a notes-page cursor.",
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Source IDs and revisions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["id", "revision"],
+                    "properties": {
+                      "id": {"$ref": "#/components/schemas/ID"},
+                      "revision": {"type": "integer", "format": "int64"}
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "409": {"$ref": "#/components/responses/MigrationConflict"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/migration/stage": {
+      "post": {
+        "operationId": "stageEncryptedNote",
+        "tags": ["Migration"],
+        "summary": "Stage an encrypted copy of a source note",
+        "description": "Limit: 8 MiB. Source revision must match. Restaging clears its verification. Fetch and decrypt the staged copy before verifying it.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {"schema": {"$ref": "#/components/schemas/StagedRequest"}}
+          }
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/OK"},
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
+          "409": {"$ref": "#/components/responses/MigrationConflict"},
+          "507": {
+            "description": "vault_stage_failed: insufficient storage.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+          },
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/migration/staged/{id}": {
+      "get": {
+        "operationId": "getStagedNote",
+        "tags": ["Migration"],
+        "summary": "Read a staged encrypted note",
+        "parameters": [{"$ref": "#/components/parameters/NoteID"}],
+        "responses": {
+          "200": {
+            "description": "Staged copy. body_hash is SHA-256 of exact stored envelope JSON bytes, not decrypted Markdown or reserialized JSON.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StagedNote"}}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/migration/verify": {
+      "post": {
+        "operationId": "verifyStagedNote",
+        "tags": ["Migration"],
+        "summary": "Acknowledge client verification of a staged note",
+        "description": "Limit: 4 KiB. First decrypt the downloaded staged summary/body and compare them with the source. The server only checks the stored hash and source revision; it cannot verify decryption. Send the body_hash returned by staged/{id}.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["id", "body_hash"],
+                "properties": {
+                  "id": {"$ref": "#/components/schemas/ID"},
+                  "body_hash": {
+                    "type": "string",
+                    "description": "SHA-256, lowercase hexadecimal.",
+                    "minLength": 64,
+                    "maxLength": 64
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {"$ref": "#/components/responses/OK"},
+          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
+          "409": {"$ref": "#/components/responses/MigrationConflict"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    },
+    "/api/vault/migration/commit": {
+      "post": {
+        "operationId": "commitEncryptionMigration",
+        "tags": ["Migration"],
+        "summary": "Commit verified encrypted notes and remove plaintext",
+        "description": "No body required. Requires backup and all source notes verified. Revokes all sessions; log in with the derived proof afterward. Note queue counters survive migration; do not restart sequence at 1. If vault_cleanup_pending returns 500, encrypted cutover already succeeded; cleanup resumes on server restart. Do not revert to plaintext or start a new setup.",
+        "responses": {
+          "200": {
+            "description": "Encrypted cutover completed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["ok", "mode"],
+                  "properties": {
+                    "ok": {"type": "boolean", "const": true},
+                    "mode": {"type": "string", "const": "encrypted"}
+                  }
+                }
+              }
+            }
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
+          "409": {"$ref": "#/components/responses/MigrationConflict"},
+          "default": {"$ref": "#/components/responses/ServerError"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "session",
+        "description": "Opaque session cookie obtained from login. Native clients must retain a cookie jar; Bearer authentication is not supported."
+      }
+    },
+    "parameters": {
+      "VaultProtocol": {
+        "name": "X-Vylk-Vault-Protocol",
+        "in": "header",
+        "description": "Required value 1 for this route in encrypted mode; otherwise 426. Not required for authentication, preferences, keys, migration, or SSE.",
+        "schema": {"type": "string", "const": "1"}
+      },
+      "NoteID": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Note identifier.",
+        "schema": {"$ref": "#/components/schemas/ID"}
+      }
+    },
+    "headers": {
+      "Cookies": {
+        "description": "May contain multiple Set-Cookie lines. session is HttpOnly, Path=/, SameSite=Lax, 180-day lifetime; vylk-device groups browser-profile sessions and lasts 365 days. Secure is set for HTTPS. Authenticated activity periodically renews session. Never combine Set-Cookie lines with commas.",
+        "schema": {"type": "string"}
+      }
+    },
+    "responses": {
+      "OK": {
+        "description": "Completed.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OK"}}}
+      },
+      "InvalidRequest": {
+        "description": "Malformed, oversized, unknown-field, or invalid request (invalid_request or a route-specific code). JSON body limits return 400, not 413.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "Unauthorized": {
+        "description": "authentication_required for a missing, expired, or revoked session; credential endpoints can return invalid_credentials.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "NotFound": {
+        "description": "note_not_found or staged_note_not_found.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "RateLimited": {
+        "description": "login_rate_limited. Wait retry_after seconds; do not hammer credentials.",
+        "headers": {
+          "Retry-After": {"schema": {"type": "string"}, "description": "Delay in seconds."}
+        },
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "VaultChangesDisabled": {
+        "description": "vault_changes_disabled: server policy rejects vault/device mutations. Ordinary notes and preferences remain usable.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "ClientSearch": {
+        "description": "client_search_required: decrypt summaries and search/filter/index tags locally.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "Locked": {
+        "description": "vault_migration_in_progress (writes during preparation), vault_maintenance_in_progress (cleaning), or vault_unavailable. Pause writes; do not discard pending changes.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "ProtocolRequired": {
+        "description": "encrypted_client_required: set X-Vylk-Vault-Protocol: 1 and implement the encrypted contract; never retry a plaintext body as encrypted.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "RecoveryBlocked": {
+        "description": "Pending file recovery prevents writes. Retain operations and retry with backoff after recovery; code depends on route (note_file_recovery_blocked, note_recovery_pending, note_recovery_failed).",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "MigrationConflict": {
+        "description": "Migration state/source mismatch: vault_migration_not_started, vault_migration_not_ready, vault_note_changed, vault_verify_mismatch, vault_migration_incomplete, or unexpected_note_files. Inspect state before retrying.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      },
+      "ServerError": {
+        "description": "Storage/internal failure with a route-specific code. Some writes may already have committed; reconcile rather than assuming nothing changed.",
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+      }
+    },
+    "schemas": {
+      "ID": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+      "QueueID": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+      "VaultID": {
+        "type": "string",
+        "description": "16 random bytes, unpadded strict base64url (22 characters).",
+        "minLength": 22,
+        "maxLength": 22
+      },
+      "Proof": {
+        "type": "string",
+        "description": "32 derived bytes, unpadded strict base64url (43 characters). Reusable authentication secret; never log it or send SHA-256(proof) instead.",
+        "minLength": 43,
+        "maxLength": 43
+      },
+      "Envelope": {
+        "type": "object",
+        "description": "AES-256-GCM envelope, an object rather than a JSON-encoded string. Nonce: 12 bytes. Ciphertext includes the final 16-byte authentication tag. Both are strict unpadded base64url. Summary envelope JSON is limited to 37,888 bytes.",
+        "required": ["v", "nonce", "ciphertext"],
+        "properties": {
+          "v": {"type": "integer", "const": 1},
+          "nonce": {"type": "string", "minLength": 16, "maxLength": 16},
+          "ciphertext": {"type": "string", "minLength": 22}
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error", "code"],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Human-readable message; branch on code instead."
+          },
+          "code": {"type": "string"},
+          "note_id": {"type": "string"},
+          "current_revision": {"type": "integer", "format": "int64"},
+          "epoch": {"type": "integer", "format": "int64"},
+          "retry_after": {"type": "integer"},
+          "permanent": {"type": "boolean"},
+          "operation_index": {"type": "integer", "minimum": 0},
+          "client_sequence": {"type": "integer", "format": "int64"},
+          "op_id": {"type": "string"}
+        }
+      },
+      "OK": {
+        "type": "object",
+        "required": ["ok"],
+        "properties": {"ok": {"type": "boolean", "const": true}}
+      },
+      "Login": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "password": {"type": "string", "description": "Server password, legacy/preparing only."},
+          "proof": {"$ref": "#/components/schemas/Proof"},
+          "recovery_proof": {"$ref": "#/components/schemas/Proof"}
+        }
+      },
+      "LoginResult": {
+        "type": "object",
+        "required": ["ok", "version", "revision", "instance_id"],
+        "properties": {
+          "ok": {"type": "boolean", "const": true},
+          "version": {"type": "string"},
+          "revision": {"type": "string", "description": "Application asset revision."},
+          "instance_id": {"type": "string", "description": "Persistent database identity."}
+        }
+      },
+      "CheckResult": {
+        "allOf": [
+          {"$ref": "#/components/schemas/LoginResult"},
+          {
+            "type": "object",
+            "required": ["vault_mode", "vault_epoch"],
+            "properties": {
+              "vault_mode": {"$ref": "#/components/schemas/VaultMode"},
+              "vault_epoch": {"type": "integer", "format": "int64"}
+            }
+          }
+        ]
+      },
+      "Device": {
+        "type": "object",
+        "required": ["id", "name", "last_seen_at", "current"],
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "last_seen_at": {"type": "string", "format": "date-time"},
+          "current": {"type": "boolean"}
+        }
+      },
+      "PlainNote": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "filename",
+          "tags",
+          "pinned",
+          "created_at",
+          "updated_at",
+          "revision"
+        ],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "title": {"type": "string", "description": "At most 512 UTF-8 bytes on save."},
+          "filename": {"type": "string", "description": "Storage name; not an API path."},
+          "tags": {
+            "type": "string",
+            "description": "Comma-separated, trimmed and deduplicated, case-sensitive; at most 4096 UTF-8 bytes in a save request."
+          },
+          "pinned": {"type": "boolean"},
+          "pin_order": {
+            "type": "integer",
+            "format": "int64",
+            "description": "May be absent when zero."
+          },
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "revision": {"type": "integer", "format": "int64"}
+        }
+      },
+      "EncryptedNote": {
+        "type": "object",
+        "required": [
+          "id",
+          "summary",
+          "pinned",
+          "pin_order",
+          "created_at",
+          "updated_at",
+          "revision",
+          "epoch"
+        ],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "summary": {"$ref": "#/components/schemas/Envelope"},
+          "pinned": {"type": "boolean"},
+          "pin_order": {"type": "integer", "format": "int64"},
+          "created_at": {"type": "string", "format": "date-time"},
+          "updated_at": {"type": "string", "format": "date-time"},
+          "revision": {"type": "integer", "format": "int64"},
+          "epoch": {"type": "integer", "format": "int64"}
+        }
+      },
+      "NoteSummary": {
+        "oneOf": [
+          {"$ref": "#/components/schemas/PlainNote"},
+          {"$ref": "#/components/schemas/EncryptedNote"}
+        ]
+      },
+      "CompleteNote": {
+        "oneOf": [
+          {
+            "allOf": [
+              {"$ref": "#/components/schemas/PlainNote"},
+              {
+                "type": "object",
+                "required": ["content"],
+                "properties": {"content": {"type": "string", "description": "UTF-8 Markdown."}}
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {"$ref": "#/components/schemas/EncryptedNote"},
+              {
+                "type": "object",
+                "required": ["body"],
+                "properties": {"body": {"$ref": "#/components/schemas/Envelope"}}
+              }
+            ]
+          }
+        ]
+      },
+      "NotesPage": {
+        "type": "object",
+        "required": ["notes"],
+        "properties": {
+          "notes": {"type": "array", "items": {"$ref": "#/components/schemas/NoteSummary"}},
+          "nextCursor": {"type": "string", "description": "Opaque cursor; absent/empty at end."}
+        }
+      },
+      "SaveNote": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "title": {"type": "string"},
+          "content": {"type": "string"},
+          "tags": {"type": "string"},
+          "base_revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Required when id is supplied; 0 creates a new client-generated ID."
+          }
+        }
+      },
+      "SaveEncryptedNote": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "summary", "body", "epoch", "base_revision"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "summary": {"$ref": "#/components/schemas/Envelope"},
+          "body": {"$ref": "#/components/schemas/Envelope"},
+          "epoch": {"type": "integer", "format": "int64", "minimum": 1},
+          "base_revision": {"type": "integer", "format": "int64"}
+        }
+      },
+      "Change": {
+        "type": "object",
+        "required": ["sequence", "note_id", "revision", "deleted", "changed_at"],
+        "properties": {
+          "sequence": {"type": "integer", "format": "int64"},
+          "note_id": {"$ref": "#/components/schemas/ID"},
+          "revision": {"type": "integer", "format": "int64"},
+          "deleted": {"type": "boolean"},
+          "changed_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "ChangesPage": {
+        "type": "object",
+        "required": ["changes", "nextSequence", "hasMore", "instance_id"],
+        "properties": {
+          "changes": {"type": "array", "items": {"$ref": "#/components/schemas/Change"}},
+          "nextSequence": {"type": "integer", "format": "int64"},
+          "hasMore": {"type": "boolean"},
+          "resetRequired": {"type": "boolean"},
+          "instance_id": {"type": "string"}
+        }
+      },
+      "Operation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["client_sequence", "op_id", "type"],
+        "description": "Conditional fields: save needs note_id/base_revision and complete title/tags/content; delete needs note_id/base_revision >= 1; pin needs note_id/base_revision >= 0/pinned; prefs.save needs prefs and preferably base_revision; noop only needs sequence/op_id/type. base_content is accepted but does not cause server-side text merging. Existing note pin state changes through note.pin.",
+        "properties": {
+          "client_sequence": {"type": "integer", "format": "int64", "minimum": 1},
+          "op_id": {"$ref": "#/components/schemas/QueueID"},
+          "type": {
+            "type": "string",
+            "enum": ["note.save", "note.delete", "note.pin", "prefs.save", "noop"]
+          },
+          "note_id": {"$ref": "#/components/schemas/ID"},
+          "base_revision": {"type": "integer", "format": "int64"},
+          "title": {"type": "string"},
+          "tags": {"type": "string"},
+          "content": {"type": "string"},
+          "base_content": {"type": "string"},
+          "pinned": {"type": "boolean"},
+          "prefs": {"$ref": "#/components/schemas/Preferences"}
+        }
+      },
+      "EncryptedOperation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["client_sequence", "op_id", "type"],
+        "description": "save requires note_id/base_revision/summary/body/epoch; delete and pin require note_id/base_revision/epoch (and pinned for pin). prefs.save and noop do not require epoch. Plaintext title/tags/content/base_content fields are rejected. Envelope AAD binds epoch; do not change it without re-encrypting.",
+        "properties": {
+          "client_sequence": {"type": "integer", "format": "int64", "minimum": 1},
+          "op_id": {"$ref": "#/components/schemas/QueueID"},
+          "type": {
+            "type": "string",
+            "enum": ["note.save", "note.delete", "note.pin", "prefs.save", "noop"]
+          },
+          "note_id": {"$ref": "#/components/schemas/ID"},
+          "base_revision": {"type": "integer", "format": "int64"},
+          "summary": {"$ref": "#/components/schemas/Envelope"},
+          "body": {"$ref": "#/components/schemas/Envelope"},
+          "epoch": {"type": "integer", "format": "int64", "minimum": 1},
+          "pinned": {"type": "boolean"},
+          "prefs": {"$ref": "#/components/schemas/Preferences"}
+        }
+      },
+      "PushRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["device_id", "operations"],
+        "properties": {
+          "device_id": {"$ref": "#/components/schemas/QueueID"},
+          "operations": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {"$ref": "#/components/schemas/Operation"}
+          }
+        }
+      },
+      "EncryptedPushRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["device_id", "operations"],
+        "properties": {
+          "device_id": {"$ref": "#/components/schemas/QueueID"},
+          "operations": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {"$ref": "#/components/schemas/EncryptedOperation"}
+          }
+        }
+      },
+      "Acknowledgement": {
+        "type": "object",
+        "required": ["client_sequence", "op_id", "status"],
+        "properties": {
+          "client_sequence": {"type": "integer", "format": "int64"},
+          "op_id": {"type": "string"},
+          "status": {
+            "type": "string",
+            "enum": ["applied", "conflict", "compacted"],
+            "description": "All consume sequence. compacted acknowledges an old consumed operation whose detailed result was pruned, not proof that remote content matches."
+          },
+          "revision": {"type": "integer", "format": "int64"},
+          "current_revision": {"type": "integer", "format": "int64"},
+          "pin_order": {"type": "integer", "format": "int64"}
+        }
+      },
+      "PushResult": {
+        "type": "object",
+        "required": ["acknowledged", "expected_sequence"],
+        "properties": {
+          "acknowledged": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/Acknowledgement"}
+          },
+          "expected_sequence": {"type": "integer", "format": "int64", "minimum": 1}
+        }
+      },
+      "ShortcutStep": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "modifiers"],
+        "description": "First step modifiers are [Mod] or [Mod, Shift]; second step modifiers must be empty.",
+        "properties": {
+          "key": {"type": "string", "pattern": "^[A-Za-z0-9/;]$"},
+          "modifiers": {"type": "array", "items": {"type": "string", "enum": ["Mod", "Shift"]}}
+        }
+      },
+      "ShortcutBinding": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["steps"],
+        "properties": {
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 2,
+            "items": {"$ref": "#/components/schemas/ShortcutStep"}
+          }
+        }
+      },
+      "FontSize": {
+        "type": "string",
+        "description": "Empty is accepted in full replacement; a sync patch must use a listed nonempty size.",
+        "enum": ["", "0.8rem", "0.9rem", "1rem", "1.1rem", "1.25rem", "1.5rem"]
+      },
+      "ContentWidth": {
+        "type": "string",
+        "description": "Empty is accepted in full replacement; a sync patch must use a listed nonempty width.",
+        "enum": ["", "compact", "standard", "wide", "full"]
+      },
+      "Preferences": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Account-wide unencrypted UI settings. For sync partial updates, supply _sync_patch (desired fields) and _sync_base (previous values of those fields) with the operation base_revision; stale changes merge only when each current field equals the base or desired value. Defaults documented here apply to a fresh account, not every omitted field in PATCH.",
+        "properties": {
+          "revision": {"type": "integer", "format": "int64"},
+          "autoSave": {"type": "boolean", "default": true},
+          "startView": {
+            "type": "string",
+            "enum": ["editor", "preview", "split", "zen"],
+            "default": "split"
+          },
+          "hideToolbar": {"type": "boolean"},
+          "hideSaveButton": {"type": "boolean"},
+          "saveButtonLocation": {
+            "type": "string",
+            "enum": ["", "panel", "header"],
+            "default": "panel"
+          },
+          "collapseDetails": {"type": "boolean"},
+          "hideCursorHighlight": {"type": "boolean"},
+          "interactivePreview": {"type": "boolean"},
+          "statusDisplay": {"type": "string"},
+          "contentWidth": {"$ref": "#/components/schemas/ContentWidth"},
+          "zenPageWidth": {"$ref": "#/components/schemas/ContentWidth"},
+          "theme": {
+            "type": "string",
+            "description": "Built-in theme name or client-defined palette string; server stores it without interpreting the palette."
+          },
+          "accentColor": {"type": "string"},
+          "fontFamily": {"type": "string"},
+          "fontFamilyGoogle": {"type": "boolean"},
+          "fontSize": {"$ref": "#/components/schemas/FontSize"},
+          "editorFontFamily": {"type": "string"},
+          "editorFontFamilyGoogle": {"type": "boolean"},
+          "editorFontSize": {"$ref": "#/components/schemas/FontSize"},
+          "previewFontFamily": {"type": "string"},
+          "previewFontFamilyGoogle": {"type": "boolean"},
+          "previewFontSize": {"$ref": "#/components/schemas/FontSize"},
+          "zenFontFamily": {"type": "string"},
+          "zenFontFamilyGoogle": {"type": "boolean"},
+          "zenFontSize": {"$ref": "#/components/schemas/FontSize"},
+          "zenWordCount": {"type": "boolean"},
+          "zenShowTitle": {"type": "boolean", "default": true},
+          "zenShowControls": {"type": "boolean", "default": true},
+          "zenInteractivePreview": {"type": "boolean"},
+          "shortcutPrefix": {
+            "$ref": "#/components/schemas/ShortcutBinding",
+            "description": "Exactly one step; default Mod+/ ."
+          },
+          "keyboardShortcuts": {
+            "type": "object",
+            "maxProperties": 64,
+            "propertyNames": {"pattern": "^[a-z][a-z0-9.-]{0,63}$"},
+            "additionalProperties": {
+              "oneOf": [{"$ref": "#/components/schemas/ShortcutBinding"}, {"type": "null"}]
+            }
+          },
+          "shortcutConfirmationSkips": {
+            "type": "object",
+            "maxProperties": 64,
+            "propertyNames": {"pattern": "^[a-z][a-z0-9.-]{0,63}$"},
+            "additionalProperties": {"type": "boolean", "const": true}
+          },
+          "_sync_patch": {"type": "object", "additionalProperties": true},
+          "_sync_base": {"type": "object", "additionalProperties": true}
+        }
+      },
+      "VaultMode": {"type": "string", "enum": ["legacy", "preparing", "cleaning", "encrypted"]},
+      "Bootstrap": {
+        "type": "object",
+        "required": ["mode", "reset_available", "require_strong_passwords", "version", "revision"],
+        "properties": {
+          "mode": {"$ref": "#/components/schemas/VaultMode"},
+          "reset_available": {"type": "boolean"},
+          "require_strong_passwords": {"type": "boolean"},
+          "version": {"type": "string"},
+          "revision": {"type": "string"},
+          "vault_id": {"$ref": "#/components/schemas/VaultID"},
+          "epoch": {"type": "integer", "format": "int64"},
+          "kdf": {
+            "type": "object",
+            "required": ["algorithm", "salt", "memoryKiB", "iterations"],
+            "properties": {
+              "algorithm": {"type": "string", "const": "argon2id13"},
+              "salt": {"$ref": "#/components/schemas/VaultID"},
+              "memoryKiB": {"type": "integer", "minimum": 19456, "maximum": 262144},
+              "iterations": {"type": "integer", "minimum": 2, "maximum": 10}
+            }
+          }
+        }
+      },
+      "VaultSetup": {
+        "type": "object",
+        "required": [
+          "vault_id",
+          "kdf_salt",
+          "kdf_memory_kib",
+          "kdf_iterations",
+          "auth_proof",
+          "recovery_proof",
+          "wrapped_key",
+          "wrapped_recovery_key"
+        ],
+        "properties": {
+          "vault_id": {"$ref": "#/components/schemas/VaultID"},
+          "kdf_salt": {"$ref": "#/components/schemas/VaultID"},
+          "kdf_memory_kib": {"type": "integer", "minimum": 19456, "maximum": 262144},
+          "kdf_iterations": {"type": "integer", "minimum": 2, "maximum": 10},
+          "auth_proof": {"$ref": "#/components/schemas/Proof"},
+          "recovery_proof": {"$ref": "#/components/schemas/Proof"},
+          "wrapped_key": {"$ref": "#/components/schemas/Envelope"},
+          "wrapped_recovery_key": {"$ref": "#/components/schemas/Envelope"}
+        }
+      },
+      "MigrationStart": {
+        "allOf": [
+          {"$ref": "#/components/schemas/VaultSetup"},
+          {
+            "type": "object",
+            "required": ["old_password"],
+            "properties": {"old_password": {"type": "string"}}
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "VaultReset": {
+        "allOf": [
+          {"$ref": "#/components/schemas/VaultSetup"},
+          {
+            "type": "object",
+            "required": ["password"],
+            "properties": {
+              "password": {
+                "type": "string",
+                "description": "Configured VYLK_PASSWORD, not vault passphrase."
+              }
+            }
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "CredentialChange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "current_proof", "new_proof", "wrapped_key"],
+        "properties": {
+          "kind": {"type": "string", "enum": ["master", "recovery"]},
+          "current_proof": {"$ref": "#/components/schemas/Proof"},
+          "current_recovery": {"type": "boolean", "default": false},
+          "new_proof": {"$ref": "#/components/schemas/Proof"},
+          "wrapped_key": {"$ref": "#/components/schemas/Envelope"},
+          "kdf_salt": {
+            "$ref": "#/components/schemas/VaultID",
+            "description": "Required for master changes."
+          },
+          "kdf_memory_kib": {
+            "type": "integer",
+            "minimum": 19456,
+            "maximum": 262144,
+            "description": "Required for master changes."
+          },
+          "kdf_iterations": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 10,
+            "description": "Required for master changes."
+          },
+          "sign_out_other_devices": {"type": "boolean", "default": true}
+        }
+      },
+      "StagedRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "revision", "summary", "body"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "revision": {"type": "integer", "format": "int64", "minimum": 1},
+          "summary": {"$ref": "#/components/schemas/Envelope"},
+          "body": {"$ref": "#/components/schemas/Envelope"}
+        }
+      },
+      "StagedNote": {
+        "type": "object",
+        "required": ["id", "revision", "summary", "body", "epoch", "body_hash"],
+        "properties": {
+          "id": {"$ref": "#/components/schemas/ID"},
+          "revision": {"type": "integer", "format": "int64"},
+          "summary": {"$ref": "#/components/schemas/Envelope"},
+          "body": {"$ref": "#/components/schemas/Envelope"},
+          "epoch": {"type": "integer", "format": "int64"},
+          "body_hash": {"type": "string"}
+        }
+      }
+    }
+  }
+}
