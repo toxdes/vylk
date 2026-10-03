@@ -179,6 +179,12 @@
       // this page's assets are old. Prefer the loaded shell fingerprint.
       if (response?.revision && appRevision ? changedRevision : changedVersion)
         showUpdateAvailable();
+      else if (response?.revision && response.revision === appRevision) {
+        // A server can return to this build while the page remains open. A
+        // previous mismatch is not evidence that an update is still needed.
+        updateToast?.remove();
+        updateToast = null;
+      }
       if (response?.version) {
         if (!appVersion) appVersion = response.version;
         localStorage.setItem('vylk-version', response.version);
