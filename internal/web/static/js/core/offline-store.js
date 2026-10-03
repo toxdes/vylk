@@ -180,11 +180,22 @@
       return error;
     }
 
+    function bindDatasetIdentity(identity) {
+      // Initial assignment enriches an existing cache, unlike Switch, which
+      // clears it. Only that explicitly marked first assignment is adoptable by
+      // tabs that read the cache before it had a public identity.
+      if (
+        boundDatasetIdentity === undefined ||
+        (boundDatasetIdentity === null && identity?.initial === true)
+      )
+        boundDatasetIdentity = identity?.value || null;
+    }
+
     async function assertDataset(keys) {
       const identity = await requestValue(keys.get('dataset-identity'));
       const current = identity?.value || null;
       // Offline startup also binds its tab before using remembered keys or notes.
-      if (boundDatasetIdentity === undefined) boundDatasetIdentity = current;
+      bindDatasetIdentity(identity);
       if (current !== boundDatasetIdentity) throw datasetChangedError();
     }
 
@@ -204,7 +215,7 @@
     async function inspectDataset(config) {
       return withTransaction(openOfflineDB, ['keys', 'state'], 'readwrite', async (stores) => {
         const identity = await requestValue(stores.keys.get('dataset-identity'));
-        if (boundDatasetIdentity === undefined) boundDatasetIdentity = identity?.value || null;
+        bindDatasetIdentity(identity);
         const previous =
           identity?.value || (await requestValue(stores.state.get('serverInstanceID')))?.value;
         const marker = await requestValue(stores.state.get('vault-local-format'));
@@ -225,7 +236,13 @@
         if (config.instance_id) {
           expectedInstanceID = config.instance_id;
           boundDatasetIdentity = config.instance_id;
-          await requestValue(stores.keys.put({id: 'dataset-identity', value: expectedInstanceID}));
+          await requestValue(
+            stores.keys.put({
+              id: 'dataset-identity',
+              value: expectedInstanceID,
+              initial: identity ? identity.initial === true : true,
+            }),
+          );
         }
         return {changed: false};
       });

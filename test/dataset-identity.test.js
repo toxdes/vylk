@@ -38,6 +38,57 @@ test('detects the existing plaintext identity before binding a replacement datas
   });
 });
 
+test('an offline tab adopts the first identity assigned by another tab without losing edits', async () => {
+  const name = crypto.randomUUID();
+  const offline = create(name);
+  const online = create(name);
+  await offline.setOfflineState('serverInstanceID', 'original');
+  await offline.putLocalNote({id: 'pending', content: 'Offline edits'});
+  expect(await online.inspectDataset({instance_id: 'original', mode: 'legacy'})).toEqual({
+    changed: false,
+  });
+  expect((await offline.getLocalNote('pending')).content).toBe('Offline edits');
+  expect(await offline.inspectDataset({instance_id: 'original', mode: 'legacy'})).toEqual({
+    changed: false,
+  });
+  await offline.putLocalNote({id: 'pending', content: 'More offline edits'});
+  expect((await online.getLocalNote('pending')).content).toBe('More offline edits');
+});
+
+test('first-use adoption does not adopt an explicitly switched replacement', async () => {
+  const name = crypto.randomUUID();
+  const offline = create(name);
+  const online = create(name);
+  await offline.getLocalNotes();
+  await online.inspectDataset({instance_id: 'original', mode: 'legacy'});
+  await online.switchDataset({instance_id: 'replacement', mode: 'legacy'});
+  expect(await offline.inspectDataset({instance_id: 'replacement', mode: 'legacy'})).toEqual({
+    changed: true,
+  });
+  await expect(
+    offline.putLocalNote({id: 'pending', content: 'Old tab edits'}),
+  ).rejects.toMatchObject({code: 'server_instance_changed'});
+});
+
+test('an encrypted offline tab adopts the first public identity without losing its key or edits', async () => {
+  const name = crypto.randomUUID();
+  const offline = create(name);
+  const online = create(name);
+  const vaultID = globalThis.VylkVaultCrypto.toBase64(crypto.getRandomValues(new Uint8Array(16)));
+  const key = await globalThis.VylkVaultCrypto.importRoot(
+    crypto.getRandomValues(new Uint8Array(32)),
+  );
+  await offline.putLocalNote({id: 'pending', content: 'Private offline edits'});
+  await offline.unlockVaultLocal(key, vaultID, true, 1);
+  const config = {instance_id: 'original', mode: 'encrypted', vault_id: vaultID, epoch: 1};
+  expect(await online.inspectDataset(config)).toEqual({changed: false});
+  expect((await offline.getLocalNote('pending')).content).toBe('Private offline edits');
+  expect(await offline.inspectDataset(config)).toEqual({changed: false});
+  await offline.putLocalNote({id: 'pending', content: 'More private edits'});
+  await online.unlockVaultLocal(key, vaultID, false, 1);
+  expect((await online.getLocalNote('pending')).content).toBe('More private edits');
+});
+
 test('detects a locked encrypted cache without decrypting it and switches only explicitly', async () => {
   const name = crypto.randomUUID();
   const store = create(name);

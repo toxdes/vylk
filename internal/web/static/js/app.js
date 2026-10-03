@@ -157,6 +157,7 @@
           void closeOfflineDatabaseConnection().finally(() => window.location.reload());
         }
         if (event.data.type === 'session-locked') void verifyPeerSession().catch(() => {});
+        if (event.data.type === 'local-signout') void lockRevokedSession(false);
         if (event.data.type === 'dataset-changed') void verifyPeerDataset().catch(() => {});
         if (event.data.type === 'dataset-switched') {
           datasetChangePaused = true;
@@ -975,8 +976,17 @@
     closeModal,
     beforeSignOut: persistBeforeSessionExit,
     onCurrentDeviceRevoked: lockRevokedSession,
+    getCurrentDeviceID: syncDeviceID,
+    onLocalSignOut: async () => {
+      localStorage.setItem('vylk-local-signout', '1');
+      await lockRevokedSession(false);
+      // Cookies cannot be revoked offline. Other tabs must also honor the local
+      // sign-out marker rather than treating the still-valid cookie as unlocked.
+      syncCoordinationChannel?.postMessage({type: 'local-signout', sender: syncTabID});
+    },
   });
   window.VylkAuth.bind({
+    onSignedIn: () => localStorage.removeItem('vylk-local-signout'),
     api,
     cacheVersion: cacheAppVersion,
     closeModal,
@@ -2078,13 +2088,6 @@
   }
 
   function setWritingView(view) {
-    if (panelController.state() === 'zen') {
-      panelController.setZenView(view);
-      setPanelState('zen');
-      if (view === 'preview') focusPreview();
-      else focusCurrentSourceEditor();
-      return;
-    }
     setPanelState(view);
     if (view === 'preview') focusPreview();
     else focusCurrentSourceEditor();
@@ -2254,6 +2257,11 @@
       } catch (error) {
         if (error?.code === 'server_instance_changed') throw error;
         if (await offlineStore.vaultLocalFormat()) throw error;
+      }
+      if (localStorage.getItem('vylk-local-signout') === '1') {
+        vaultSession.lock();
+        showLoginScreen();
+        return;
       }
       if (vaultSession.config()?.mode === 'preparing') {
         showLoginScreen();

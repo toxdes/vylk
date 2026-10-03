@@ -1,4 +1,5 @@
 import {expect, test} from '@playwright/test';
+import {useEditorFixture} from './editor-fixture.js';
 
 async function signIn(page) {
   await page.goto('/');
@@ -6,6 +7,44 @@ async function signIn(page) {
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page.locator('#dashboard')).toBeVisible();
 }
+
+test('offline sign-out preserves pending edits and stays signed out after reload', async ({
+  page,
+}) => {
+  await signIn(page);
+  await useEditorFixture(page);
+  await page.route('**/api/**', (route) => route.abort());
+  const title = `Offline sign-out ${Date.now()}`;
+  await page.locator('#new-note-btn').click();
+  await page.locator('#note-title').fill(title);
+  await page.locator('#note-content').fill('Pending changes must survive sign-out.');
+  await page.locator('#back-btn').click();
+  await expect(page.locator('.note-item').filter({hasText: title})).toBeVisible();
+  await page.locator('#prefs-btn').click();
+  await page.locator('#prefs-tab-account').click();
+  const current = page.locator('#devices-list .pref-row').filter({hasText: 'This device'});
+  await expect(current).toHaveCount(1);
+  await current.getByRole('button', {name: /Sign out/}).click();
+  await page.locator('#device-signout-confirm').click();
+  await expect(page.locator('#login-screen')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#login-screen')).toBeVisible();
+  await page.unroute('**/api/**');
+  // The offline action cannot revoke the cookie, but it must not auto-sign in.
+  expect((await page.request.get('/api/check')).status()).toBe(200);
+  await page.reload();
+  await expect(page.locator('#login-screen')).toBeVisible();
+  await page.locator('#login-password').fill('browser-test-password');
+  await page.locator('#login-form button[type="submit"]').click();
+  await expect(page.locator('#login-screen')).toBeHidden();
+  await expect
+    .poll(async () => {
+      const result = await page.request.get('/api/notes');
+      return (await result.json()).some((note) => note.title === title);
+    })
+    .toBe(true);
+  expect(await page.evaluate(() => localStorage.getItem('vylk-local-signout'))).toBeNull();
+});
 
 test('groups browser tabs as one device and signs out another browser', async ({page, browser}) => {
   test.setTimeout(90000);

@@ -40,6 +40,7 @@ function bindAuth(mode) {
     cacheVersion: () => {},
     clearDiagnostic: () => {},
     setAuthenticationRequired: vi.fn(),
+    onSignedIn: vi.fn(),
     handleServerIdentity: vi.fn(async () => {
       if (mode === 'preparing') throw new Error('local vault is locked');
     }),
@@ -66,6 +67,7 @@ test.each(['login-form', 'login-recovery-form'])(
     await vi.waitFor(() => expect(dependencies.restoreRoute).toHaveBeenCalledOnce());
     expect(dependencies.vaultSession.bootstrap).toHaveBeenCalledOnce();
     expect(dependencies.vaultSession.unlock).toHaveBeenCalledOnce();
+    expect(dependencies.onSignedIn).toHaveBeenCalledOnce();
   },
 );
 

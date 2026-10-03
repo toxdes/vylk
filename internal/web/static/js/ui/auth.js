@@ -15,6 +15,7 @@
     restoreRoute,
     scheduleSync,
     setAuthenticationRequired,
+    onSignedIn = () => {},
     showLogin,
     vaultSetup,
     vaultSession,
@@ -49,6 +50,7 @@
         // Conversion may already have encrypted IndexedDB. Recover its key in
         // setup before any identity/sync reads touch that locked local store.
         await vaultSetup.open();
+        onSignedIn();
         return;
       }
       if (!result.offline) {
@@ -61,6 +63,7 @@
       }
       if (!result.offline) await loadPreferences();
       await restoreRoute({fetchRemote: !result.offline});
+      onSignedIn();
       if (!result.offline) {
         connectEvents();
         scheduleSync({reconcile: true});

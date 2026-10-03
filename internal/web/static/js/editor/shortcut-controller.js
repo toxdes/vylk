@@ -1,6 +1,13 @@
 (function (root) {
   'use strict';
 
+  const viewPanels = {
+    'view.write': 'editor',
+    'view.preview': 'preview',
+    'view.split': 'both',
+    'view.zen': 'zen',
+  };
+
   function create({
     commandCanRun,
     closeModal,
@@ -70,8 +77,8 @@
         const selector =
           command.id === 'note.save'
             ? '#save-btn'
-            : command.id.startsWith('view.')
-              ? `.view-control[data-panel="${command.id === 'view.write' ? 'editor' : command.id === 'view.split' ? 'both' : command.id === 'view.preview' ? 'preview' : ''}"]`
+            : viewPanels[command.id]
+              ? `.view-control[data-panel="${viewPanels[command.id]}"]`
               : command.id.startsWith('format.')
                 ? `.fmt-bar [data-fmt="${command.id.slice('format.'.length)}"]`
                 : '';

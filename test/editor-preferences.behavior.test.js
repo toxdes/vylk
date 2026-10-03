@@ -5,6 +5,50 @@ import {installAppLifecycle, styleSource} from './frontend-test-context.js';
 const track = installAppLifecycle();
 
 describe('keyboard shortcuts', () => {
+  test('maps direct view shortcuts to the editor button order without intercepting the dashboard', async () => {
+    const app = track(await createApp());
+    const document = app.window.document;
+    await app.hooks.restoreRoute({fetchRemote: false});
+    const dashboardKey = new app.window.KeyboardEvent('keydown', {
+      key: '1',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(dashboardKey);
+    expect(dashboardKey.defaultPrevented).toBe(false);
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', tags: '', content: 'body'});
+    expect(
+      [...document.querySelectorAll('.view-control[data-panel]')].map(
+        (button) => button.dataset.panel,
+      ),
+    ).toEqual(['editor', 'preview', 'both', 'zen']);
+    for (const [key, command, panel] of [
+      ['1', 'view.write', 'editor'],
+      ['2', 'view.preview', 'preview'],
+      ['3', 'view.split', 'both'],
+      ['4', 'view.zen', 'zen'],
+    ]) {
+      expect(app.hooks.getShortcutBinding(command).steps).toEqual([{key, modifiers: ['Mod']}]);
+      const event = new app.window.KeyboardEvent('keydown', {
+        key,
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(
+        document.querySelector(`.view-control[data-panel="${panel}"]`).getAttribute('aria-pressed'),
+      ).toBe('true');
+      expect(
+        document
+          .querySelector(`.view-control[data-panel="${panel}"]`)
+          .getAttribute('aria-keyshortcuts'),
+      ).toBe(`Control+${key}`);
+    }
+  });
+
   test('registers the curated commands with portable defaults', async () => {
     const app = track(await createApp());
     expect(app.hooks.shortcutCommands()).toEqual(
@@ -89,14 +133,11 @@ describe('keyboard shortcuts', () => {
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', tags: '', content: 'body'});
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: 'e',
+        key: '2',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
       }),
-    );
-    app.window.document.dispatchEvent(
-      new app.window.KeyboardEvent('keydown', {key: '2', bubbles: true, cancelable: true}),
     );
     expect(
       app.window.document.querySelector('#editor-panel').classList.contains('panel-hidden'),

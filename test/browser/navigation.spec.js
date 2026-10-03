@@ -11,6 +11,26 @@ async function signIn(page) {
   await useEditorFixture(page);
 }
 
+test('direct view shortcuts follow the editor button order', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  for (const [key, panel] of [
+    ['2', 'preview'],
+    ['3', 'both'],
+    ['4', 'zen'],
+    ['1', 'editor'],
+  ]) {
+    await page.keyboard.press(`Control+${key}`);
+    await expect(page.locator(`.view-control[data-panel="${panel}"]`)).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  }
+  await expect(page.locator('#editor')).not.toHaveClass(/zen-mode/);
+  await expect(page.locator('#editor-panel')).toBeVisible();
+  await expect(page.locator('#preview-panel')).toBeHidden();
+});
+
 test('note deletion uses the shared confirmation dialog', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();

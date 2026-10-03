@@ -55,6 +55,47 @@ describe('typed API outcomes', () => {
 });
 
 describe('cross-tab session notifications', () => {
+  test('local sign-out locks peer tabs without trusting their still-valid cookie', async () => {
+    const requests = [];
+    const peer = peerChannel();
+    const app = track(
+      await createApp({
+        broadcastChannel: peer.channel,
+        fetchImpl: async (path) => {
+          requests.push(path);
+          return response(200, {ok: true});
+        },
+      }),
+    );
+    await app.hooks.restoreRoute({fetchRemote: false});
+    peer.send({type: 'local-signout'});
+    await app.hooks.lockRevokedSession(false);
+    expect(app.window.document.querySelector('#login-screen').classList.contains('hidden')).toBe(
+      false,
+    );
+    expect(requests).not.toContain('/api/check');
+  });
+
+  test('local sign-out survives reload even while the server cookie remains valid', async () => {
+    const requests = [];
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) => {
+          requests.push(path);
+          return response(200, {mode: 'legacy', instance_id: 'current'});
+        },
+      }),
+    );
+    app.window.localStorage.setItem('vylk-local-signout', '1');
+    await app.hooks.init();
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every((path) => path === '/api/vault/bootstrap')).toBe(true);
+    expect(app.window.document.querySelector('#login-screen').classList.contains('hidden')).toBe(
+      false,
+    );
+    expect(app.window.document.querySelector('#dashboard').classList.contains('hidden')).toBe(true);
+  });
+
   test('a new-session lock is not swallowed by a superseded pending lock', async () => {
     const app = track(await createApp({fetchImpl: async () => response(200, {ok: true})}));
     await app.hooks.restoreRoute({fetchRemote: false});
