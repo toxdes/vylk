@@ -1238,9 +1238,9 @@
           }),
         );
       }),
-    persistLocalNote: (local, operation) => {
+    persistLocalNote: (local, operation, expectedNote) => {
       const persist = globalThis.__vylkDependencies?.saveLocalNoteAndQueue || saveLocalNoteAndQueue;
-      return persist(local, operation);
+      return persist(local, operation, expectedNote);
     },
     readEditor: () => ({
       title: $('#note-title').value.trim() || 'Untitled',

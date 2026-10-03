@@ -672,12 +672,37 @@
       });
     }
 
-    async function saveLocalNoteAndQueue(note, operation) {
-      await withOfflineStore(['notes', 'queue', 'state'], 'readwrite', async (stores) => {
-        await requestValue(stores.notes.put(note));
-        await queueOperationInStores(stores, operation);
-      });
+    async function saveLocalNoteAndQueue(note, operation, expectedNote = null) {
+      const saved = await withOfflineStore(
+        ['notes', 'queue', 'state'],
+        'readwrite',
+        async (stores) => {
+          const current = expectedNote ? await requestValue(stores.notes.get(note.id)) : null;
+          // An acknowledgement can commit after the editor's read. Advance only
+          // when the base text is unchanged, never across a real remote edit.
+          if (
+            current &&
+            current.revision > operation.base_revision &&
+            current.revision >= expectedNote.revision &&
+            ['title', 'tags', 'content'].every((field) => current[field] === expectedNote[field])
+          ) {
+            note = {
+              ...note,
+              revision: current.revision,
+              base_revision: current.pending ? current.base_revision : current.revision,
+              base_content: current.pending ? current.base_content : current.content,
+              base_title: current.pending ? current.base_title : current.title,
+              base_tags: current.pending ? current.base_tags : current.tags,
+            };
+            operation = {...operation, base_revision: note.base_revision, note};
+          }
+          await requestValue(stores.notes.put(note));
+          await queueOperationInStores(stores, operation);
+          return note;
+        },
+      );
       onSyncRequested();
+      return saved;
     }
 
     async function removeLocalNoteAndQueue(id, operation) {

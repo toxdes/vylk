@@ -103,20 +103,35 @@
         finishPersist(snapshot, null);
         return true;
       }
+      let persistedBaseRevision = baseRevision;
       try {
-        await persistLocalNote(local, {
-          type: 'note.save',
-          note_id: snapshot.noteID,
-          base_revision: baseRevision,
-          note: local,
-        });
+        // A settled cache can be newer than the editor's base because of a
+        // remote edit. Only an unchanged saved snapshot may adopt its revision.
+        const expectedNote =
+          existing?.pending ||
+          ['title', 'tags', 'content'].every(
+            (field) => existing?.[field] === snapshot.savedSnapshot[field],
+          )
+            ? existing
+            : null;
+        const persisted = await persistLocalNote(
+          local,
+          {
+            type: 'note.save',
+            note_id: snapshot.noteID,
+            base_revision: baseRevision,
+            note: local,
+          },
+          expectedNote,
+        );
+        persistedBaseRevision = persisted?.base_revision ?? baseRevision;
       } catch (error) {
         console.error('local save failed', error);
         if (snapshotIsCurrent(snapshot)) onSaveFailed();
         showToast('Could not save locally. Free browser storage and try again.', 'warning');
         return false;
       }
-      finishPersist(snapshot, baseRevision);
+      finishPersist(snapshot, persistedBaseRevision);
       return true;
     }
 
@@ -136,6 +151,7 @@
               revision: session.revision,
               baseRevision: session.baseRevision ?? session.revision ?? 0,
               sessionGeneration: session.generation,
+              savedSnapshot: session.savedSnapshot,
             };
             result = await persistSnapshot(snapshot);
           }
