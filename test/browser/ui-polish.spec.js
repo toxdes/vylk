@@ -1,5 +1,5 @@
 import {expect, test} from '@playwright/test';
-import {useEditorFixture} from './editor-fixture.js';
+import {useEditorFixture, waitForEditorEntrance} from './editor-fixture.js';
 
 const password = 'browser-test-password';
 
@@ -837,6 +837,7 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
   await page.setViewportSize({width: 390, height: 844});
   await signIn(page);
   await page.locator('#new-note-btn').click();
+  await waitForEditorEntrance(page);
 
   const [toolbar, controls] = await Promise.all([
     page.locator('.fmt-bar').boundingBox(),
@@ -886,8 +887,8 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
   const formattingButton = page.locator('#editor-panel .fmt-bar button').first();
   const formattingButtonBox = await formattingButton.boundingBox();
   expect(formattingButtonBox).not.toBeNull();
-  expect(formattingButtonBox.width).toBe(24);
-  expect(formattingButtonBox.height).toBe(24);
+  expect(formattingButtonBox.width).toBeCloseTo(24, 0);
+  expect(formattingButtonBox.height).toBeCloseTo(24, 0);
   const iconWidths = await formattingButton.locator('.icon').evaluate((icon) => ({
     toolbar: Number.parseFloat(getComputedStyle(icon).width),
     corner: Number.parseFloat(

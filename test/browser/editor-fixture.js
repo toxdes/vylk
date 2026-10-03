@@ -1,5 +1,15 @@
 import {expect} from '@playwright/test';
 
+export async function waitForEditorEntrance(page) {
+  // Geometry must be measured after the entrance scale releases its transform.
+  // Await actual completion rather than assuming a particular frame rate.
+  await page.locator('#editor .editor-body').evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations().map((animation) => animation.finished.catch(() => {})),
+    );
+  });
+}
+
 // Geometry and interaction tests deliberately use split view and local fonts.
 // First-run defaults are tested separately, without these saved preferences.
 export async function useEditorFixture(page) {

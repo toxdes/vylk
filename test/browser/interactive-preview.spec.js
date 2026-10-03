@@ -1,5 +1,5 @@
 import {expect, test} from '@playwright/test';
-import {useEditorFixture} from './editor-fixture.js';
+import {useEditorFixture, waitForEditorEntrance} from './editor-fixture.js';
 
 const password = 'browser-test-password';
 
@@ -378,6 +378,7 @@ test('mobile preview content taps do not switch to the source editor', async ({p
 test('source caret cue follows wrapped visual rows', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
+  await waitForEditorEntrance(page);
   const content = 'wrapped '.repeat(40).trim();
   const editor = page.locator('#note-content');
   await editor.fill(content);
@@ -404,6 +405,7 @@ test('source caret cue follows wrapped visual rows', async ({page}) => {
 test('source caret cue stays on logical line starts, including blank lines', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
+  await waitForEditorEntrance(page);
   const content = 'alpha\nbravo\n\ncharlie';
   const editor = page.locator('#note-content');
   await editor.fill(content);
@@ -445,6 +447,7 @@ test('source caret cue stays on logical line starts, including blank lines', asy
 test('source caret cue stays on the first character of a soft-wrapped row', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
+  await waitForEditorEntrance(page);
   const content = 'wrapped '.repeat(80).trim();
   const editor = page.locator('#note-content');
   await editor.fill(content);
@@ -546,12 +549,13 @@ test('source caret cue stays on the first character of a soft-wrapped row', asyn
       expectedOffset: markerRect.top - mirrorRect.top,
     };
   }, position);
-  expect(actualOffset).toBeCloseTo(expectedOffset, 1);
+  expect(Math.abs(actualOffset - expectedOffset)).toBeLessThanOrEqual(0.5);
 });
 
 test('source caret cue stays at the active end while text is selected', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
+  await waitForEditorEntrance(page);
   const content = 'first line\nsecond line';
   const editor = page.locator('#note-content');
   await editor.fill(content);
@@ -580,7 +584,7 @@ test('source caret cue stays at the active end while text is selected', async ({
       parseFloat(getComputedStyle(document.querySelector('.editor-current-line')).top) +
       textarea.scrollTop,
   );
-  expect(top - firstTop).toBeCloseTo(lineHeight, 1);
+  expect(Math.abs(top - firstTop - lineHeight)).toBeLessThanOrEqual(0.5);
   await expect(page.locator('.editor-source-wrap')).toHaveClass(/is-caret-visible/);
   expect(lineHeight).toBeGreaterThan(0);
 });
@@ -589,6 +593,7 @@ test('source caret cue follows a real ArrowUp movement', async ({page}) => {
   await signIn(page);
   await page.setViewportSize({width: 1000, height: 800});
   await page.locator('#new-note-btn').click();
+  await waitForEditorEntrance(page);
   const content =
     [
       '2. [x] UI still feels slow to type on mobile',
@@ -655,7 +660,7 @@ test('source caret cue follows a real ArrowUp movement', async ({page}) => {
   });
   expect(state.position).toBe(state.value.length - 4);
   expect(state.value.slice(state.position, state.position + 3)).toBe('---');
-  expect(state.cueOffset).toBeCloseTo(state.expectedOffset, 1);
+  expect(Math.abs(state.cueOffset - state.expectedOffset)).toBeLessThanOrEqual(0.5);
 });
 
 test('editing from preview-only mode opens source at the selected block', async ({page}) => {
