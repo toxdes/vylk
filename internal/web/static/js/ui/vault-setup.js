@@ -234,12 +234,6 @@
         'aria-label',
         `${loginSecret.type === 'text' ? 'Hide' : 'Show'} ${loginToggle.dataset.secretName}`,
       );
-      document.querySelector('#account-signout-copy').textContent = encrypted
-        ? 'Sign out and forget this device’s key. Encrypted offline edits stay here.'
-        : 'Sign out and remove this device’s local data.';
-      document.querySelector('#logout-copy').textContent = encrypted
-        ? 'This ends your session and forgets this device’s key. Encrypted offline edits remain for your next sign-in.'
-        : 'This ends your session and removes this device’s local note data.';
       document.querySelector('#vault-status-copy').textContent = encrypted
         ? 'End-to-end encryption is on'
         : mode === 'preparing'

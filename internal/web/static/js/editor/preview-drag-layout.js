@@ -54,7 +54,7 @@
   }
 
   function animate(window, before) {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (window.VylkMotion.reduced(window.document, window)) return;
     for (const [element, first] of before) {
       if (!element.isConnected || typeof element.animate !== 'function') continue;
       element

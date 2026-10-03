@@ -6,6 +6,8 @@
 }
 
 :root {
+  --motion-duration: 180ms;
+  --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --bg: #fafafa;
   --fg: #0a4067;
   --muted: #5f6f82;
@@ -178,19 +180,48 @@ textarea:focus-visible {
 @keyframes app-content-in {
   from {
     opacity: 0;
+    transform: scale(0.985);
   }
   to {
     opacity: 1;
+    transform: none;
   }
 }
 @keyframes app-content-return {
   from {
     opacity: 0;
+    transform: scale(1.015);
   }
   to {
     opacity: 1;
+    transform: none;
   }
 }
+@keyframes app-content-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+/* Navigation keeps the outgoing DOM briefly, not a cloned or raster snapshot.
+   Logical visibility is already hidden; only the compositor finishes its exit. */
+#app > .screen-leaving.hidden {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: block !important;
+  pointer-events: none;
+  animation: app-content-out var(--motion-duration) var(--motion-ease) both;
+}
+
+#app > #editor.screen-leaving.hidden {
+  display: flex !important;
+}
+
 .svg-sprite {
   position: absolute;
   width: 0;
@@ -292,6 +323,17 @@ textarea:focus-visible {
 .btn-secondary:hover {
   border-color: var(--accent);
   background: var(--surface-hover);
+}
+
+.btn-secondary.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-secondary.danger:hover {
+  border-color: var(--danger-hover);
+  background: color-mix(in srgb, var(--danger) 10%, var(--card-bg));
+  color: var(--danger-hover);
 }
 
 .prefs-btn {
@@ -460,61 +502,28 @@ textarea:focus-visible {
     opacity: 0;
   }
 }
-@keyframes modal-panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(0.35rem) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes modal-panel-out {
-  from {
-    opacity: 1;
-    transform: none;
-  }
-  to {
-    opacity: 0;
-    transform: translateY(0.2rem) scale(0.99);
-  }
-}
 .modal:not(.hidden) .modal-backdrop {
   animation: modal-backdrop-in 0.16s ease both;
-  will-change: opacity;
 }
 
 .modal:not(.hidden) .modal-body {
-  animation: modal-panel-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
   backface-visibility: hidden;
-  will-change: opacity, transform;
 }
 
 .modal.is-closing .modal-backdrop {
   animation: modal-backdrop-out 0.16s ease both;
-  will-change: opacity;
 }
 
 .modal.is-closing .modal-body {
-  animation: modal-panel-out 0.18s ease both;
+  animation: app-content-out var(--motion-duration) var(--motion-ease) both;
   backface-visibility: hidden;
-  will-change: opacity, transform;
 }
 
 @media (max-width: 640px) {
   .modal-body--form {
     max-height: calc(100dvh - 1rem);
     padding: 1.25rem;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .modal:not(.hidden) .modal-backdrop,
-  .modal:not(.hidden) .modal-body,
-  .modal.is-closing .modal-backdrop,
-  .modal.is-closing .modal-body {
-    animation: none;
-    will-change: auto;
   }
 }
 /* Login */
@@ -854,19 +863,13 @@ header h1 {
 }
 
 #dashboard:not(.hidden) .dashboard-body {
-  animation: app-content-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
 }
 
 #dashboard:not(.hidden).returning-from-editor .dashboard-body {
   animation-name: app-content-return;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #dashboard:not(.hidden) .dashboard-body,
-  #dashboard:not(.hidden).returning-from-editor .dashboard-body {
-    animation: none;
-  }
-}
 .toolbar {
   display: flex;
   justify-content: flex-end;
@@ -1068,14 +1071,9 @@ header h1 {
 }
 
 #editor:not(.hidden) .editor-body {
-  animation: app-content-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  #editor:not(.hidden) .editor-body {
-    animation: none;
-  }
-}
 .meta-pane {
   flex-shrink: 0;
   overflow: hidden;
@@ -1954,17 +1952,6 @@ header h1 {
   .interactive-preview-card:not(.is-selected):is(:hover, :focus-within) > .preview-edit-button {
     opacity: 0;
     pointer-events: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .interactive-preview-card {
-    transition:
-      background-color 0.01ms,
-      outline-color 0.01ms;
-  }
-  .preview-drag-handle,
-  .preview-edit-button {
-    transition-duration: 0.01ms;
   }
 }
 /* Table picker */
@@ -2846,19 +2833,6 @@ header h1 {
     padding-inline: 0.7rem;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .boot-spinner {
-    animation: none;
-  }
-}
 @media (max-width: 640px) {
   .meta-fields {
     grid-template-columns: 1fr;
@@ -2998,7 +2972,11 @@ header h1 {
   overflow-y: auto;
   scroll-padding: 0.5rem;
   scrollbar-gutter: stable;
-  animation: app-content-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
+}
+
+.prefs-section.active.returning {
+  animation-name: app-content-return;
 }
 
 .sync-indicator-label {
@@ -3104,15 +3082,6 @@ header h1 {
   gap: 0.2rem;
 }
 
-.pref-signout {
-  align-items: center;
-}
-
-.pref-signout button {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
 .pref-restore-settings {
   align-items: center;
 }
@@ -3181,11 +3150,6 @@ header h1 {
   }
   .pref-control input[type='color'] {
     width: 100%;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .prefs-section.active {
-    animation: none;
   }
 }
 .toast:has(.toast-action) {
@@ -4091,11 +4055,6 @@ header h1 {
   display: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .editor-current-line {
-    transition-duration: 0.01ms;
-  }
-}
 .view-controls {
   display: flex;
   align-items: center;
@@ -4479,11 +4438,6 @@ header h1 {
     opacity: 1;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  #editor.zen-mode .zen-overlays {
-    animation: none;
-  }
-}
 .zen-controls {
   position: absolute;
   top: var(--zen-overlay-block);
@@ -4507,11 +4461,6 @@ header h1 {
     background-color 120ms ease-out;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .zen-controls button {
-    transition: none;
-  }
-}
 .zen-controls button:hover {
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   color: var(--fg);
@@ -5080,16 +5029,13 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   line-height: 1.25;
   pointer-events: none;
   text-overflow: ellipsis;
-  transition:
-    top 0.2s,
-    transform 0.2s;
+  transition: transform 0.2s;
   white-space: nowrap;
 }
 
 .label-input__control:focus + .label-input__label,
 .label-input__control:not(:placeholder-shown) + .label-input__label {
-  top: 0;
-  transform: translateY(-50%) scale(0.8);
+  transform: translateY(calc(-1.25rem - 50%)) scale(0.8);
 }
 
 .label-input__toggle,
@@ -5186,4 +5132,46 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 .vault-setup-form .label-input__label {
   font-size: 0.875rem;
   font-weight: 400;
+}
+
+/* One policy covers every CSS effect, including native popup and form surfaces.
+   Until preferences load, System honors the browser's accessibility setting. */
+*,
+*::before,
+*::after {
+  transition-property: transform, opacity !important;
+}
+
+.table-picker:not(.hidden),
+.heading-picker:not(.hidden) {
+  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
+}
+
+.table-picker.popup-leaving.hidden,
+.heading-picker.popup-leaving.hidden {
+  display: block !important;
+  pointer-events: none;
+  animation: app-content-out var(--motion-duration) var(--motion-ease) both;
+}
+
+.heading-picker.popup-leaving.hidden {
+  display: flex !important;
+}
+
+:root[data-reduce-motion='always'] *,
+:root[data-reduce-motion='always'] *::before,
+:root[data-reduce-motion='always'] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-reduce-motion='never']) *,
+  :root:not([data-reduce-motion='never']) *::before,
+  :root:not([data-reduce-motion='never']) *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }

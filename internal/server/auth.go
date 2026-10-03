@@ -88,7 +88,9 @@ func (a *app) handleCheck(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleLogout(w http.ResponseWriter, r *http.Request) {
 	c, _ := r.Cookie("session")
-	if c != nil {
+	// A replacement database cannot recognize the old session, but the browser
+	// must still be able to clear its cookie. Only live sessions revoke devices.
+	if c != nil && a.sessions.Valid(c.Value) {
 		id, err := a.sessions.DeviceID(c.Value)
 		if err != nil || a.sessions.RevokeDevice(id) != nil {
 			httpx.WriteAPIError(w, http.StatusInternalServerError, "logout_failed", "could not sign out device")

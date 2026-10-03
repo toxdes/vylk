@@ -101,7 +101,7 @@
         if (opener?.isConnected && (!openModals.length || openModals.at(-1).contains(opener)))
           opener.focus();
       };
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (root.VylkMotion.reduced(document, window)) {
         finish();
       } else {
         state.closeTimer = window.setTimeout(() => {

@@ -120,65 +120,27 @@
   }
 }
 
-@keyframes modal-panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(0.35rem) scale(0.985);
-  }
-
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes modal-panel-out {
-  from {
-    opacity: 1;
-    transform: none;
-  }
-
-  to {
-    opacity: 0;
-    transform: translateY(0.2rem) scale(0.99);
-  }
-}
-
 .modal:not(.hidden) .modal-backdrop {
   animation: modal-backdrop-in 0.16s ease both;
-  will-change: opacity;
 }
 
 .modal:not(.hidden) .modal-body {
-  animation: modal-panel-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
   backface-visibility: hidden;
-  will-change: opacity, transform;
 }
 
 .modal.is-closing .modal-backdrop {
   animation: modal-backdrop-out 0.16s ease both;
-  will-change: opacity;
 }
 
 .modal.is-closing .modal-body {
-  animation: modal-panel-out 0.18s ease both;
+  animation: app-content-out var(--motion-duration) var(--motion-ease) both;
   backface-visibility: hidden;
-  will-change: opacity, transform;
 }
 
 @media (max-width: 640px) {
   .modal-body--form {
     max-height: calc(100dvh - 1rem);
     padding: 1.25rem;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .modal:not(.hidden) .modal-backdrop,
-  .modal:not(.hidden) .modal-body,
-  .modal.is-closing .modal-backdrop,
-  .modal.is-closing .modal-body {
-    animation: none;
-    will-change: auto;
   }
 }

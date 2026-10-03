@@ -1,0 +1,44 @@
+/* One policy covers every CSS effect, including native popup and form surfaces.
+   Until preferences load, System honors the browser's accessibility setting. */
+// State colors change immediately; only compositable properties interpolate.
+*,
+*::before,
+*::after {
+  transition-property: transform, opacity !important;
+}
+
+.table-picker:not(.hidden),
+.heading-picker:not(.hidden) {
+  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
+}
+
+.table-picker.popup-leaving.hidden,
+.heading-picker.popup-leaving.hidden {
+  display: block !important;
+  pointer-events: none;
+  animation: app-content-out var(--motion-duration) var(--motion-ease) both;
+}
+
+.heading-picker.popup-leaving.hidden {
+  display: flex !important;
+}
+
+@mixin reduced {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root[data-reduce-motion='always'] {
+  @include reduced;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-reduce-motion='never']) {
+    @include reduced;
+  }
+}

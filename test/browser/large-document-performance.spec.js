@@ -1,5 +1,6 @@
 import {readFileSync} from 'node:fs';
 import {expect, test} from '@playwright/test';
+import {useEditorFixture} from './editor-fixture.js';
 
 const password = 'browser-test-password';
 const localFixture = process.env.LARGE_MARKDOWN_FIXTURE;
@@ -20,6 +21,7 @@ async function signIn(page) {
   await page.locator('#login-form input[name="password"]').fill(password);
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page.locator('#dashboard')).toBeVisible();
+  await useEditorFixture(page);
 }
 
 test('large documents keep editor input and preview transitions responsive', async ({

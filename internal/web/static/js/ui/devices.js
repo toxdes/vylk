@@ -28,7 +28,7 @@
         text.append(title, detail);
         const action = document.createElement('button');
         action.type = 'button';
-        action.className = 'btn-text danger';
+        action.className = 'btn-secondary danger';
         action.textContent = 'Sign out';
         action.setAttribute('aria-label', `Sign out ${device.name}`);
         action.addEventListener('click', () => {

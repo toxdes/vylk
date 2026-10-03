@@ -36,6 +36,7 @@
     function render() {
       const preferences = getPreferences();
       appearance.renderOptions();
+      $('#pref-reduce-motion').value = preferences.reduceMotion;
       $('#pref-autosave').checked = preferences.autoSave;
       $('#pref-start-view').value = preferences.startView;
       $('#pref-hidetoolbar').checked = !preferences.hideToolbar;
@@ -147,6 +148,7 @@
     bindCheckbox('#pref-zen-show-title', 'zenShowTitle');
     bindCheckbox('#pref-zen-show-controls', 'zenShowControls');
     bindValue('#pref-theme', 'theme');
+    bindValue('#pref-reduce-motion', 'reduceMotion');
     bindValue('#pref-accent', 'accentColor');
     bindValue('#pref-status', 'statusDisplay');
     bindValue('#pref-content-width', 'contentWidth');
@@ -167,6 +169,9 @@
     $$('.prefs-nav').forEach((button) =>
       button.addEventListener('click', () => {
         const section = button.dataset.prefSection;
+        const tabs = [...$$('.prefs-nav')];
+        const previous = tabs.findIndex((item) => item.classList.contains('active'));
+        const returning = tabs.indexOf(button) < previous;
         $$('.prefs-nav').forEach((item) => {
           const active = item === button;
           item.classList.toggle('active', active);
@@ -175,6 +180,7 @@
         });
         $$('.prefs-section').forEach((panel) => {
           const active = panel.dataset.prefPanel === section;
+          panel.classList.toggle('returning', active && returning);
           panel.classList.toggle('active', active);
           panel.hidden = !active;
           if (active && section === 'encryption') panel.scrollTop = 0;

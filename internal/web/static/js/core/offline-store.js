@@ -18,6 +18,8 @@
     let localCryptor = null;
     let localVaultID = null;
     let localVaultEpoch = null;
+    let expectedInstanceID = null;
+    let boundDatasetIdentity;
     const databaseAPI = () => configuredIndexedDB || root.indexedDB;
 
     function openOfflineDB() {
@@ -172,13 +174,97 @@
       });
     }
 
+    function datasetChangedError() {
+      const error = new Error('The notes database changed. Local data has been preserved.');
+      error.code = 'server_instance_changed';
+      return error;
+    }
+
+    async function assertDataset(keys) {
+      const identity = await requestValue(keys.get('dataset-identity'));
+      const current = identity?.value || null;
+      // Offline startup also binds its tab before using remembered keys or notes.
+      if (boundDatasetIdentity === undefined) boundDatasetIdentity = current;
+      if (current !== boundDatasetIdentity) throw datasetChangedError();
+    }
+
+    function withBoundTransaction(names, mode, work) {
+      return withTransaction(
+        openOfflineDB,
+        [...new Set([...names, 'keys'])],
+        mode,
+        async (stores) => {
+          await assertDataset(stores.keys);
+          return work(stores, stores.keys.transaction);
+        },
+      );
+    }
+
+    // These records must remain readable while the previous local vault is locked.
+    async function inspectDataset(config) {
+      return withTransaction(openOfflineDB, ['keys', 'state'], 'readwrite', async (stores) => {
+        const identity = await requestValue(stores.keys.get('dataset-identity'));
+        if (boundDatasetIdentity === undefined) boundDatasetIdentity = identity?.value || null;
+        const previous =
+          identity?.value || (await requestValue(stores.state.get('serverInstanceID')))?.value;
+        const marker = await requestValue(stores.state.get('vault-local-format'));
+        const vaultChanged = Boolean(
+          marker?.vaultID && (config.mode === 'legacy' || marker.vaultID !== config.vault_id),
+        );
+        const changed = Boolean(
+          (config.instance_id &&
+            ((previous && previous !== config.instance_id) ||
+              (expectedInstanceID && expectedInstanceID !== config.instance_id))) ||
+          vaultChanged ||
+          (identity?.value || null) !== boundDatasetIdentity,
+        );
+        if (changed) {
+          expectedInstanceID ||= previous || null;
+          return {changed: true};
+        }
+        if (config.instance_id) {
+          expectedInstanceID = config.instance_id;
+          boundDatasetIdentity = config.instance_id;
+          await requestValue(stores.keys.put({id: 'dataset-identity', value: expectedInstanceID}));
+        }
+        return {changed: false};
+      });
+    }
+
+    async function switchDataset(config) {
+      if (!config.instance_id) throw new Error('The server did not identify its notes database.');
+      const cleared = await withTransaction(
+        openOfflineDB,
+        ['notes', 'queue', 'state', 'keys'],
+        'readwrite',
+        async (stores) => {
+          const identity = await requestValue(stores.keys.get('dataset-identity'));
+          // Another tab may already have switched and started editing. Never clear it again.
+          if (identity?.value === config.instance_id && boundDatasetIdentity !== config.instance_id)
+            return false;
+          await assertDataset(stores.keys);
+          for (const store of Object.values(stores)) await requestValue(store.clear());
+          await requestValue(stores.keys.put({id: 'dataset-identity', value: config.instance_id}));
+          await requestValue(stores.keys.put({id: 'bootstrap', value: config}));
+          await requestValue(
+            stores.state.put({key: 'serverInstanceID', value: config.instance_id}),
+          );
+          await requestValue(stores.state.put({key: 'serverReconciliationRequired', value: true}));
+          return true;
+        },
+      );
+      lockVaultLocal();
+      // Keep this page fenced until reload: its timers and in-flight callbacks
+      // still belong to the previous dataset, even though clearing succeeded.
+      return cleared;
+    }
+
     async function withOfflineStore(names, mode, work) {
       try {
         // Include the format marker in the same transaction as every operation.
         // IndexedDB then serializes it with migration's marker write, so a tab
         // opened before cutover cannot write plaintext after conversion starts.
-        return await withTransaction(
-          openOfflineDB,
+        return await withBoundTransaction(
           [...new Set([...names, 'state'])],
           mode,
           async (stores, transaction) => {
@@ -257,13 +343,13 @@
     }
 
     async function forgetRememberedVaultRoot() {
-      await withTransaction(openOfflineDB, ['keys'], 'readwrite', (stores) =>
+      await withBoundTransaction(['keys'], 'readwrite', (stores) =>
         requestValue(stores.keys.delete('root')),
       );
     }
 
     async function rememberedVaultRoot() {
-      return withTransaction(openOfflineDB, ['keys'], 'readonly', (stores) =>
+      return withBoundTransaction(['keys'], 'readonly', (stores) =>
         requestValue(stores.keys.get('root')),
       );
     }
@@ -277,11 +363,9 @@
     }
 
     async function cacheVaultBootstrap(value) {
-      const db = await openOfflineDB();
-      const tx = db.transaction('keys', 'readwrite');
-      const complete = transactionComplete(tx);
-      tx.objectStore('keys').put({id: 'bootstrap', value});
-      await complete;
+      await withBoundTransaction(['keys'], 'readwrite', (stores) =>
+        requestValue(stores.keys.put({id: 'bootstrap', value})),
+      );
     }
 
     async function cachedVaultWrappers() {
@@ -293,70 +377,53 @@
     }
 
     async function cacheVaultWrappers(value) {
-      const db = await openOfflineDB();
-      const tx = db.transaction('keys', 'readwrite');
-      const complete = transactionComplete(tx);
-      tx.objectStore('keys').put({id: 'wrappers', value});
-      await complete;
+      await withBoundTransaction(['keys'], 'readwrite', (stores) =>
+        requestValue(stores.keys.put({id: 'wrappers', value})),
+      );
     }
 
     async function migrateVaultLocal(cryptor, vaultID, epoch) {
       const matchesVault = (marker) => marker.vaultID === vaultID && marker.epoch === epoch;
-      const needsMigration = await withTransaction(
-        openOfflineDB,
-        ['state'],
-        'readwrite',
-        async (stores) => {
-          const marker = await requestValue(stores.state.get('vault-local-format'));
-          if (marker?.value === 1 && matchesVault(marker)) return false;
-          if (
-            marker?.value === 1 ||
-            (marker?.value === 2 && marker.vaultID && !matchesVault(marker))
-          )
-            throw new Error('local vault changed during migration');
-          await requestValue(
-            stores.state.put({key: 'vault-local-format', value: 2, vaultID, epoch}),
-          );
-          return true;
-        },
-      );
+      const needsMigration = await withBoundTransaction(['state'], 'readwrite', async (stores) => {
+        const marker = await requestValue(stores.state.get('vault-local-format'));
+        if (marker?.value === 1 && matchesVault(marker)) return false;
+        if (marker?.value === 1 || (marker?.value === 2 && marker.vaultID && !matchesVault(marker)))
+          throw new Error('local vault changed during migration');
+        await requestValue(stores.state.put({key: 'vault-local-format', value: 2, vaultID, epoch}));
+        return true;
+      });
       if (!needsMigration) return;
       for (const name of ['notes', 'queue', 'state']) {
-        await withTransaction(
-          openOfflineDB,
-          [...new Set([name, 'state'])],
-          'readwrite',
-          async (stores) => {
-            const marker = await requestValue(stores.state.get('vault-local-format'));
-            if (marker?.value === 1 && matchesVault(marker)) return;
-            if (marker?.value !== 2 || !matchesVault(marker))
-              throw new Error('local vault changed during migration');
-            await new Promise((resolve, reject) => {
-              const cursorRequest = stores[name].openCursor();
-              cursorRequest.onerror = () => reject(cursorRequest.error);
-              cursorRequest.onsuccess = () => {
-                const cursor = cursorRequest.result;
-                if (!cursor) {
-                  resolve();
-                  return;
+        await withBoundTransaction([...new Set([name, 'state'])], 'readwrite', async (stores) => {
+          const marker = await requestValue(stores.state.get('vault-local-format'));
+          if (marker?.value === 1 && matchesVault(marker)) return;
+          if (marker?.value !== 2 || !matchesVault(marker))
+            throw new Error('local vault changed during migration');
+          await new Promise((resolve, reject) => {
+            const cursorRequest = stores[name].openCursor();
+            cursorRequest.onerror = () => reject(cursorRequest.error);
+            cursorRequest.onsuccess = () => {
+              const cursor = cursorRequest.result;
+              if (!cursor) {
+                resolve();
+                return;
+              }
+              try {
+                if (
+                  !cursor.value.vault_ciphertext &&
+                  !(name === 'state' && cursor.value.key === 'vault-local-format')
+                ) {
+                  cursor.update(cryptor.encryptRecord(name, cursor.value));
                 }
-                try {
-                  if (
-                    !cursor.value.vault_ciphertext &&
-                    !(name === 'state' && cursor.value.key === 'vault-local-format')
-                  ) {
-                    cursor.update(cryptor.encryptRecord(name, cursor.value));
-                  }
-                  cursor.continue();
-                } catch (error) {
-                  reject(error);
-                }
-              };
-            });
-          },
-        );
+                cursor.continue();
+              } catch (error) {
+                reject(error);
+              }
+            };
+          });
+        });
       }
-      await withTransaction(openOfflineDB, ['state'], 'readwrite', async (stores) => {
+      await withBoundTransaction(['state'], 'readwrite', async (stores) => {
         const marker = await requestValue(stores.state.get('vault-local-format'));
         if (marker?.value === 1 && matchesVault(marker)) return;
         if (marker?.value !== 2 || !matchesVault(marker))
@@ -384,7 +451,7 @@
       try {
         if (!encrypted) await migrateVaultLocal(cryptor, vaultID, epoch);
         cryptor.setAllowPlaintext(false);
-        await withTransaction(openOfflineDB, ['keys', 'state'], 'readwrite', async (stores) => {
+        await withBoundTransaction(['keys', 'state'], 'readwrite', async (stores) => {
           const current = await requestValue(stores.state.get('vault-local-format'));
           if (
             current?.value !== 1 ||
@@ -879,11 +946,9 @@
       beforeClear();
       if (await vaultLocalFormat()) {
         lockVaultLocal();
-        const db = await openOfflineDB();
-        const tx = db.transaction('keys', 'readwrite');
-        const complete = transactionComplete(tx);
-        tx.objectStore('keys').delete('root');
-        await complete;
+        await withBoundTransaction(['keys'], 'readwrite', async (stores) => {
+          await requestValue(stores.keys.delete('root'));
+        });
         return;
       }
       const dbPromise = databasePromise;
@@ -917,10 +982,12 @@
       const names = ['notes', 'queue', 'state', 'keys'].filter((name) =>
         db.objectStoreNames.contains(name),
       );
-      await withTransaction(openOfflineDB, names, 'readwrite', async (stores) => {
+      await withBoundTransaction(names, 'readwrite', async (stores) => {
         // Sign-in may already have cached the incoming vault's bootstrap and
         // wrappers. Keep only those matching it, never the old root or note data.
         const retained = [];
+        const identity = await requestValue(stores.keys.get('dataset-identity'));
+        if (identity) retained.push(identity);
         if (preserveMetadataFor && stores.keys) {
           for (const id of ['bootstrap', 'wrappers']) {
             const record = await requestValue(stores.keys.get(id));
@@ -949,6 +1016,8 @@
 
     return Object.freeze({
       checkServerIdentity,
+      inspectDataset,
+      switchDataset,
       claimQueueOperation,
       cachedVaultBootstrap,
       cachedVaultWrappers,

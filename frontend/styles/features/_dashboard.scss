@@ -72,18 +72,11 @@ header h1 {
 }
 
 #dashboard:not(.hidden) .dashboard-body {
-  animation: app-content-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
 }
 
 #dashboard:not(.hidden).returning-from-editor .dashboard-body {
   animation-name: app-content-return;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #dashboard:not(.hidden) .dashboard-body,
-  #dashboard:not(.hidden).returning-from-editor .dashboard-body {
-    animation: none;
-  }
 }
 
 .toolbar {

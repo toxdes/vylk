@@ -11,6 +11,7 @@ import (
 )
 
 type Preferences struct {
+	ReduceMotion              string                      `json:"reduceMotion,omitempty"`
 	Revision                  int64                       `json:"revision,omitempty"`
 	AutoSave                  bool                        `json:"autoSave"`
 	StartView                 string                      `json:"startView,omitempty"`
@@ -57,18 +58,25 @@ type ShortcutBinding struct {
 	Steps []ShortcutStep `json:"steps"`
 }
 
-var defaultShortcutPrefix = ShortcutBinding{Steps: []ShortcutStep{{Key: "/", Modifiers: []string{"Mod"}}}}
+var defaultShortcutPrefix = ShortcutBinding{Steps: []ShortcutStep{{Key: "e", Modifiers: []string{"Mod"}}}}
 
 func Defaults() *Preferences {
 	return &Preferences{
+		ReduceMotion:              "system",
 		AutoSave:                  true,
+		StartView:                 "editor",
+		HideSaveButton:            true,
+		InteractivePreview:        true,
 		SaveButtonLocation:        "panel",
 		ContentWidth:              "standard",
 		ZenPageWidth:              "standard",
 		FontSize:                  "1rem",
 		EditorFontSize:            "1rem",
 		PreviewFontSize:           "1rem",
-		ZenFontSize:               "1rem",
+		ZenFontFamily:             "Inter",
+		ZenFontFamilyGoogle:       true,
+		ZenFontSize:               "1.25rem",
+		ZenWordCount:              true,
 		ZenShowTitle:              true,
 		ZenShowControls:           true,
 		ShortcutPrefix:            defaultShortcutPrefix,
@@ -78,7 +86,8 @@ func Defaults() *Preferences {
 }
 
 var fieldNames = map[string]struct{}{
-	"autoSave": {}, "startView": {}, "hideToolbar": {}, "hideSaveButton": {},
+	"reduceMotion": {},
+	"autoSave":     {}, "startView": {}, "hideToolbar": {}, "hideSaveButton": {},
 	"saveButtonLocation": {}, "collapseDetails": {}, "hideCursorHighlight": {},
 	"interactivePreview": {}, "statusDisplay": {}, "contentWidth": {},
 	"zenPageWidth": {}, "theme": {}, "accentColor": {}, "fontFamily": {},
@@ -176,6 +185,11 @@ func ValidateField(key string, value json.RawMessage) error {
 		return fmt.Errorf("unknown preference field %q", key)
 	}
 	switch key {
+	case "reduceMotion":
+		var v string
+		if err := json.Unmarshal(value, &v); err != nil || (v != "system" && v != "always" && v != "never") {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
 	case "startView":
 		var v string
 		if err := json.Unmarshal(value, &v); err != nil || !validStartView(v) {
@@ -216,8 +230,14 @@ func ValidateField(key string, value json.RawMessage) error {
 }
 
 func Validate(p *Preferences) error {
+	if p.ReduceMotion == "" {
+		p.ReduceMotion = "system"
+	}
+	if p.ReduceMotion != "system" && p.ReduceMotion != "always" && p.ReduceMotion != "never" {
+		return fmt.Errorf("invalid preference value for %q", "reduceMotion")
+	}
 	if p.StartView == "" {
-		p.StartView = "split"
+		p.StartView = "editor"
 	}
 	if len(p.ShortcutPrefix.Steps) == 0 {
 		p.ShortcutPrefix = defaultShortcutPrefix

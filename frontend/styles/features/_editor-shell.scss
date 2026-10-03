@@ -27,13 +27,8 @@
 }
 
 #editor:not(.hidden) .editor-body {
-  animation: app-content-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  #editor:not(.hidden) .editor-body {
-    animation: none;
-  }
+  // Release the transform after entry so fixed preview controls stay viewport-relative.
+  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
 }
 
 .meta-pane {

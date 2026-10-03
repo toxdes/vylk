@@ -5,6 +5,8 @@
 }
 
 :root {
+  --motion-duration: 180ms;
+  --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --bg: #fafafa;
   --fg: #0a4067;
   --muted: #5f6f82;

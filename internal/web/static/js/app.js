@@ -62,6 +62,8 @@
   let offlineStorageFailureReported = false;
   let authenticationRequired = false;
   let credentialChangePaused = false;
+  let datasetChangePaused = false;
+  let datasetSwitch = null;
   const syncTabID = `tab_${newLocalNoteID()}`;
   let syncCoordinationChannel = null;
   let syncCoordinator = null;
@@ -154,7 +156,16 @@
           vaultSession.lock();
           void closeOfflineDatabaseConnection().finally(() => window.location.reload());
         }
-        if (event.data.type === 'session-locked') void lockRevokedSession(false);
+        if (event.data.type === 'session-locked') void verifyPeerSession().catch(() => {});
+        if (event.data.type === 'dataset-changed') void verifyPeerDataset().catch(() => {});
+        if (event.data.type === 'dataset-switched') {
+          datasetChangePaused = true;
+          syncCoordinator?.cancelScheduled();
+          cancelActiveSyncRequests();
+          serverEventClient?.disconnect();
+          vaultSession.lock();
+          void closeOfflineDatabaseConnection().finally(() => window.location.reload());
+        }
       });
     }
   } catch (_) {
@@ -204,7 +215,11 @@
         cache: 'no-store',
         signal: AbortSignal.timeout(5000),
       });
-      if (response.ok) cacheAppVersion(await response.json());
+      if (response.ok) {
+        const config = await response.json();
+        await datasetSwitch.inspect(config);
+        cacheAppVersion(config);
+      }
     } catch (_) {
       // A disconnected sign-in screen remains usable with a locally cached vault.
     }
@@ -248,7 +263,11 @@
   const measureEditorCaret = caretController.measure;
   const scheduleEditorCaretCue = caretController.schedule;
 
+  let finishScreenExit = null;
+
   function show(screen) {
+    finishScreenExit?.();
+    const outgoing = Object.values(screens).find((el) => !el.classList.contains('hidden'));
     if (screen !== screens.dashboard || screens.dashboard.classList.contains('hidden')) {
       screens.dashboard.classList.toggle(
         'returning-from-editor',
@@ -257,6 +276,31 @@
     }
     Object.values(screens).forEach((el) => el.classList.add('hidden'));
     screen.classList.remove('hidden');
+    if (
+      outgoing !== screen &&
+      [screens.dashboard, screens.editor].includes(outgoing) &&
+      [screens.dashboard, screens.editor].includes(screen) &&
+      !window.VylkMotion.reduced(document, window)
+    ) {
+      outgoing.classList.add('screen-leaving');
+      outgoing.setAttribute('inert', '');
+      outgoing.setAttribute('aria-hidden', 'true');
+      const finish = () => {
+        window.clearTimeout(timer);
+        outgoing.removeEventListener('animationend', onEnd);
+        outgoing.classList.remove('screen-leaving');
+        outgoing.removeAttribute('inert');
+        outgoing.removeAttribute('aria-hidden');
+        finishScreenExit = null;
+      };
+      const onEnd = (event) => {
+        if (event.target === outgoing) finish();
+      };
+      // Background tabs can suppress animation events; bound DOM retention.
+      const timer = window.setTimeout(finish, 190);
+      outgoing.addEventListener('animationend', onEnd);
+      finishScreenExit = finish;
+    }
     syncLoginVersionChecks(screen === screens.login);
   }
 
@@ -277,11 +321,38 @@
     isDirty = false;
   }
 
+  let authenticationVaultCheck = null;
   function requireAuthentication() {
+    const revision = apiClient.authenticationRevision();
     authenticationRequired = true;
     syncCoordinator?.cancelScheduled();
     serverEventClient?.disconnect();
-    if (vaultSession.encrypted() && vaultSession.unlocked()) void lockRevokedSession();
+    if (datasetChangePaused) return;
+    if (vaultSession.encrypted() && vaultSession.unlocked()) {
+      // A replacement database also rejects the old cookie. Check identity before
+      // treating that rejection as revocation and forgetting the previous key.
+      if (authenticationVaultCheck?.revision === revision) return;
+      const check = {revision, promise: null};
+      authenticationVaultCheck = check;
+      check.promise = vaultSession
+        .bootstrap()
+        .then(() => {
+          if (!datasetChangePaused && revision === apiClient.authenticationRevision())
+            return lockRevokedSession(true, revision);
+        })
+        .catch((error) => {
+          if (
+            error.code !== 'server_instance_changed' &&
+            !datasetChangePaused &&
+            revision === apiClient.authenticationRevision()
+          )
+            return lockRevokedSession(true, revision);
+        })
+        .finally(() => {
+          if (authenticationVaultCheck === check) authenticationVaultCheck = null;
+        });
+      return;
+    }
     vaultSetup?.closeForRoute();
     closeModal($('#shortcut-reset-modal'));
     closeModal($('#prefs-modal'));
@@ -290,6 +361,7 @@
       void vaultSession
         .bootstrap()
         .then(() => {
+          if (revision !== apiClient.authenticationRevision()) return;
           vaultSetup.refresh();
           if (vaultSession.requiresSecureContext()) vaultSession.lock();
           showLoginScreen();
@@ -298,23 +370,30 @@
     }
   }
 
-  let sessionLockPromise = null;
-  function lockRevokedSession(broadcast = true) {
-    if (sessionLockPromise) return sessionLockPromise;
+  let sessionLock = null;
+  function lockRevokedSession(broadcast = true, revision = apiClient.authenticationRevision()) {
+    if (revision !== apiClient.authenticationRevision()) return Promise.resolve();
+    if (sessionLock?.revision === revision) return sessionLock.promise;
     authenticationRequired = true;
     syncCoordinator?.cancelScheduled();
     cancelActiveSyncRequests();
     serverEventClient?.disconnect();
-    sessionLockPromise = (async () => {
+    const operation = {revision, promise: null};
+    sessionLock = operation;
+    operation.promise = (async () => {
       try {
         await persistBeforeSessionExit();
       } finally {
-        vaultSession.lock();
-        await offlineStore.forgetRememberedVaultRoot();
-        if (broadcast)
-          syncCoordinationChannel?.postMessage({type: 'session-locked', sender: syncTabID});
-        closeModal($('#prefs-modal'));
-        showLoginScreen();
+        if (revision === apiClient.authenticationRevision()) {
+          vaultSession.lock();
+          await offlineStore.forgetRememberedVaultRoot();
+          if (revision === apiClient.authenticationRevision()) {
+            if (broadcast)
+              syncCoordinationChannel?.postMessage({type: 'session-locked', sender: syncTabID});
+            closeModal($('#prefs-modal'));
+            showLoginScreen();
+          }
+        }
       }
     })()
       .catch((error) => {
@@ -322,9 +401,9 @@
         showToast('Could not save local changes before locking. Keep this tab open.', 'warning');
       })
       .finally(() => {
-        sessionLockPromise = null;
+        if (sessionLock === operation) sessionLock = null;
       });
-    return sessionLockPromise;
+    return operation.promise;
   }
 
   async function persistBeforeSessionExit() {
@@ -335,6 +414,7 @@
   let observedServerInstanceID = null;
   async function handleServerIdentity(instanceID) {
     if (!instanceID) return;
+    await datasetSwitch.inspect({...vaultSession.config(), instance_id: instanceID});
     const result = await offlineStore.checkServerIdentity(instanceID);
     if (result.blocked) {
       const error = new APIError(
@@ -369,10 +449,63 @@
     onSyncRequestEnd: endSyncNetworkRequest,
     onSyncRequestStart: beginSyncNetworkRequest,
   });
-  const vaultSession = window.VylkVaultSession.create({apiClient, offlineStore});
-  const api = vaultSession.request;
+
+  let peerDatasetCheck = null;
+  let peerSessionCheck = null;
+
+  function verifyPeerDataset() {
+    if (!peerDatasetCheck) {
+      const revision = apiClient.authenticationRevision();
+      peerDatasetCheck = (async () => {
+        // Notifications can outlive their sending tab's server/session. Only
+        // the current server may identify the database; do not echo this check.
+        const config = await apiClient.request('/api/vault/bootstrap', {cache: 'no-store'});
+        if (revision !== apiClient.authenticationRevision()) return false;
+        await datasetSwitch.inspect(config, {notify: false});
+        return true;
+      })().finally(() => {
+        peerDatasetCheck = null;
+      });
+    }
+    return peerDatasetCheck;
+  }
+
+  function verifyPeerSession() {
+    if (!peerSessionCheck) {
+      const revision = apiClient.authenticationRevision();
+      peerSessionCheck = (async () => {
+        if (!(await verifyPeerDataset()) || revision !== apiClient.authenticationRevision()) return;
+        // A current 401 takes the normal revocation path. A valid cookie means
+        // the notification belongs to a superseded session and is ignored.
+        await apiClient.request('/api/check');
+      })().finally(() => {
+        peerSessionCheck = null;
+      });
+    }
+    return peerSessionCheck;
+  }
+  const vaultSession = window.VylkVaultSession.create({
+    apiClient,
+    offlineStore,
+    onBootstrap: (config) => datasetSwitch.inspect(config),
+  });
+  function assertActiveDataset() {
+    if (datasetChangePaused)
+      throw new APIError('Notes database changed. Sync is paused.', {
+        status: 409,
+        code: 'server_instance_changed',
+        retryable: false,
+      });
+  }
+  const api = async (...args) => {
+    assertActiveDataset();
+    return vaultSession.request(...args);
+  };
   const cancelActiveSyncRequests = apiClient.cancelActiveSyncRequests;
-  const syncFetch = vaultSession.syncFetch;
+  const syncFetch = async (...args) => {
+    assertActiveDataset();
+    return vaultSession.syncFetch(...args);
+  };
 
   async function setIdleSyncStatus() {
     if (syncNetworkRequestsInFlight > 0 || syncCoordinator?.inFlight()) return;
@@ -470,12 +603,61 @@
       else if (modal.id === 'login-recovery-lost-modal') $('#login-recovery-lost-close').click();
       else if (modal.id === 'delete-note-modal') $('#delete-note-cancel').click();
       else if (modal.id === 'device-signout-modal') $('#device-signout-cancel').click();
+      else if (modal.id === 'dataset-switch-modal') datasetSwitch.keepChanges();
       else if (modal.classList.contains('vault-credential-modal')) vaultSetup.closeDialog(modal);
       else modalController.close(modal);
     },
   });
   const openModal = modalController.open;
   const closeModal = modalController.close;
+  datasetSwitch = window.VylkDatasetSwitch.create({
+    document,
+    offlineStore,
+    openModal,
+    closeModal,
+    fetchBootstrap: () => apiClient.request('/api/vault/bootstrap', {cache: 'no-store'}),
+    prepareSwitch: (config) => feedback.prepareReload(config.revision),
+    endSession: async () => {
+      const response = await fetch('/api/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error('Could not sign out. Your local data is kept; try again.');
+    },
+    pause: () => {
+      $('#app').classList.remove('booting');
+      datasetChangePaused = true;
+      syncCoordinator?.cancelScheduled();
+      cancelActiveSyncRequests();
+      serverEventClient?.disconnect();
+      if (Object.values(screens).every((screen) => screen.classList.contains('hidden')))
+        showLoginScreen();
+      for (const screen of Object.values(screens)) screen.setAttribute('inert', '');
+      const message =
+        'Notes database changed. Your local changes are kept. Restore the previous database and notes directory, then reload.';
+      $('#login-error').textContent = message;
+      showOfflineNotice(false, message);
+    },
+    resume: () => {
+      datasetChangePaused = false;
+      for (const screen of Object.values(screens)) screen.removeAttribute('inert');
+      $('#login-error').textContent = '';
+      hideOfflineNotice();
+    },
+    broadcast: (message) => {
+      try {
+        syncCoordinationChannel?.postMessage({...message, sender: syncTabID});
+      } catch (_) {}
+    },
+    switched: async () => {
+      for (const key of ['vylk-prefs', 'vylk-panel-ratio', 'theme']) localStorage.removeItem(key);
+      vaultSession.lock();
+      setDashboardRoute({replace: true});
+      // Keep the revisioned application cache; it contains no account/note data.
+      window.location.reload();
+    },
+  });
   conflictResolver = window.VylkConflictResolver.create({
     closeModal,
     document,
@@ -635,12 +817,13 @@
   const withSyncLeadership = syncLeadership.run;
 
   function scheduleSync(options = {}, delayMs = 75) {
-    if (credentialChangePaused || authenticationRequired) return;
+    if (credentialChangePaused || datasetChangePaused || authenticationRequired) return;
     return syncCoordinator.schedule(options, delayMs);
   }
 
   function syncNow(options = {}) {
-    if (credentialChangePaused || authenticationRequired) return Promise.resolve(false);
+    if (credentialChangePaused || datasetChangePaused || authenticationRequired)
+      return Promise.resolve(false);
     return syncCoordinator.now(options);
   }
 
@@ -650,7 +833,7 @@
 
   syncCoordinator = window.VylkSyncCoordinator.create({
     apiClient,
-    canSync: () => !credentialChangePaused && !authenticationRequired,
+    canSync: () => !credentialChangePaused && !datasetChangePaused && !authenticationRequired,
     authenticationRequired: () => authenticationRequired,
     beforeCompletion: () => globalThis.__vylkDependencies?.beforeSyncCompletion?.(),
     clearDiagnostic: clearSyncDiagnostic,
@@ -720,7 +903,8 @@
     window,
   });
   const connectServerEvents = () => {
-    if (!credentialChangePaused && !authenticationRequired) serverEventClient.connect();
+    if (!credentialChangePaused && !datasetChangePaused && !authenticationRequired)
+      serverEventClient.connect();
   };
   const disconnectServerEvents = serverEventClient.disconnect;
   const handleServerChangeEvent = serverEventClient.handleChange;
@@ -795,17 +979,12 @@
   window.VylkAuth.bind({
     api,
     cacheVersion: cacheAppVersion,
-    cancelRequests: cancelActiveSyncRequests,
     closeModal,
     clearDiagnostic: clearSyncDiagnostic,
-    clearOfflineData,
-    beforeSignOut: persistBeforeSessionExit,
     connectEvents: connectServerEvents,
-    disconnectEvents: disconnectServerEvents,
     document,
     handleServerIdentity,
     loadPreferences: (...args) => loadPrefs(...args),
-    localStorage,
     openModal,
     openPassphrasePreferences: () =>
       preferencesDialog.open({route: 'push', section: 'encryption', detail: 'passphrase'}),
@@ -825,7 +1004,6 @@
       closeModal($('#prefs-modal'));
       showLoginScreen();
     },
-    showToast,
   });
 
   // --- Dashboard ---
@@ -1821,7 +1999,8 @@
     normalize: normalizePrefs,
     onChanged: (keys) => {
       const changed = new Set(keys);
-      if (changed.has('theme') || changed.has('accentColor')) appearance.applyTheme(prefs.theme);
+      if (changed.has('theme') || changed.has('accentColor') || changed.has('reduceMotion'))
+        appearance.applyTheme(prefs.theme);
       if (
         [
           'fontFamily',
@@ -2073,6 +2252,7 @@
         vaultSetup.refresh();
         cacheAppVersion(vaultSession.config());
       } catch (error) {
+        if (error?.code === 'server_instance_changed') throw error;
         if (await offlineStore.vaultLocalFormat()) throw error;
       }
       if (vaultSession.config()?.mode === 'preparing') {
@@ -2114,9 +2294,10 @@
         showOfflineNotice();
       }
     } catch (error) {
+      if (error?.code === 'authentication_superseded') return;
       console.error('initialization failed', error);
       if (error?.responseStatus === 401) return;
-      if (error?.code === 'server_instance_changed' && localStartupReady) return;
+      if (error?.code === 'server_instance_changed') return;
       if (localStartupReady) {
         markServerOffline();
       } else {

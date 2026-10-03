@@ -1,4 +1,5 @@
 import {expect, test} from '@playwright/test';
+import {useEditorFixture} from './editor-fixture.js';
 
 const password = 'browser-test-password';
 
@@ -7,6 +8,7 @@ async function signIn(page) {
   await page.locator('#login-form input[name="password"]').fill(password);
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page.locator('#dashboard')).toBeVisible();
+  await useEditorFixture(page);
 }
 
 test('note deletion uses the shared confirmation dialog', async ({page}) => {
@@ -21,7 +23,7 @@ test('note deletion uses the shared confirmation dialog', async ({page}) => {
   await expect(page.locator('#delete-note-modal')).toBeVisible();
   await expect(page.locator('#delete-note-modal .modal-body')).toHaveCSS(
     'animation-name',
-    'modal-panel-in',
+    'app-content-in',
   );
   await page.locator('#delete-note-cancel').click();
   await expect(page.locator('#delete-note-modal')).toBeHidden();

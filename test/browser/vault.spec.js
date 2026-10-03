@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import {expect, test} from '@playwright/test';
+import {useEditorFixture} from './editor-fixture.js';
 
 async function expectCredentialModalToFit(page, modalID, fieldLabelID) {
   const modal = page.locator(`#${modalID} .modal-body`);
@@ -66,6 +67,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await page.locator('#login-password').fill('browser-test-password');
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page.locator('#dashboard')).toBeVisible();
+  await useEditorFixture(page);
   expect(bip39Requests).toEqual([]);
 
   const insecureLegacyContext = await browser.newContext();

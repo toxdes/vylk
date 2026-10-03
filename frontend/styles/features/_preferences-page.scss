@@ -109,7 +109,11 @@
   overflow-y: auto;
   scroll-padding: 0.5rem;
   scrollbar-gutter: stable;
-  animation: app-content-in 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
+}
+
+.prefs-section.active.returning {
+  animation-name: app-content-return;
 }
 
 .sync-indicator-label {
@@ -215,15 +219,6 @@
   gap: 0.2rem;
 }
 
-.pref-signout {
-  align-items: center;
-}
-
-.pref-signout button {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
 .pref-restore-settings {
   align-items: center;
 }
@@ -303,12 +298,6 @@
 
   .pref-control input[type='color'] {
     width: 100%;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .prefs-section.active {
-    animation: none;
   }
 }
 

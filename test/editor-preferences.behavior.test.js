@@ -28,21 +28,21 @@ describe('keyboard shortcuts', () => {
     expect(app.hooks.getShortcutBinding('note.save').steps).toEqual([
       {key: 's', modifiers: ['Mod']},
     ]);
-    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: '/', modifiers: ['Mod']}]);
+    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]);
     expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([
-      {key: '/', modifiers: ['Mod']},
+      {key: 'e', modifiers: ['Mod']},
       {key: 't', modifiers: []},
     ]);
     expect(app.hooks.getShortcutBinding('format.link')).toBeNull();
   });
 
-  test('uses the configurable Mod+/ sequence to reveal Details and select the title', async () => {
+  test('uses the configurable Mod+E sequence to reveal Details and select the title', async () => {
     const app = track(await createApp());
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Rename me', tags: 'work', content: 'body'});
     app.window.document.querySelector('.meta-pane').classList.add('collapsed');
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: '/',
+        key: 'e',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
@@ -67,7 +67,7 @@ describe('keyboard shortcuts', () => {
     app.window.document.querySelector('#editor').classList.add('hidden');
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: '/',
+        key: 'e',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
@@ -89,7 +89,7 @@ describe('keyboard shortcuts', () => {
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', tags: '', content: 'body'});
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: '/',
+        key: 'e',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
@@ -259,7 +259,7 @@ describe('keyboard shortcuts', () => {
     titleShortcut.click();
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: '/',
+        key: 'e',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
@@ -273,7 +273,7 @@ describe('keyboard shortcuts', () => {
     );
     await vi.waitFor(() =>
       expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([
-        {key: '/', modifiers: ['Mod']},
+        {key: 'e', modifiers: ['Mod']},
         {key: 't', modifiers: []},
       ]),
     );
@@ -286,28 +286,12 @@ describe('keyboard shortcuts', () => {
     app.window.document.querySelector('#shortcut-prefix').click();
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: 'e',
+        key: '/',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
       }),
     );
-    await vi.waitFor(() =>
-      expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]),
-    );
-    expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([
-      {key: 'e', modifiers: ['Mod']},
-      {key: 't', modifiers: []},
-    ]);
-    app.window.document.querySelector('#shortcut-reset').click();
-    expect(
-      app.window.document.querySelector('#shortcut-reset-modal').classList.contains('hidden'),
-    ).toBe(false);
-    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]);
-    app.window.document.querySelector('#shortcut-reset-cancel').click();
-    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]);
-    app.window.document.querySelector('#shortcut-reset').click();
-    app.window.document.querySelector('#shortcut-reset-confirm').click();
     await vi.waitFor(() =>
       expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: '/', modifiers: ['Mod']}]),
     );
@@ -315,11 +299,27 @@ describe('keyboard shortcuts', () => {
       {key: '/', modifiers: ['Mod']},
       {key: 't', modifiers: []},
     ]);
+    app.window.document.querySelector('#shortcut-reset').click();
+    expect(
+      app.window.document.querySelector('#shortcut-reset-modal').classList.contains('hidden'),
+    ).toBe(false);
+    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: '/', modifiers: ['Mod']}]);
+    app.window.document.querySelector('#shortcut-reset-cancel').click();
+    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: '/', modifiers: ['Mod']}]);
+    app.window.document.querySelector('#shortcut-reset').click();
+    app.window.document.querySelector('#shortcut-reset-confirm').click();
+    await vi.waitFor(() =>
+      expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]),
+    );
+    expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([
+      {key: 'e', modifiers: ['Mod']},
+      {key: 't', modifiers: []},
+    ]);
   });
 });
 
 describe('font preferences', () => {
-  test('uses font controls and leaves Google Fonts fetching disabled by default', async () => {
+  test('uses font controls and preserves local-only font preferences', async () => {
     const app = track(await createApp());
 
     expect(app.window.document.querySelector('#pref-font').tagName).toBe('INPUT');
@@ -607,6 +607,16 @@ describe('editor display preferences', () => {
       fontFamily: 'system-sans',
       hideToolbar: false,
       theme: 'default-light',
+      startView: 'editor',
+      hideSaveButton: true,
+      interactivePreview: true,
+      zenFontFamily: 'Inter',
+      zenFontFamilyGoogle: true,
+      zenFontSize: '1.25rem',
+      zenWordCount: true,
+      zenShowTitle: true,
+      zenShowControls: true,
+      shortcutPrefix: {steps: [{key: 'e', modifiers: ['Mod']}]},
     });
     expect(app.window.document.querySelector('#pref-content-width').value).toBe('standard');
     expect(app.window.document.querySelector('#pref-font').value).toBe('system-sans');
