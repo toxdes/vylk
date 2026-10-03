@@ -2,7 +2,7 @@
   'use strict';
 
   const PRIMARY = 'Mod';
-  const DEFAULT_PREFIX = {key: '/', modifiers: [PRIMARY]};
+  const DEFAULT_PREFIX = {key: 'e', modifiers: [PRIMARY]};
   const reservedDirectKeys = new Set([
     'd',
     'f',

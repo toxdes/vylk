@@ -1,4 +1,5 @@
 import {expect, test} from '@playwright/test';
+import {useEditorFixture} from './editor-fixture.js';
 
 test('resumes an interrupted vault conversion after a page reload', async ({page}) => {
   test.setTimeout(90000);
@@ -6,6 +7,7 @@ test('resumes an interrupted vault conversion after a page reload', async ({page
   await page.locator('#login-password').fill('browser-test-password');
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page.locator('#dashboard')).toBeVisible();
+  await useEditorFixture(page);
   await page.locator('#new-note-btn').click();
   await page.locator('#note-title').fill('Resume title');
   await page.locator('#note-content').fill('Resume body');

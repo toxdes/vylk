@@ -77,6 +77,7 @@
 
     function applyTheme(themeID = getPrefs().theme) {
       const prefs = getPrefs();
+      document.documentElement.dataset.reduceMotion = prefs.reduceMotion;
       const theme = themeByID.get(themeID) || themeByID.get('default-light');
       const documentRoot = document.documentElement;
       documentRoot.dataset.theme = theme.id;

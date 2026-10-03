@@ -1,6 +1,7 @@
 import {describe, expect, test} from 'bun:test';
 import {JSDOM} from 'jsdom';
 
+await import('../core/motion.js');
 await import('./formatting-toolbar.js');
 
 function setup() {

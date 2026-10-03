@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import {expect, test} from '@playwright/test';
+import {useEditorFixture} from './editor-fixture.js';
 
 const password = 'browser-test-password';
 
@@ -8,6 +9,7 @@ async function signIn(page) {
   await page.locator('#login-form input[name="password"]').fill(password);
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page.locator('#dashboard')).toBeVisible();
+  await useEditorFixture(page);
 }
 
 test('dashboard and preferences have no serious accessibility violations', async ({page}) => {

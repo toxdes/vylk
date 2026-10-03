@@ -499,7 +499,7 @@
           ),
         );
         if (Math.abs(targetScrollTop - this.element.scrollTop) <= 1) return;
-        const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        const reducedMotion = global.VylkMotion.reduced(this.element.ownerDocument, global);
         if (!reducedMotion && (smoothNext || this.anchorAnimation))
           this.animateAnchor(targetScrollTop);
         else {

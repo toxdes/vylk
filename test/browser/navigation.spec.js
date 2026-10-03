@@ -1,4 +1,5 @@
 import {expect, test} from '@playwright/test';
+import {useEditorFixture} from './editor-fixture.js';
 
 const password = 'browser-test-password';
 
@@ -7,7 +8,28 @@ async function signIn(page) {
   await page.locator('#login-form input[name="password"]').fill(password);
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page.locator('#dashboard')).toBeVisible();
+  await useEditorFixture(page);
 }
+
+test('direct view shortcuts follow the editor button order', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  for (const [key, panel] of [
+    ['2', 'preview'],
+    ['3', 'both'],
+    ['4', 'zen'],
+    ['1', 'editor'],
+  ]) {
+    await page.keyboard.press(`Control+${key}`);
+    await expect(page.locator(`.view-control[data-panel="${panel}"]`)).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  }
+  await expect(page.locator('#editor')).not.toHaveClass(/zen-mode/);
+  await expect(page.locator('#editor-panel')).toBeVisible();
+  await expect(page.locator('#preview-panel')).toBeHidden();
+});
 
 test('note deletion uses the shared confirmation dialog', async ({page}) => {
   await signIn(page);
@@ -21,7 +43,7 @@ test('note deletion uses the shared confirmation dialog', async ({page}) => {
   await expect(page.locator('#delete-note-modal')).toBeVisible();
   await expect(page.locator('#delete-note-modal .modal-body')).toHaveCSS(
     'animation-name',
-    'modal-panel-in',
+    'app-content-in',
   );
   await page.locator('#delete-note-cancel').click();
   await expect(page.locator('#delete-note-modal')).toBeHidden();

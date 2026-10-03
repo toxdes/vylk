@@ -810,21 +810,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .boot-spinner {
-    animation: none;
-  }
-}
-
 @media (max-width: 640px) {
   .meta-fields {
     grid-template-columns: 1fr;

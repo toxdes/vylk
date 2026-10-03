@@ -13,7 +13,17 @@ plaintext notes. Browsers need a secure context for E2EE: HTTPS remotely or HTTP
 on localhost/loopback. Native cryptographic libraries do not have that browser
 restriction, but HTTP still exposes reusable authentication secrets.
 
-Read `GET /api/vault/bootstrap`, then log in using the configured password for
+Read `GET /api/vault/bootstrap` without HTTP caching and compare its `instance_id`
+before accessing cached notes or remembered keys. Keep the cache identity readable
+even when its note data is encrypted. A different identity requires an explicit
+choice: retain local data while restoring the previous database and notes directory,
+or discard it and switch. A network failure is not a changed identity. Coordinate
+the choice across tabs and fence stale writes during an atomic local reset. Keep
+the switching page's callbacks bound to the old identity until it reloads; clearing
+the cache must not authorize old editor saves against the replacement database.
+Retain the application/service-worker cache; it contains no account or note data.
+
+Then log in using the configured password for
 `legacy`/`preparing`, or a derived proof for `encrypted`/`cleaning`. Retain the
 `session` and `vylk-device` cookies. There is no Bearer token, API key, CORS API,
 or per-user account identifier. This is one person's instance, not a shared
@@ -31,7 +41,8 @@ VYLK also sends `X-Content-Type-Options: nosniff`,
 on all responses. Its own gzip middleware excludes `/api/` routes; a reverse
 proxy can still compress them or add headers. Do not require transport headers
 to match a hardcoded set. SSE additionally sends `Cache-Control: no-cache` and
-`X-Accel-Buffering: no`. JSON API responses do not set an application cache TTL.
+`X-Accel-Buffering: no`. Bootstrap sends `Cache-Control: no-store`; other JSON API
+responses do not set an application cache TTL.
 
 On 401, stop background sync and request sign-in without deleting pending edits.
 Respect `Retry-After` on 429 and use bounded backoff for transient network/5xx

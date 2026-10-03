@@ -11,6 +11,7 @@ import (
 )
 
 func (a *app) handleVaultBootstrap(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	config, err := store.GetVaultConfig(a.db)
 	if err != nil {
 		httpx.WriteAPIError(w, http.StatusInternalServerError, "vault_status_failed", "could not read vault status")
@@ -20,13 +21,13 @@ func (a *app) handleVaultBootstrap(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, map[string]any{
 			"mode": "legacy", "reset_available": false,
 			"require_strong_passwords": a.requireStrongPasswords,
-			"version":                  version, "revision": appRevision,
+			"version":                  version, "revision": appRevision, "instance_id": a.instanceID,
 		})
 		return
 	}
 	httpx.WriteJSON(w, map[string]any{
 		"mode": config.Mode, "vault_id": config.VaultID, "epoch": config.Epoch,
-		"version": version, "revision": appRevision,
+		"version": version, "revision": appRevision, "instance_id": a.instanceID,
 		"reset_available":          a.password != "" && config.Mode == store.VaultReady,
 		"require_strong_passwords": a.requireStrongPasswords,
 		"kdf": map[string]any{"algorithm": "argon2id13", "salt": config.KDFSalt,

@@ -24,7 +24,7 @@ func newHandler(a *app, assets *web.Assets, artificialDelay time.Duration) http.
 	mux.HandleFunc("POST /api/vault/migration/verify", a.auth(a.vaultChange(a.handleVaultMigrationVerify)))
 	mux.HandleFunc("POST /api/vault/migration/commit", a.auth(a.vaultChange(a.handleVaultMigrationCommit)))
 	mux.HandleFunc("GET /manifest.json", assets.Manifest)
-	mux.HandleFunc("POST /api/logout", a.auth(a.handleLogout))
+	mux.HandleFunc("POST /api/logout", a.handleLogout)
 	mux.HandleFunc("GET /api/check", a.auth(a.handleCheck))
 	mux.HandleFunc("GET /api/devices", a.auth(a.handleDevices))
 	mux.HandleFunc("DELETE /api/devices/{id}", a.auth(a.vaultChange(a.handleSignOutDevice)))

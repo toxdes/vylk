@@ -634,6 +634,15 @@ SOFTWARE.
               >
                 <label class="pref-control"
                   ><span
+                    ><strong>Reduce motion</strong><small>Disable interface animations</small></span
+                  ><select id="pref-reduce-motion">
+                    <option value="system">System</option>
+                    <option value="always">Always</option>
+                    <option value="never">Never</option>
+                  </select></label
+                >
+                <label class="pref-control"
+                  ><span
                     ><strong>Content width</strong
                     ><small
                       >Choose the shared content rail used by the dashboard and regular
@@ -996,14 +1005,6 @@ SOFTWARE.
                 </div>
                 <p id="devices-status" class="vault-hint" role="status" aria-live="polite"></p>
                 <div id="devices-list" aria-label="Signed-in devices"></div>
-                <div class="pref-row pref-signout">
-                  <span
-                    ><strong>Session</strong
-                    ><small id="account-signout-copy"
-                      >Sign out and remove this device's local data.</small
-                    ></span
-                  ><button id="logout-btn" class="btn-text danger" type="button">Sign out</button>
-                </div>
               </section>
               <section
                 id="prefs-panel-encryption"
@@ -1837,6 +1838,40 @@ SOFTWARE.
         </div>
       </div>
 
+      <div id="dataset-switch-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-backdrop"></div>
+        <div
+          class="modal-body modal-body--standard"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dataset-switch-title"
+          aria-describedby="dataset-switch-copy"
+          tabindex="-1"
+        >
+          <div class="modal-heading"><h2 id="dataset-switch-title">Notes database changed</h2></div>
+          <div id="dataset-switch-copy">
+            <p class="modal-copy">
+              This address now serves a different notes database. Switching permanently discards
+              this browser’s cached notes and changes that haven’t synced, then connects to the new
+              database.
+            </p>
+            <p class="modal-copy">
+              To keep your pending changes, restart Vylk with the previous database and notes
+              directory, then reload. Notes saved on that server won’t be deleted.
+            </p>
+          </div>
+          <p id="dataset-switch-error" class="error" role="alert"></p>
+          <div class="modal-actions">
+            <button id="dataset-switch-keep" class="btn-secondary" type="button" autofocus>
+              Keep changes
+            </button>
+            <button id="dataset-switch-confirm" class="btn-primary danger" type="button">
+              Switch
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div id="device-signout-modal" class="modal hidden" aria-hidden="true">
         <div class="modal-backdrop"></div>
         <div
@@ -1856,39 +1891,15 @@ SOFTWARE.
           <p id="device-signout-copy" class="modal-copy"></p>
           <p id="device-signout-error" class="error" role="alert"></p>
           <div class="modal-actions">
-            <button id="device-signout-cancel" class="btn-text" type="button">Cancel</button>
+            <button id="device-signout-cancel" class="btn-text" type="button" autofocus>
+              Cancel
+            </button>
             <button id="device-signout-confirm" class="btn-primary danger" type="button">
               Sign out
             </button>
           </div>
         </div>
       </div>
-      <div id="logout-modal" class="modal hidden" aria-hidden="true">
-        <div class="modal-backdrop"></div>
-        <div
-          class="modal-body"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="logout-title"
-          aria-describedby="logout-copy"
-          tabindex="-1"
-        >
-          <div class="modal-heading">
-            <h3 id="logout-title">Sign out?</h3>
-            <button id="logout-close" class="modal-close" type="button" aria-label="Cancel">
-              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
-            </button>
-          </div>
-          <p id="logout-copy" class="modal-copy">
-            This ends your session and removes this device's local note data.
-          </p>
-          <div class="modal-actions">
-            <button id="logout-cancel" class="btn-text" type="button" autofocus>Cancel</button>
-            <button id="logout-confirm" class="btn-primary danger" type="button">Sign out</button>
-          </div>
-        </div>
-      </div>
-
       <div id="shortcut-confirm-modal" class="modal hidden" aria-hidden="true">
         <div class="modal-backdrop"></div>
         <div
@@ -2359,6 +2370,7 @@ SOFTWARE.
     </div>
     <script src="/vendor/marked.min.js"></script>
     <script src="/js/editor/merge.js"></script>
+    <script src="/js/core/motion.js"></script>
     <script src="/js/core/http.js"></script>
     <script src="/js/core/api-client.js"></script>
     <script src="/js/core/routes.js"></script>
@@ -2412,6 +2424,7 @@ SOFTWARE.
     <script src="/js/ui/preferences-store.js"></script>
     <script src="/js/ui/appearance.js"></script>
     <script src="/js/ui/modal.js"></script>
+    <script src="/js/ui/dataset-switch.js"></script>
     <script src="/js/ui/conflict-resolver.js"></script>
     <script src="/js/ui/feedback.js"></script>
     <script src="/js/ui/panel-controller.js"></script>

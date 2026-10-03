@@ -5,6 +5,50 @@ import {installAppLifecycle, styleSource} from './frontend-test-context.js';
 const track = installAppLifecycle();
 
 describe('keyboard shortcuts', () => {
+  test('maps direct view shortcuts to the editor button order without intercepting the dashboard', async () => {
+    const app = track(await createApp());
+    const document = app.window.document;
+    await app.hooks.restoreRoute({fetchRemote: false});
+    const dashboardKey = new app.window.KeyboardEvent('keydown', {
+      key: '1',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(dashboardKey);
+    expect(dashboardKey.defaultPrevented).toBe(false);
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', tags: '', content: 'body'});
+    expect(
+      [...document.querySelectorAll('.view-control[data-panel]')].map(
+        (button) => button.dataset.panel,
+      ),
+    ).toEqual(['editor', 'preview', 'both', 'zen']);
+    for (const [key, command, panel] of [
+      ['1', 'view.write', 'editor'],
+      ['2', 'view.preview', 'preview'],
+      ['3', 'view.split', 'both'],
+      ['4', 'view.zen', 'zen'],
+    ]) {
+      expect(app.hooks.getShortcutBinding(command).steps).toEqual([{key, modifiers: ['Mod']}]);
+      const event = new app.window.KeyboardEvent('keydown', {
+        key,
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      document.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(
+        document.querySelector(`.view-control[data-panel="${panel}"]`).getAttribute('aria-pressed'),
+      ).toBe('true');
+      expect(
+        document
+          .querySelector(`.view-control[data-panel="${panel}"]`)
+          .getAttribute('aria-keyshortcuts'),
+      ).toBe(`Control+${key}`);
+    }
+  });
+
   test('registers the curated commands with portable defaults', async () => {
     const app = track(await createApp());
     expect(app.hooks.shortcutCommands()).toEqual(
@@ -28,21 +72,21 @@ describe('keyboard shortcuts', () => {
     expect(app.hooks.getShortcutBinding('note.save').steps).toEqual([
       {key: 's', modifiers: ['Mod']},
     ]);
-    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: '/', modifiers: ['Mod']}]);
+    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]);
     expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([
-      {key: '/', modifiers: ['Mod']},
+      {key: 'e', modifiers: ['Mod']},
       {key: 't', modifiers: []},
     ]);
     expect(app.hooks.getShortcutBinding('format.link')).toBeNull();
   });
 
-  test('uses the configurable Mod+/ sequence to reveal Details and select the title', async () => {
+  test('uses the configurable Mod+E sequence to reveal Details and select the title', async () => {
     const app = track(await createApp());
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Rename me', tags: 'work', content: 'body'});
     app.window.document.querySelector('.meta-pane').classList.add('collapsed');
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: '/',
+        key: 'e',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
@@ -67,7 +111,7 @@ describe('keyboard shortcuts', () => {
     app.window.document.querySelector('#editor').classList.add('hidden');
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: '/',
+        key: 'e',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
@@ -89,14 +133,11 @@ describe('keyboard shortcuts', () => {
     app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', tags: '', content: 'body'});
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: '/',
+        key: '2',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
       }),
-    );
-    app.window.document.dispatchEvent(
-      new app.window.KeyboardEvent('keydown', {key: '2', bubbles: true, cancelable: true}),
     );
     expect(
       app.window.document.querySelector('#editor-panel').classList.contains('panel-hidden'),
@@ -259,7 +300,7 @@ describe('keyboard shortcuts', () => {
     titleShortcut.click();
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: '/',
+        key: 'e',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
@@ -273,7 +314,7 @@ describe('keyboard shortcuts', () => {
     );
     await vi.waitFor(() =>
       expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([
-        {key: '/', modifiers: ['Mod']},
+        {key: 'e', modifiers: ['Mod']},
         {key: 't', modifiers: []},
       ]),
     );
@@ -286,28 +327,12 @@ describe('keyboard shortcuts', () => {
     app.window.document.querySelector('#shortcut-prefix').click();
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {
-        key: 'e',
+        key: '/',
         ctrlKey: true,
         bubbles: true,
         cancelable: true,
       }),
     );
-    await vi.waitFor(() =>
-      expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]),
-    );
-    expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([
-      {key: 'e', modifiers: ['Mod']},
-      {key: 't', modifiers: []},
-    ]);
-    app.window.document.querySelector('#shortcut-reset').click();
-    expect(
-      app.window.document.querySelector('#shortcut-reset-modal').classList.contains('hidden'),
-    ).toBe(false);
-    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]);
-    app.window.document.querySelector('#shortcut-reset-cancel').click();
-    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]);
-    app.window.document.querySelector('#shortcut-reset').click();
-    app.window.document.querySelector('#shortcut-reset-confirm').click();
     await vi.waitFor(() =>
       expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: '/', modifiers: ['Mod']}]),
     );
@@ -315,11 +340,27 @@ describe('keyboard shortcuts', () => {
       {key: '/', modifiers: ['Mod']},
       {key: 't', modifiers: []},
     ]);
+    app.window.document.querySelector('#shortcut-reset').click();
+    expect(
+      app.window.document.querySelector('#shortcut-reset-modal').classList.contains('hidden'),
+    ).toBe(false);
+    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: '/', modifiers: ['Mod']}]);
+    app.window.document.querySelector('#shortcut-reset-cancel').click();
+    expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: '/', modifiers: ['Mod']}]);
+    app.window.document.querySelector('#shortcut-reset').click();
+    app.window.document.querySelector('#shortcut-reset-confirm').click();
+    await vi.waitFor(() =>
+      expect(app.hooks.getShortcutPrefix().steps).toEqual([{key: 'e', modifiers: ['Mod']}]),
+    );
+    expect(app.hooks.getShortcutBinding('editor.title').steps).toEqual([
+      {key: 'e', modifiers: ['Mod']},
+      {key: 't', modifiers: []},
+    ]);
   });
 });
 
 describe('font preferences', () => {
-  test('uses font controls and leaves Google Fonts fetching disabled by default', async () => {
+  test('uses font controls and preserves local-only font preferences', async () => {
     const app = track(await createApp());
 
     expect(app.window.document.querySelector('#pref-font').tagName).toBe('INPUT');
@@ -607,6 +648,16 @@ describe('editor display preferences', () => {
       fontFamily: 'system-sans',
       hideToolbar: false,
       theme: 'default-light',
+      startView: 'editor',
+      hideSaveButton: true,
+      interactivePreview: true,
+      zenFontFamily: 'Inter',
+      zenFontFamilyGoogle: true,
+      zenFontSize: '1.25rem',
+      zenWordCount: true,
+      zenShowTitle: true,
+      zenShowControls: true,
+      shortcutPrefix: {steps: [{key: 'e', modifiers: ['Mod']}]},
     });
     expect(app.window.document.querySelector('#pref-content-width').value).toBe('standard');
     expect(app.window.document.querySelector('#pref-font').value).toBe('system-sans');

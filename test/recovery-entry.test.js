@@ -1,6 +1,7 @@
 import {JSDOM} from 'jsdom';
 import {describe, expect, test} from 'vitest';
 
+await import('../internal/web/static/js/core/motion.js');
 await import('../internal/web/static/js/ui/recovery-entry.js');
 
 describe('recovery word confirmation', () => {

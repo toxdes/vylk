@@ -17,6 +17,11 @@ const dashboardControllerSource = fs.readFileSync(
   'utf8',
 );
 const authSource = fs.readFileSync(path.join(staticDirectory, 'js', 'ui', 'auth.js'), 'utf8');
+const motionSource = fs.readFileSync(path.join(staticDirectory, 'js', 'core', 'motion.js'), 'utf8');
+const datasetSwitchSource = fs.readFileSync(
+  path.join(staticDirectory, 'js', 'ui', 'dataset-switch.js'),
+  'utf8',
+);
 const devicesSource = fs.readFileSync(path.join(staticDirectory, 'js', 'ui', 'devices.js'), 'utf8');
 const recoveryEntrySource = fs.readFileSync(
   path.join(staticDirectory, 'js', 'ui', 'recovery-entry.js'),
@@ -260,6 +265,10 @@ globalThis.__vylkTestHooks = {
   handleServerChangeEvent,
   putLocalNote,
   init,
+  inspectDataset: config => datasetSwitch.inspect(config),
+  verifyPeerDataset,
+  verifyPeerSession,
+  lockRevokedSession,
   restoreRoute,
   getState: () => ({
     currentNoteId,
@@ -354,12 +363,22 @@ export async function deleteOfflineDatabase() {
 }
 
 export async function createApp({
+  broadcastChannel = null,
   deferredSave = false,
   deferredSyncCompletion = false,
   fetchImpl = defaultFetch,
   serviceWorker = null,
   realMarked = false,
   realMerge = false,
+  preferences = {
+    startView: 'split',
+    hideSaveButton: false,
+    interactivePreview: false,
+    zenFontFamily: 'system-monospace',
+    zenFontFamilyGoogle: false,
+    zenFontSize: '1rem',
+    zenWordCount: false,
+  },
 } = {}) {
   const dom = new JSDOM(fs.readFileSync(path.join(staticDirectory, 'index.html'), 'utf8'), {
     url: 'http://localhost:8080/',
@@ -367,6 +386,9 @@ export async function createApp({
     runScripts: 'outside-only',
   });
   const {window} = dom;
+  // Existing interaction tests exercise an explicit split-view setup, not
+  // first-run policy. Pass preferences: {} to exercise production defaults.
+  window.localStorage.setItem('vylk-prefs', JSON.stringify(preferences));
   // JSDOM omits this browser property; its localhost test origin is trustworthy.
   Object.defineProperty(window, 'isSecureContext', {configurable: true, value: true});
   window.__vylkDisableAutoInit = true;
@@ -376,12 +398,14 @@ export async function createApp({
   window.TextEncoder = TextEncoder;
   window.TextDecoder = TextDecoder;
   window.fetch = fetchImpl;
+  if (broadcastChannel) window.BroadcastChannel = broadcastChannel;
   if (serviceWorker)
     Object.defineProperty(window.navigator, 'serviceWorker', {
       value: serviceWorker,
       configurable: true,
     });
   window.eval(themesSource);
+  window.eval(motionSource);
   window.eval(httpSource);
   window.eval(apiClientSource);
   window.eval(routesSource);
@@ -390,6 +414,7 @@ export async function createApp({
   window.eval(vaultCryptoSource);
   window.eval(vaultLocalSource);
   window.eval(vaultSessionSource);
+  window.eval(datasetSwitchSource);
   window.eval(syncBatchSource);
   window.eval(serverEventsSource);
   window.eval(conflictActionsSource);
@@ -450,9 +475,21 @@ export async function createApp({
   window.cancelAnimationFrame = (id) => window.clearTimeout(id);
   window.scrollTo = () => {};
   Object.defineProperty(window.document, 'fonts', {
-    value: {load: async () => {}},
+    value: {load: async () => [{}]},
     configurable: true,
   });
+  // JSDOM does not download stylesheets. Resolve the first-run font locally;
+  // custom-font tests still control their own stylesheet load/error events.
+  const defaultFontObserver = new window.MutationObserver((records) => {
+    for (const record of records) {
+      for (const element of record.addedNodes) {
+        if (element.dataset?.vylkFont === 'Inter') {
+          element.dispatchEvent(new window.Event('load'));
+        }
+      }
+    }
+  });
+  defaultFontObserver.observe(window.document.head, {childList: true});
 
   let resolveFirstSaveStarted;
   let releaseFirstSave;
@@ -504,6 +541,7 @@ export async function createApp({
     syncCompletionStarted,
     releaseSyncCompletion,
     close: async () => {
+      defaultFontObserver.disconnect();
       window.__vylkTestHooks.cancelScheduledSync();
       window.__vylkTestHooks.cancelActiveSyncRequests();
       await window.__vylkTestHooks.waitForPreferenceIdle();

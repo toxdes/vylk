@@ -692,16 +692,3 @@
     pointer-events: none;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .interactive-preview-card {
-    transition:
-      background-color 0.01ms,
-      outline-color 0.01ms;
-  }
-
-  .preview-drag-handle,
-  .preview-edit-button {
-    transition-duration: 0.01ms;
-  }
-}

@@ -3,7 +3,13 @@ import {JSDOM} from 'jsdom';
 
 await import('./feedback.js');
 
-function setup({version = '', revision = '', shellRevision = ''} = {}) {
+function setup({
+  version = '',
+  revision = '',
+  shellRevision = '',
+  serviceWorker = null,
+  registration = null,
+} = {}) {
   const dom = new JSDOM(
     `
     <span id="sync-status"><span class="sync-indicator-label"></span></span>
@@ -30,8 +36,11 @@ function setup({version = '', revision = '', shellRevision = ''} = {}) {
     document: dom.window.document,
     isSyncInFlight: () => false,
     localStorage: dom.window.localStorage,
-    navigator: dom.window.navigator,
-    registerServiceWorker: (value) => registered.push(value),
+    navigator: serviceWorker ? {serviceWorker} : dom.window.navigator,
+    registerServiceWorker: (value) => {
+      registered.push(value);
+      return registration;
+    },
     requestFrame: (callback) => callback(),
     window: dom.window,
   });
@@ -39,6 +48,42 @@ function setup({version = '', revision = '', shellRevision = ''} = {}) {
 }
 
 describe('feedback controller', () => {
+  test('removes an obsolete update banner when the server matches the loaded shell again', () => {
+    const {document, feedback} = setup({shellRevision: 'loaded', revision: 'loaded'});
+    feedback.cacheVersion({revision: 'different'});
+    expect(document.querySelectorAll('.toast.update')).toHaveLength(1);
+    feedback.cacheVersion({revision: 'loaded'});
+    expect(document.querySelectorAll('.toast.update')).toHaveLength(0);
+    feedback.cacheVersion({revision: 'different'});
+    expect(document.querySelectorAll('.toast.update')).toHaveLength(1);
+  });
+
+  test('does not dismiss a pending update on a response without revision evidence', () => {
+    const {document, feedback} = setup({shellRevision: 'loaded', revision: 'loaded'});
+    feedback.cacheVersion({revision: 'different'});
+    feedback.cacheVersion();
+    expect(document.querySelectorAll('.toast.update')).toHaveLength(1);
+  });
+  test('prepares the requested revision before allowing an automatic reload', async () => {
+    const serviceWorker = new EventTarget();
+    serviceWorker.controller = {scriptURL: 'http://localhost/sw.js?revision=old'};
+    const registration = {
+      update: async () => {
+        serviceWorker.controller = {scriptURL: 'http://localhost/sw.js?revision=new'};
+        serviceWorker.dispatchEvent(new Event('controllerchange'));
+      },
+    };
+    const {feedback, registered} = setup({revision: 'old', serviceWorker, registration});
+    await feedback.prepareReload('new');
+    expect(registered).toEqual(['new']);
+  });
+
+  test('a failed update prevents reload preparation from succeeding', async () => {
+    const serviceWorker = new EventTarget();
+    serviceWorker.controller = {scriptURL: 'http://localhost/sw.js?revision=old'};
+    const {feedback} = setup({revision: 'old', serviceWorker});
+    await expect(feedback.prepareReload('new')).rejects.toThrow('Could not download');
+  });
   test('compares updates against the loaded shell rather than another tab’s cached version', () => {
     const {document, feedback} = setup({revision: 'new', shellRevision: 'old'});
     feedback.cacheVersion({revision: 'new'});

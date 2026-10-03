@@ -107,7 +107,7 @@
     }
 
     function animateReflow(before) {
-      if (document.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+      if (root.VylkMotion.reduced(document, document.defaultView)) return;
       for (const [chip, first] of before) {
         if (!chip.isConnected || !chip.animate) continue;
         const last = chip.getBoundingClientRect();

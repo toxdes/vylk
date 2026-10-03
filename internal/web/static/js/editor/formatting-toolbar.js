@@ -2,6 +2,7 @@
   'use strict';
 
   function create({document, formatting, isLocked, onFormatted, readSource, window, writeSource}) {
+    const popups = root.VylkMotion.createPopups(document, window);
     const picker = document.createElement('div');
     picker.id = 'table-picker';
     picker.className = 'table-picker hidden';
@@ -53,13 +54,13 @@
     }
 
     function hide() {
-      picker.classList.add('hidden');
+      popups.hide(picker);
       tableTrigger.setAttribute('aria-expanded', 'false');
       highlight();
     }
 
     function hideHeading() {
-      headingPicker.classList.add('hidden');
+      popups.hide(headingPicker);
       headingTrigger?.setAttribute('aria-expanded', 'false');
     }
 
@@ -72,7 +73,7 @@
 
     function show(trigger) {
       hideHeading();
-      picker.classList.remove('hidden');
+      popups.show(picker);
       trigger.setAttribute('aria-expanded', 'true');
       placePopup(picker, trigger);
     }
@@ -80,7 +81,7 @@
     function showHeading() {
       if (isLocked()) return;
       hide();
-      headingPicker.classList.remove('hidden');
+      popups.show(headingPicker);
       headingTrigger.setAttribute('aria-expanded', 'true');
       placePopup(headingPicker, headingTrigger);
       headingPicker.querySelector('button').focus();

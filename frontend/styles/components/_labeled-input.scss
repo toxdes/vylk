@@ -62,16 +62,13 @@
   line-height: 1.25;
   pointer-events: none;
   text-overflow: ellipsis;
-  transition:
-    top 0.2s,
-    transform 0.2s;
+  transition: transform 0.2s;
   white-space: nowrap;
 }
 
 .label-input__control:focus + .label-input__label,
 .label-input__control:not(:placeholder-shown) + .label-input__label {
-  top: 0;
-  transform: translateY(-50%) scale(0.8);
+  transform: translateY(calc(-1.25rem - 50%)) scale(0.8);
 }
 
 .label-input__toggle,

@@ -3,14 +3,15 @@
 
   const defaults = {
     revision: 1,
+    reduceMotion: 'system',
     autoSave: true,
-    startView: 'split',
+    startView: 'editor',
     hideToolbar: false,
-    hideSaveButton: false,
+    hideSaveButton: true,
     saveButtonLocation: 'panel',
     collapseDetails: false,
     hideCursorHighlight: false,
-    interactivePreview: false,
+    interactivePreview: true,
     statusDisplay: 'normal',
     contentWidth: 'standard',
     zenPageWidth: 'standard',
@@ -25,14 +26,14 @@
     previewFontFamily: 'system-sans',
     previewFontFamilyGoogle: false,
     previewFontSize: '1rem',
-    zenFontFamily: 'system-monospace',
-    zenFontFamilyGoogle: false,
-    zenFontSize: '1rem',
-    zenWordCount: false,
+    zenFontFamily: 'Inter',
+    zenFontFamilyGoogle: true,
+    zenFontSize: '1.25rem',
+    zenWordCount: true,
     zenShowTitle: true,
     zenShowControls: true,
     zenInteractivePreview: false,
-    shortcutPrefix: {steps: [{key: '/', modifiers: ['Mod']}]},
+    shortcutPrefix: {steps: [{key: 'e', modifiers: ['Mod']}]},
     keyboardShortcuts: {},
     shortcutConfirmationSkips: {},
   };
@@ -114,6 +115,8 @@
 
   function normalize(value = {}, fallback = {}) {
     const merged = {...defaults, ...fallback, ...value};
+    if (!['system', 'always', 'never'].includes(merged.reduceMotion))
+      merged.reduceMotion = defaults.reduceMotion;
     merged.revision =
       Number.isSafeInteger(Number(merged.revision)) && Number(merged.revision) > 0
         ? Number(merged.revision)
@@ -125,9 +128,11 @@
     const savedStartView = value.startView ?? fallback.startView;
     if (['editor', 'preview', 'split', 'zen'].includes(savedStartView))
       merged.startView = savedStartView;
-    else
+    else {
+      const hidePreview = value.hidePreview ?? fallback.hidePreview;
       merged.startView =
-        (value.hidePreview ?? fallback.hidePreview) ? 'editor' : defaults.startView;
+        hidePreview == null ? defaults.startView : hidePreview ? 'editor' : 'split';
+    }
     if (!['panel', 'header'].includes(merged.saveButtonLocation))
       merged.saveButtonLocation = defaults.saveButtonLocation;
     const themes = new Set((root.VylkThemes || []).map((theme) => theme.id));

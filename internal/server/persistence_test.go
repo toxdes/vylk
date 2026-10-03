@@ -341,4 +341,14 @@ func TestPrefsMigratesLegacyHidePreviewToStartView(t *testing.T) {
 	if strings.Contains(stored, "hidePreview") || !strings.Contains(stored, `"startView":"editor"`) {
 		t.Fatalf("stored migrated preferences = %s", stored)
 	}
+	if _, err := db.Exec(`UPDATE prefs SET data = '{"hidePreview":false}' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	p, err = getPrefs(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.StartView != "split" {
+		t.Fatalf("legacy visible preview = %q, want split", p.StartView)
+	}
 }

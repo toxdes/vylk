@@ -4,6 +4,20 @@ import {installAppLifecycle} from './frontend-test-context.js';
 
 const track = installAppLifecycle();
 
+function peerChannel() {
+  let receive;
+  return {
+    channel: class {
+      addEventListener(type, listener) {
+        if (type === 'message') receive = listener;
+      }
+      postMessage() {}
+      close() {}
+    },
+    send: (data) => receive({data: {...data, sender: 'another-tab'}}),
+  };
+}
+
 describe('typed API outcomes', () => {
   test('preserves server status, stable code, and retry policy', async () => {
     const app = track(
@@ -37,6 +51,206 @@ describe('typed API outcomes', () => {
       responseStatus: 0,
       retryable: true,
     });
+  });
+});
+
+describe('cross-tab session notifications', () => {
+  test('local sign-out locks peer tabs without trusting their still-valid cookie', async () => {
+    const requests = [];
+    const peer = peerChannel();
+    const app = track(
+      await createApp({
+        broadcastChannel: peer.channel,
+        fetchImpl: async (path) => {
+          requests.push(path);
+          return response(200, {ok: true});
+        },
+      }),
+    );
+    await app.hooks.restoreRoute({fetchRemote: false});
+    peer.send({type: 'local-signout'});
+    await app.hooks.lockRevokedSession(false);
+    expect(app.window.document.querySelector('#login-screen').classList.contains('hidden')).toBe(
+      false,
+    );
+    expect(requests).not.toContain('/api/check');
+  });
+
+  test('local sign-out survives reload even while the server cookie remains valid', async () => {
+    const requests = [];
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) => {
+          requests.push(path);
+          return response(200, {mode: 'legacy', instance_id: 'current'});
+        },
+      }),
+    );
+    app.window.localStorage.setItem('vylk-local-signout', '1');
+    await app.hooks.init();
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every((path) => path === '/api/vault/bootstrap')).toBe(true);
+    expect(app.window.document.querySelector('#login-screen').classList.contains('hidden')).toBe(
+      false,
+    );
+    expect(app.window.document.querySelector('#dashboard').classList.contains('hidden')).toBe(true);
+  });
+
+  test('a new-session lock is not swallowed by a superseded pending lock', async () => {
+    const app = track(await createApp({fetchImpl: async () => response(200, {ok: true})}));
+    await app.hooks.restoreRoute({fetchRemote: false});
+    const oldLock = app.hooks.lockRevokedSession(false);
+    // Starting sign-in advances the revision synchronously, before old cleanup.
+    const login = app.hooks.api('/api/login', {method: 'POST', body: '{}'});
+    const currentLock = app.hooks.lockRevokedSession(false);
+    expect(currentLock).not.toBe(oldLock);
+    expect(app.hooks.lockRevokedSession(false)).toBe(currentLock);
+    await Promise.all([login, oldLock, currentLock]);
+    expect(app.window.document.querySelector('#login-screen').classList.contains('hidden')).toBe(
+      false,
+    );
+  });
+
+  test('a superseded pending lock cannot replace the new session with sign-in', async () => {
+    const app = track(await createApp({fetchImpl: async () => response(200, {ok: true})}));
+    await app.hooks.restoreRoute({fetchRemote: false});
+    const oldLock = app.hooks.lockRevokedSession(false);
+    await app.hooks.api('/api/login', {method: 'POST', body: '{}'});
+    await oldLock;
+    expect(app.window.document.querySelector('#dashboard').classList.contains('hidden')).toBe(
+      false,
+    );
+  });
+
+  test('verifies the current database instead of applying a peer configuration', async () => {
+    const requests = [];
+    const peer = peerChannel();
+    const app = track(
+      await createApp({
+        broadcastChannel: peer.channel,
+        fetchImpl: async (path) => {
+          requests.push(path);
+          return response(200, {instance_id: 'current', mode: 'legacy'});
+        },
+      }),
+    );
+    await app.hooks.inspectDataset({instance_id: 'current', mode: 'legacy'});
+    peer.send({type: 'dataset-changed', config: {instance_id: 'obsolete', mode: 'legacy'}});
+    await app.hooks.verifyPeerDataset();
+    expect(requests).toEqual(['/api/vault/bootstrap']);
+    expect(
+      app.window.document.querySelector('#dataset-switch-modal').classList.contains('hidden'),
+    ).toBe(true);
+    expect(app.window.document.querySelector('[inert]')).toBeNull();
+  });
+
+  test('ignores a lock notification when the current server session is valid', async () => {
+    const requests = [];
+    const peer = peerChannel();
+    const app = track(
+      await createApp({
+        broadcastChannel: peer.channel,
+        fetchImpl: async (path) => {
+          requests.push(path);
+          return response(200, {instance_id: 'current', mode: 'legacy'});
+        },
+      }),
+    );
+    await app.hooks.inspectDataset({instance_id: 'current', mode: 'legacy'});
+    await app.hooks.restoreRoute({fetchRemote: false});
+    peer.send({type: 'session-locked'});
+    await Promise.all([app.hooks.verifyPeerSession(), app.hooks.verifyPeerSession()]);
+    expect(requests).toEqual(['/api/vault/bootstrap', '/api/check']);
+    expect(app.window.document.querySelector('#dashboard').classList.contains('hidden')).toBe(
+      false,
+    );
+  });
+
+  test('drops a peer verification response superseded by a new sign-in', async () => {
+    let resolveBootstrap;
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) =>
+          String(path) === '/api/vault/bootstrap'
+            ? new Promise((resolve) => {
+                resolveBootstrap = resolve;
+              })
+            : response(200, {ok: true}),
+      }),
+    );
+    await app.hooks.inspectDataset({instance_id: 'current', mode: 'legacy'});
+    const verification = app.hooks.verifyPeerDataset();
+    await app.hooks.api('/api/login', {method: 'POST', body: '{}'});
+    resolveBootstrap(response(200, {instance_id: 'obsolete', mode: 'legacy'}));
+    expect(await verification).toBe(false);
+    expect(
+      app.window.document.querySelector('#dataset-switch-modal').classList.contains('hidden'),
+    ).toBe(true);
+  });
+
+  test('a delayed startup 401 cannot hide the dashboard after a new sign-in', async () => {
+    let resolveCheck;
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) => {
+          if (String(path) === '/api/check')
+            return new Promise((resolve) => {
+              resolveCheck = resolve;
+            });
+          return response(200, {instance_id: 'current', mode: 'legacy'});
+        },
+      }),
+    );
+    await app.hooks.restoreRoute({fetchRemote: false});
+    const startup = app.hooks.init();
+    await vi.waitFor(() => expect(resolveCheck).toBeTypeOf('function'));
+    await app.hooks.api('/api/login', {method: 'POST', body: '{}'});
+    resolveCheck(response(401, {error: 'unauthorized'}));
+    await startup;
+    expect(app.window.document.querySelector('#dashboard').classList.contains('hidden')).toBe(
+      false,
+    );
+    expect(app.window.document.querySelector('#login-error').textContent).not.toContain(
+      'Could not start',
+    );
+  });
+
+  test('pauses on a verified database change before checking the old session', async () => {
+    const requests = [];
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) => {
+          requests.push(path);
+          return response(200, {instance_id: 'replacement', mode: 'legacy'});
+        },
+      }),
+    );
+    await app.hooks.inspectDataset({instance_id: 'original', mode: 'legacy'});
+    await expect(app.hooks.verifyPeerSession()).rejects.toMatchObject({
+      code: 'server_instance_changed',
+    });
+    expect(requests).toEqual(['/api/vault/bootstrap']);
+    expect(
+      app.window.document.querySelector('#dataset-switch-modal').classList.contains('hidden'),
+    ).toBe(false);
+  });
+
+  test('a verified current 401 still opens sign-in', async () => {
+    const app = track(
+      await createApp({
+        fetchImpl: async (path) =>
+          String(path) === '/api/vault/bootstrap'
+            ? response(200, {instance_id: 'current', mode: 'legacy'})
+            : response(401, {error: 'unauthorized'}),
+      }),
+    );
+    app.window.console.error = () => {};
+    await app.hooks.inspectDataset({instance_id: 'current', mode: 'legacy'});
+    await app.hooks.restoreRoute({fetchRemote: false});
+    await expect(app.hooks.verifyPeerSession()).rejects.toMatchObject({responseStatus: 401});
+    expect(app.window.document.querySelector('#login-screen').classList.contains('hidden')).toBe(
+      false,
+    );
   });
 });
 
@@ -96,7 +310,9 @@ describe('server change invalidation', () => {
         },
       }),
     );
-    await app.hooks.setOfflineState('serverInstanceID', 'original');
+    // The replacement was explicitly accepted; snapshot retry is still required.
+    await app.hooks.setOfflineState('serverInstanceID', 'replacement');
+    await app.hooks.setOfflineState('serverReconciliationRequired', true);
     await expect(app.hooks.syncNow()).resolves.toBe(false);
     await expect(app.hooks.getOfflineState('serverReconciliationRequired')).resolves.toBe(true);
     await expect(app.hooks.syncNow()).resolves.toBe(true);
@@ -150,6 +366,7 @@ describe('server change invalidation', () => {
     await expect(app.hooks.syncNow({retryPaused: true})).resolves.toBe(false);
     expect(pushes).toBe(0);
     instance = 'original';
+    await app.hooks.inspectDataset({instance_id: instance, mode: 'legacy'});
     await app.hooks.setOfflineState('syncSequence', 0);
     await expect(app.hooks.syncNow({retryPaused: true})).resolves.toBe(true);
     expect(pushes).toBe(1);

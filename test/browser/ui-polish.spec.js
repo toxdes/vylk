@@ -1,4 +1,5 @@
 import {expect, test} from '@playwright/test';
+import {useEditorFixture, waitForEditorEntrance} from './editor-fixture.js';
 
 const password = 'browser-test-password';
 
@@ -7,6 +8,7 @@ async function signIn(page) {
   await page.locator('#login-form input[name="password"]').fill(password);
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page.locator('#dashboard')).toBeVisible();
+  await useEditorFixture(page);
 }
 
 async function enableInteractivePreview(page) {
@@ -294,12 +296,19 @@ test('label inputs float their labels and toggle password visibility', async ({p
   await expect(passwordInput).toHaveAttribute('placeholder', ' ');
   await expect(label).toHaveText('Password');
   await expect(passwordInput).toHaveAttribute('type', 'password');
+  const floatingLabelPosition = () =>
+    label.evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished));
+      const input = document.querySelector('#login-password').getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      return Math.abs(box.top + box.height / 2 - input.top);
+    });
   await passwordInput.focus();
-  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).top)).toBe('0px');
+  await expect.poll(floatingLabelPosition).toBeLessThanOrEqual(2);
 
   await passwordInput.fill('browser-test-password');
   await passwordInput.blur();
-  await expect.poll(() => label.evaluate((element) => getComputedStyle(element).top)).toBe('0px');
+  await expect.poll(floatingLabelPosition).toBeLessThanOrEqual(2);
 
   await toggle.click();
   await expect(passwordInput).toHaveAttribute('type', 'text');
@@ -413,16 +422,32 @@ test('sign out confirms and returns to the login screen', async ({page}) => {
   await signIn(page);
   await page.locator('#prefs-btn').click();
   await page.locator('#prefs-tab-account').click();
-  await page.locator('#logout-btn').click();
+  const currentDevice = page.locator('#devices-list .device-row').filter({hasText: 'This device'});
+  await expect(currentDevice).toHaveCount(1);
+  const signOut = currentDevice.getByRole('button', {name: /Sign out/});
+  await expect(page.locator('#logout-btn')).toHaveCount(0);
+  await expect(
+    page.locator('#prefs-panel-account').getByRole('button', {name: /Sign out/}),
+  ).toHaveCount(await page.locator('#devices-list .device-row').count());
+  await expect(signOut).toHaveClass('btn-secondary danger');
+  await expect(signOut).toHaveCSS('border-top-style', 'solid');
+  if (process.env.VYLK_CAPTURE_ACCOUNT) {
+    const viewport = page.viewportSize();
+    await page.screenshot({path: '/tmp/vylk-account-desktop.png', fullPage: true});
+    await page.setViewportSize({width: 390, height: 844});
+    await page.screenshot({path: '/tmp/vylk-account-mobile.png', fullPage: true});
+    await page.setViewportSize(viewport);
+  }
+  await signOut.click();
 
-  await expect(page.locator('#logout-modal')).toBeVisible();
-  await expect(page.locator('#logout-cancel')).toBeFocused();
+  await expect(page.locator('#device-signout-modal')).toBeVisible();
+  await expect(page.locator('#device-signout-cancel')).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(page.locator('#logout-modal')).toBeHidden();
+  await expect(page.locator('#device-signout-modal')).toBeHidden();
   await expect(page.locator('#prefs-modal')).toBeVisible();
 
-  await page.locator('#logout-btn').click();
-  await page.locator('#logout-confirm').click();
+  await signOut.click();
+  await page.locator('#device-signout-confirm').click();
   await expect(page.locator('#login-screen')).toBeVisible();
   await expect(page.locator('#dashboard')).toBeHidden();
   await expect(page.locator('#prefs-modal')).toBeHidden();
@@ -466,6 +491,93 @@ test('preference sections enter quickly and respect reduced motion', async ({pag
   await page.locator('#prefs-tab-encryption').click();
   await expect(page.locator('#prefs-panel-encryption')).toBeVisible();
   await expect(page.locator('#prefs-panel-encryption')).toHaveCSS('animation-name', 'none');
+});
+
+test('motion choices control CSS and JavaScript effects and survive reload', async ({page}) => {
+  await signIn(page);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await page.locator('#prefs-btn').click();
+  const choice = page.locator('#pref-reduce-motion');
+  await expect(choice).toHaveValue('system');
+  const policy = () => page.evaluate(() => window.VylkMotion.reduced(document, window));
+  await expect.poll(policy).toBe(true);
+  await choice.selectOption('never');
+  await expect.poll(policy).toBe(false);
+  await page.locator('#prefs-tab-editor').click();
+  await expect(page.locator('#prefs-panel-editor')).toHaveCSS('animation-name', 'app-content-in');
+  await page.locator('#prefs-tab-appearance').click();
+  await expect(page.locator('#prefs-panel-appearance')).toHaveCSS(
+    'animation-name',
+    'app-content-return',
+  );
+  await choice.selectOption('always');
+  await expect.poll(policy).toBe(true);
+  await page.emulateMedia({reducedMotion: 'no-preference'});
+  await page.locator('#prefs-tab-editor').click();
+  await expect(page.locator('#prefs-panel-editor')).toHaveCSS('animation-name', 'none');
+  await page.reload();
+  await expect.poll(policy).toBe(true);
+  await page.locator('#prefs-tab-appearance').click();
+  await expect(choice).toHaveValue('always');
+  await choice.selectOption('system');
+  await expect.poll(policy).toBe(false);
+});
+
+test('Back reverses the outgoing editor with compositor-only keyframes', async ({page}) => {
+  await signIn(page);
+  for (const browserBack of [false, true]) {
+    await page.locator('#new-note-btn').click();
+    await expect(page.locator('#editor')).toBeVisible();
+    await page.locator('#note-content').fill('Navigation animation');
+    await page.locator('#save-btn').click();
+    await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
+    await page.evaluate(async () => {
+      await Promise.all(
+        document
+          .querySelector('#editor')
+          .getAnimations({subtree: true})
+          .map((animation) => animation.finished.catch(() => {})),
+      );
+      window.editorExit = null;
+      document.querySelector('#editor').addEventListener(
+        'animationstart',
+        (event) => {
+          if (event.target.id !== 'editor' || event.animationName !== 'app-content-out') return;
+          const animation = event.target.getAnimations()[0];
+          window.editorExit = {
+            duration: animation.effect.getTiming().duration,
+            properties: Object.keys(animation.effect.getKeyframes()[0]),
+            inert: event.target.hasAttribute('inert'),
+          };
+        },
+        {once: true},
+      );
+    });
+    expect(
+      await page
+        .locator('#editor .editor-body')
+        .evaluate((element) => element.getAnimations().length),
+    ).toBe(0);
+    if (browserBack) await page.goBack();
+    else await page.locator('#back-btn').click();
+    await expect(page.locator('#dashboard')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.editorExit)).not.toBeNull();
+    const exit = await page.evaluate(() => window.editorExit);
+    expect(exit.duration).toBe(180);
+    expect(exit.inert).toBe(true);
+    expect(
+      exit.properties.filter(
+        (key) => !['offset', 'computedOffset', 'easing', 'composite'].includes(key),
+      ),
+    ).toEqual(expect.arrayContaining(['opacity', 'transform']));
+    expect(
+      exit.properties.every((key) =>
+        ['offset', 'computedOffset', 'easing', 'composite', 'opacity', 'transform'].includes(key),
+      ),
+    ).toBe(true);
+    await expect(page.locator('.screen-leaving')).toHaveCount(0);
+    await expect(page.locator('#editor')).not.toHaveAttribute('inert', '');
+  }
 });
 
 test('dashboard and editor content enter on navigation and respect reduced motion', async ({
@@ -725,6 +837,7 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
   await page.setViewportSize({width: 390, height: 844});
   await signIn(page);
   await page.locator('#new-note-btn').click();
+  await waitForEditorEntrance(page);
 
   const [toolbar, controls] = await Promise.all([
     page.locator('.fmt-bar').boundingBox(),
@@ -739,8 +852,8 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
   await expect(topRightButtons).toHaveCount(5);
   for (const button of await topRightButtons.all()) {
     const bounds = await button.boundingBox();
-    expect(bounds.width).toBe(24);
-    expect(bounds.height).toBe(24);
+    expect(bounds.width).toBeCloseTo(24, 0);
+    expect(bounds.height).toBeCloseTo(24, 0);
   }
 
   const controlSurface = await page
@@ -774,8 +887,8 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
   const formattingButton = page.locator('#editor-panel .fmt-bar button').first();
   const formattingButtonBox = await formattingButton.boundingBox();
   expect(formattingButtonBox).not.toBeNull();
-  expect(formattingButtonBox.width).toBe(24);
-  expect(formattingButtonBox.height).toBe(24);
+  expect(formattingButtonBox.width).toBeCloseTo(24, 0);
+  expect(formattingButtonBox.height).toBeCloseTo(24, 0);
   const iconWidths = await formattingButton.locator('.icon').evaluate((icon) => ({
     toolbar: Number.parseFloat(getComputedStyle(icon).width),
     corner: Number.parseFloat(

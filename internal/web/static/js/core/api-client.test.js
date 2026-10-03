@@ -29,6 +29,39 @@ function setup(fetchImpl) {
 }
 
 describe('API client', () => {
+  test.each(['request', 'syncFetch'])(
+    'ignores a stale 401 in %s after a newer sign-in',
+    async (method) => {
+      let resolveOld;
+      const context = setup(async (path) =>
+        path === '/api/login'
+          ? response(200, '{"ok":true}')
+          : new Promise((resolve) => {
+              resolveOld = resolve;
+            }),
+      );
+      const oldRequest = context.client[method]('/api/check').catch((error) => error);
+      await context.client.request('/api/login', {method: 'POST', body: '{}'});
+      resolveOld(response(401, '{"error":"unauthorized"}'));
+
+      expect(await oldRequest).toMatchObject({kind: 'aborted', code: 'authentication_superseded'});
+      expect(context.authenticationRequired()).toBe(false);
+      expect(context.diagnostics).toEqual([]);
+      expect(context.client.consumeCancellation(await oldRequest)).toBe(true);
+    },
+  );
+
+  test('still requires authentication for a current 401 after signing in', async () => {
+    const context = setup(async (path) =>
+      path === '/api/login'
+        ? response(200, '{"ok":true}')
+        : response(401, '{"error":"unauthorized"}'),
+    );
+    await context.client.request('/api/login', {method: 'POST', body: '{}'});
+    await expect(context.client.request('/api/check')).rejects.toMatchObject({responseStatus: 401});
+    expect(context.authenticationRequired()).toBe(true);
+  });
+
   test('applies JSON request defaults and balances sync lifecycle callbacks', async () => {
     let captured;
     const context = setup(async (path, options) => {

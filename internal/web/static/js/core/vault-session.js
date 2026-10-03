@@ -1,7 +1,7 @@
 (function (root) {
   'use strict';
 
-  function create({apiClient, offlineStore}) {
+  function create({apiClient, offlineStore, onBootstrap = async () => {}}) {
     const cryptography = root.VylkVaultCrypto;
     let config = null;
     let rootKey = null;
@@ -21,7 +21,9 @@
 
     async function bootstrap() {
       try {
-        config = await apiClient.request('/api/vault/bootstrap');
+        const incoming = await apiClient.request('/api/vault/bootstrap', {cache: 'no-store'});
+        await onBootstrap(incoming);
+        config = incoming;
         if (config.mode !== 'legacy') await offlineStore.cacheVaultBootstrap(config);
       } catch (error) {
         if (!['network', 'timeout'].includes(error.kind)) throw error;

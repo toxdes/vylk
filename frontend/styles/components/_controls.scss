@@ -82,6 +82,17 @@
   background: var(--surface-hover);
 }
 
+.btn-secondary.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-secondary.danger:hover {
+  border-color: var(--danger-hover);
+  background: color-mix(in srgb, var(--danger) 10%, var(--card-bg));
+  color: var(--danger-hover);
+}
+
 .prefs-btn {
   width: 2.25rem;
   height: 2.25rem;

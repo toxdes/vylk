@@ -56,13 +56,13 @@
         "operationId": "logout",
         "tags": ["Authentication"],
         "summary": "Sign out this browser profile",
-        "description": "Revokes all sessions grouped under this device cookie, not just this tab. Keep encrypted pending edits locally; logout does not upload them.",
+        "description": "Revokes all sessions grouped under a valid session's device, not just this tab. Missing, expired, or unrecognized sessions still clear the cookie successfully. Keep encrypted pending edits locally; logout does not upload them.",
+        "security": [],
         "responses": {
           "204": {
             "description": "Signed out; empty body. Clears session cookie.",
             "headers": {"Set-Cookie": {"$ref": "#/components/headers/Cookies"}}
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
           "default": {"$ref": "#/components/responses/ServerError"}
         }
       }
@@ -577,10 +577,11 @@
         "tags": ["Encryption"],
         "summary": "Discover vault mode and derivation settings",
         "security": [],
-        "description": "Public, no key wrappers. In legacy mode vault_id, epoch, and kdf are absent. reset_available does not override VYLK_DISABLE_VAULT_CHANGES; the reset API can still reject the operation.",
+        "description": "Public, no key wrappers. Compare instance_id with the local cache identity before reading notes or restoring remembered keys. In legacy mode vault_id, epoch, and kdf are absent. reset_available does not override VYLK_DISABLE_VAULT_CHANGES; the reset API can still reject the operation.",
         "responses": {
           "200": {
             "description": "Current encryption mode and public KDF settings.",
+            "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}},
             "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Bootstrap"}}}
           },
           "default": {"$ref": "#/components/responses/ServerError"}
@@ -1377,13 +1378,19 @@
         "properties": {
           "revision": {"type": "integer", "format": "int64"},
           "autoSave": {"type": "boolean", "default": true},
+          "reduceMotion": {
+            "type": "string",
+            "enum": ["system", "always", "never"],
+            "default": "system",
+            "description": "System follows the OS accessibility setting; Always disables interface animations; Never explicitly enables them regardless of the OS setting."
+          },
           "startView": {
             "type": "string",
             "enum": ["editor", "preview", "split", "zen"],
-            "default": "split"
+            "default": "editor"
           },
-          "hideToolbar": {"type": "boolean"},
-          "hideSaveButton": {"type": "boolean"},
+          "hideToolbar": {"type": "boolean", "default": false},
+          "hideSaveButton": {"type": "boolean", "default": true},
           "saveButtonLocation": {
             "type": "string",
             "enum": ["", "panel", "header"],
@@ -1391,7 +1398,7 @@
           },
           "collapseDetails": {"type": "boolean"},
           "hideCursorHighlight": {"type": "boolean"},
-          "interactivePreview": {"type": "boolean"},
+          "interactivePreview": {"type": "boolean", "default": true},
           "statusDisplay": {"type": "string"},
           "contentWidth": {"$ref": "#/components/schemas/ContentWidth"},
           "zenPageWidth": {"$ref": "#/components/schemas/ContentWidth"},
@@ -1409,16 +1416,16 @@
           "previewFontFamily": {"type": "string"},
           "previewFontFamilyGoogle": {"type": "boolean"},
           "previewFontSize": {"$ref": "#/components/schemas/FontSize"},
-          "zenFontFamily": {"type": "string"},
-          "zenFontFamilyGoogle": {"type": "boolean"},
-          "zenFontSize": {"$ref": "#/components/schemas/FontSize"},
-          "zenWordCount": {"type": "boolean"},
+          "zenFontFamily": {"type": "string", "default": "Inter"},
+          "zenFontFamilyGoogle": {"type": "boolean", "default": true},
+          "zenFontSize": {"$ref": "#/components/schemas/FontSize", "default": "1.25rem"},
+          "zenWordCount": {"type": "boolean", "default": true},
           "zenShowTitle": {"type": "boolean", "default": true},
           "zenShowControls": {"type": "boolean", "default": true},
           "zenInteractivePreview": {"type": "boolean"},
           "shortcutPrefix": {
             "$ref": "#/components/schemas/ShortcutBinding",
-            "description": "Exactly one step; default Mod+/ ."
+            "description": "Exactly one step; default Mod+E (Ctrl+E on Windows/Linux, Command+E on macOS)."
           },
           "keyboardShortcuts": {
             "type": "object",
@@ -1441,10 +1448,21 @@
       "VaultMode": {"type": "string", "enum": ["legacy", "preparing", "cleaning", "encrypted"]},
       "Bootstrap": {
         "type": "object",
-        "required": ["mode", "reset_available", "require_strong_passwords", "version", "revision"],
+        "required": [
+          "mode",
+          "reset_available",
+          "require_strong_passwords",
+          "version",
+          "revision",
+          "instance_id"
+        ],
         "properties": {
           "mode": {"$ref": "#/components/schemas/VaultMode"},
           "reset_available": {"type": "boolean"},
+          "instance_id": {
+            "type": "string",
+            "description": "Persistent database identity. Compare before reading cached notes or resuming sync; a restart with the same database preserves it."
+          },
           "require_strong_passwords": {"type": "boolean"},
           "version": {"type": "string"},
           "revision": {"type": "string"},

@@ -39,7 +39,8 @@ function bindAuth(mode) {
     api: vi.fn(async () => ({ok: true, instance_id: 'instance'})),
     cacheVersion: () => {},
     clearDiagnostic: () => {},
-    setAuthenticationRequired: () => {},
+    setAuthenticationRequired: vi.fn(),
+    onSignedIn: vi.fn(),
     handleServerIdentity: vi.fn(async () => {
       if (mode === 'preparing') throw new Error('local vault is locked');
     }),
@@ -66,6 +67,7 @@ test.each(['login-form', 'login-recovery-form'])(
     await vi.waitFor(() => expect(dependencies.restoreRoute).toHaveBeenCalledOnce());
     expect(dependencies.vaultSession.bootstrap).toHaveBeenCalledOnce();
     expect(dependencies.vaultSession.unlock).toHaveBeenCalledOnce();
+    expect(dependencies.onSignedIn).toHaveBeenCalledOnce();
   },
 );
 
@@ -77,4 +79,22 @@ test('preparing sign-in opens conversion resume before reading locked offline st
   await vi.waitFor(() => expect(dependencies.vaultSetup.open).toHaveBeenCalledOnce());
   expect(dependencies.handleServerIdentity).not.toHaveBeenCalled();
   expect(dependencies.restoreRoute).not.toHaveBeenCalled();
+});
+
+test('successful sign-in clears authentication required while bootstrap was pending', async () => {
+  const dependencies = bindAuth('legacy');
+  let resolveBootstrap;
+  dependencies.vaultSession.bootstrap.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveBootstrap = resolve;
+      }),
+  );
+  dom.window.document
+    .querySelector('#login-form')
+    .dispatchEvent(new dom.window.Event('submit', {bubbles: true, cancelable: true}));
+  dependencies.setAuthenticationRequired(true);
+  resolveBootstrap();
+  await vi.waitFor(() => expect(dependencies.restoreRoute).toHaveBeenCalledOnce());
+  expect(dependencies.setAuthenticationRequired).toHaveBeenLastCalledWith(false);
 });

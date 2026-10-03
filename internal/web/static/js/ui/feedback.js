@@ -105,16 +105,10 @@
         reload.textContent = 'Updating…';
         try {
           await beforeReload();
-          if (navigator.serviceWorker) {
-            const target = latestRevision;
-            const registration = await registerServiceWorker(target);
-            if (!registration)
-              throw new Error('Could not download the update. Try again when connected.');
-            await registration.update();
-            await waitForRevisionController(navigator.serviceWorker, target);
-            if (target !== latestRevision)
-              throw new Error('Another update arrived. Try Reload again.');
-          }
+          const target = latestRevision;
+          await prepareReload(target);
+          if (target !== latestRevision)
+            throw new Error('Another update arrived. Try Reload again.');
           window.location.reload();
         } catch (error) {
           console.warn('app update failed', error);
@@ -127,6 +121,15 @@
       select('#toast-region').append(toast);
       requestFrame(() => toast.classList.add('visible'));
       updateToast = toast;
+    }
+
+    async function prepareReload(revision = latestRevision) {
+      if (!navigator.serviceWorker) return;
+      const registration = await registerServiceWorker(revision);
+      if (!registration)
+        throw new Error('Could not download the update. Try again when connected.');
+      await registration.update();
+      await waitForRevisionController(navigator.serviceWorker, revision);
     }
 
     function setDiagnostic(detail, responseStatus = 0) {
@@ -176,6 +179,12 @@
       // this page's assets are old. Prefer the loaded shell fingerprint.
       if (response?.revision && appRevision ? changedRevision : changedVersion)
         showUpdateAvailable();
+      else if (response?.revision && response.revision === appRevision) {
+        // A server can return to this build while the page remains open. A
+        // previous mismatch is not evidence that an update is still needed.
+        updateToast?.remove();
+        updateToast = null;
+      }
       if (response?.version) {
         if (!appVersion) appVersion = response.version;
         localStorage.setItem('vylk-version', response.version);
@@ -227,6 +236,7 @@
       finishStatusPresentation,
       getDiagnostic,
       hideOfflineNotice,
+      prepareReload,
       setDiagnostic,
       setStatus,
       showOfflineNotice,

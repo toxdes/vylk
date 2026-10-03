@@ -39,16 +39,17 @@ func GetPrefsTx(tx *sql.Tx) (*preference.Preferences, error) {
 		return nil, fmt.Errorf("decode preferences: %w", err)
 	}
 	var legacy struct {
-		HidePreview *bool `json:"hidePreview"`
+		HidePreview *bool  `json:"hidePreview"`
+		StartView   string `json:"startView"`
 	}
 	if err := json.Unmarshal([]byte(data), &legacy); err != nil {
 		return nil, fmt.Errorf("decode legacy preferences: %w", err)
 	}
-	if p.StartView == "" && legacy.HidePreview != nil && *legacy.HidePreview {
-		p.StartView = "editor"
-	}
-	if p.StartView == "" {
+	if legacy.StartView == "" && legacy.HidePreview != nil {
 		p.StartView = "split"
+		if *legacy.HidePreview {
+			p.StartView = "editor"
+		}
 	}
 	p.Revision = revision
 	p.SyncPatch = nil

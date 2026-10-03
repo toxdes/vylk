@@ -6,6 +6,10 @@ const source = readFileSync(
   new URL('../internal/web/static/js/editor/zen-editor.js', import.meta.url),
   'utf8',
 );
+const motionSource = readFileSync(
+  new URL('../internal/web/static/js/core/motion.js', import.meta.url),
+  'utf8',
+);
 let dom;
 
 afterEach(() => {
@@ -19,6 +23,7 @@ function createEditor(value) {
   });
   dom.window.requestAnimationFrame = vi.fn(() => 1);
   dom.window.cancelAnimationFrame = vi.fn();
+  dom.window.eval(motionSource);
   dom.window.eval(source);
   const editor = new dom.window.VylkZenEditor(dom.window.document.querySelector('#editor'));
   editor.setValue(value);
