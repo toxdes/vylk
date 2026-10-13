@@ -1,4 +1,5 @@
 import unittest
+from urllib.error import URLError
 from urllib.request import Request
 from unittest.mock import Mock, patch
 
@@ -196,6 +197,43 @@ class HookTests(unittest.TestCase):
             sleep=delays.append,
         )
         self.assertEqual(delays, [release_deploy.RETRY_DELAY_SECONDS] * 2)
+
+    def test_retry_and_success_logs_do_not_expose_hook_url(self):
+        token = "fake-sensitive-hook-token"
+        url = f"https://example.test/deploy/{token}"
+        responses = iter((503, 202))
+        with self.assertLogs("release-deploy", level="INFO") as captured:
+            release_deploy.dispatch_hook(
+                release_deploy.Hook("LANDER", url),
+                {},
+                request=lambda _url, _payload: next(responses),
+                sleep=lambda _delay: None,
+            )
+        output = "\n".join(captured.output)
+        self.assertIn("LANDER", output)
+        self.assertIn("HTTP 503", output)
+        self.assertNotIn(url, output)
+        self.assertNotIn(token, output)
+
+    def test_network_error_logs_do_not_expose_url_from_exception(self):
+        token = "fake-sensitive-hook-token"
+        url = f"https://example.test/deploy/{token}"
+        opener = Mock()
+        opener.open.side_effect = URLError(f"connection failed for {url}")
+        with (
+            patch.object(release_deploy, "build_opener", return_value=opener),
+            self.assertLogs("release-deploy", level="INFO") as captured,
+            self.assertRaises(release_deploy.HookError) as raised,
+        ):
+            release_deploy.dispatch_hooks(
+                [release_deploy.Hook("LANDER", url)],
+                {},
+                sleep=lambda _delay: None,
+            )
+        output = "\n".join(captured.output) + str(raised.exception)
+        self.assertIn("request failed", output)
+        self.assertNotIn(url, output)
+        self.assertNotIn(token, output)
 
     def test_exhausted_hook_raises(self):
         attempts = []

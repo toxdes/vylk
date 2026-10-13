@@ -56,9 +56,11 @@ For a stable release:
 Older versions are rejected. Deliberate redeployment uses the manual workflow's
 rollback tag and exact `ROLLBACK <tag>` confirmation.
 
-Store hooks as repository **Actions secrets** named
+Store hooks as **Actions secrets** named
 `VYLK_DEPLOY_HOOK_<DESTINATION>_URL`, and map each secret to the same environment
-variable in `release.yml`. Hooks must use HTTPS, accept a JSON `POST`, and return
+variable in `release.yml`. When using environment secrets, set
+`jobs.release-and-deploy.environment` to the exact GitHub environment name that
+holds those secrets. Hooks must use HTTPS, accept a JSON `POST`, and return
 `2xx`. Failed hooks retry five times at five-minute intervals. Receivers must
 deduplicate the stable `Idempotency-Key` header / `idempotency_key` field because
 timeouts and workflow reruns can resend a successful request.
