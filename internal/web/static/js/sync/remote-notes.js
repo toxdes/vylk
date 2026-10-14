@@ -5,15 +5,11 @@
     api,
     getAllLocalNotes,
     getCurrentNoteID,
-    getLocalNote,
     getOfflineState,
     handleServerIdentity,
     handleActiveDeletion,
     isDirty,
-    putLocalNote,
-    rejectedSyncKey,
     requestValue,
-    unresolvedConflictKey,
     updateOpenNote,
     withOfflineStore,
   }) {
@@ -35,39 +31,6 @@
         }
       });
       return guarded;
-    }
-
-    async function cache(note) {
-      const local = await getLocalNote(note.id);
-      if (local?.pending || isCurrentDirty(note.id)) return;
-      const next = {
-        ...local,
-        ...note,
-        pending: false,
-        base_revision: null,
-        base_content: null,
-        base_title: null,
-        base_tags: null,
-      };
-      await putLocalNote(next);
-      if (getCurrentNoteID() === note.id && !isDirty()) updateOpenNote(next);
-    }
-
-    async function applyDeletion(noteID) {
-      const removed = await withOfflineStore(
-        ['notes', 'queue', 'state'],
-        'readwrite',
-        async (stores) => {
-          const pending = await requestValue(stores.queue.index('note_id').getAll(noteID));
-          const conflict = await requestValue(stores.state.get(unresolvedConflictKey(noteID)));
-          const rejected = await requestValue(stores.state.get(rejectedSyncKey(noteID)));
-          if (pending.length || conflict || rejected) return false;
-          await requestValue(stores.notes.delete(noteID));
-          return true;
-        },
-      );
-      if (removed && getCurrentNoteID() === noteID && !isDirty()) await handleActiveDeletion();
-      return removed;
     }
 
     async function download(noteIDs) {
@@ -259,7 +222,7 @@
       await applySnapshot(remoteNotes, remoteIDs);
     }
 
-    return {applyChangePage, applyDeletion, applySnapshot, cache, pull, reconcile, reset};
+    return {applyChangePage, applySnapshot, pull, reconcile};
   }
 
   global.VylkRemoteNotes = {create};

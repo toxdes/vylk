@@ -1,5 +1,6 @@
 import {afterEach, describe, expect, test, vi} from 'vitest';
 import {IDBObjectStore, indexedDB} from 'fake-indexeddb';
+import {markOperationAttempted} from './offline-store-fixture.js';
 import sodium from 'libsodium-wrappers-sumo';
 
 await import('../internal/web/static/js/core/indexeddb.js');
@@ -69,7 +70,7 @@ describe.each([false, true])('note acknowledgements (encrypted: %s)', (encrypted
       const store = await makeStore(encrypted);
       try {
         const initial = await save(store, 'original');
-        const first = await store.claimQueueOperation((await store.pendingOperations())[0].id);
+        const first = await markOperationAttempted(store, (await store.pendingOperations())[0].id);
         const savedSnapshot = {title: initial.title, tags: initial.tags, content: initial.content};
         const persisted = vi.fn();
         const saver = globalThis.VylkNoteSaver.create({
@@ -114,7 +115,7 @@ describe.each([false, true])('note acknowledgements (encrypted: %s)', (encrypted
     const store = await makeStore(encrypted);
     try {
       const initial = await save(store, 'original');
-      const first = await store.claimQueueOperation((await store.pendingOperations())[0].id);
+      const first = await markOperationAttempted(store, (await store.pendingOperations())[0].id);
       const edited = {
         ...initial,
         content: 'newer edit',
@@ -169,7 +170,10 @@ describe.each([false, true])('note acknowledgements (encrypted: %s)', (encrypted
           base_revision: 0,
           ...(type === 'note.save' ? {note: initial} : {pinned: true}),
         });
-        const operation = await store.claimQueueOperation((await store.pendingOperations())[0].id);
+        const operation = await markOperationAttempted(
+          store,
+          (await store.pendingOperations())[0].id,
+        );
         const edited = {...initial, content: 'Saved before browser navigation and Back'};
         const get = IDBObjectStore.prototype.get;
         vi.spyOn(IDBObjectStore.prototype, 'get').mockImplementation(function (key) {
@@ -215,7 +219,7 @@ describe.each([false, true])('note acknowledgements (encrypted: %s)', (encrypted
     const store = await makeStore(encrypted);
     try {
       const initial = await save(store, 'original');
-      const first = await store.claimQueueOperation((await store.pendingOperations())[0].id);
+      const first = await markOperationAttempted(store, (await store.pendingOperations())[0].id);
       await store.commitNoteAcknowledgement(first, {revision: 1});
       await store.putLocalNote({
         ...initial,
@@ -246,10 +250,10 @@ describe.each([false, true])('note acknowledgements (encrypted: %s)', (encrypted
     const store = await makeStore(encrypted);
     try {
       await save(store, 'original');
-      const first = await store.claimQueueOperation((await store.pendingOperations())[0].id);
+      const first = await markOperationAttempted(store, (await store.pendingOperations())[0].id);
       await save(store, 'newer edit');
       const later = (await store.pendingOperations())[1];
-      if (attempted) await store.claimQueueOperation(later.id);
+      if (attempted) await markOperationAttempted(store, later.id);
       await store.commitNoteAcknowledgement(first, {revision: 1});
       expect(await store.getLocalNote('note-a')).toMatchObject({
         content: 'newer edit',
@@ -272,7 +276,7 @@ describe.each([false, true])('note acknowledgements (encrypted: %s)', (encrypted
     const store = await makeStore(encrypted);
     try {
       await save(store, 'original');
-      const first = await store.claimQueueOperation((await store.pendingOperations())[0].id);
+      const first = await markOperationAttempted(store, (await store.pendingOperations())[0].id);
       await save(store, 'newer edit');
       const before = await store.pendingOperations();
       const put = IDBObjectStore.prototype.put;

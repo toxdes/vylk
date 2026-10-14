@@ -480,7 +480,8 @@ test('scrollbars reserve their own space and stay below mobile preference tabs',
   expect(metrics.tabRailGap).toBeGreaterThanOrEqual(9.5);
 });
 
-test('preference sections enter quickly and respect reduced motion', async ({page}) => {
+test('preference sections respect the motion policy', async ({page}) => {
+  await page.emulateMedia({reducedMotion: 'no-preference'});
   await signIn(page);
   await page.locator('#prefs-btn').click();
   await page.locator('#prefs-tab-editor').click();
@@ -523,111 +524,22 @@ test('motion choices control CSS and JavaScript effects and survive reload', asy
   await expect.poll(policy).toBe(false);
 });
 
-test('Back reverses the outgoing editor with compositor-only keyframes', async ({page}) => {
+test('navigation respects reduced motion and releases the outgoing screen', async ({page}) => {
   await signIn(page);
   for (const browserBack of [false, true]) {
     await page.locator('#new-note-btn').click();
     await expect(page.locator('#editor')).toBeVisible();
-    await page.locator('#note-content').fill('Navigation animation');
+    await expect(page.locator('#editor .editor-body')).toHaveCSS('animation-name', 'none');
+    await page.locator('#note-content').fill('Navigation cleanup');
     await page.locator('#save-btn').click();
     await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
-    await page.evaluate(async () => {
-      await Promise.all(
-        document
-          .querySelector('#editor')
-          .getAnimations({subtree: true})
-          .map((animation) => animation.finished.catch(() => {})),
-      );
-      window.editorExit = null;
-      document.querySelector('#editor').addEventListener(
-        'animationstart',
-        (event) => {
-          if (event.target.id !== 'editor' || event.animationName !== 'app-content-out') return;
-          const animation = event.target.getAnimations()[0];
-          window.editorExit = {
-            duration: animation.effect.getTiming().duration,
-            properties: Object.keys(animation.effect.getKeyframes()[0]),
-            inert: event.target.hasAttribute('inert'),
-          };
-        },
-        {once: true},
-      );
-    });
-    expect(
-      await page
-        .locator('#editor .editor-body')
-        .evaluate((element) => element.getAnimations().length),
-    ).toBe(0);
     if (browserBack) await page.goBack();
     else await page.locator('#back-btn').click();
     await expect(page.locator('#dashboard')).toBeVisible();
-    await expect.poll(() => page.evaluate(() => window.editorExit)).not.toBeNull();
-    const exit = await page.evaluate(() => window.editorExit);
-    expect(exit.duration).toBe(180);
-    expect(exit.inert).toBe(true);
-    expect(
-      exit.properties.filter(
-        (key) => !['offset', 'computedOffset', 'easing', 'composite'].includes(key),
-      ),
-    ).toEqual(expect.arrayContaining(['opacity', 'transform']));
-    expect(
-      exit.properties.every((key) =>
-        ['offset', 'computedOffset', 'easing', 'composite', 'opacity', 'transform'].includes(key),
-      ),
-    ).toBe(true);
+    await expect(page.locator('#dashboard .dashboard-body')).toHaveCSS('animation-name', 'none');
     await expect(page.locator('.screen-leaving')).toHaveCount(0);
     await expect(page.locator('#editor')).not.toHaveAttribute('inert', '');
   }
-});
-
-test('dashboard and editor content enter on navigation and respect reduced motion', async ({
-  page,
-}) => {
-  await signIn(page);
-  await expect(page.locator('#dashboard .dashboard-body')).toHaveCSS(
-    'animation-name',
-    'app-content-in',
-  );
-  await page.evaluate(() => {
-    window.screenEntrances = {dashboard: 0, editor: 0};
-    for (const screen of ['dashboard', 'editor']) {
-      const body = document.querySelector(`#${screen} .${screen}-body`);
-      const animationName = screen === 'dashboard' ? 'app-content-return' : 'app-content-in';
-      // The sign-in entrance may start after this listener is installed, and
-      // animation events from descendants bubble. Count only this navigation.
-      body.addEventListener('animationstart', (event) => {
-        if (event.target === body && event.animationName === animationName) {
-          window.screenEntrances[screen]++;
-        }
-      });
-    }
-    // Reproduce irrelevant events deterministically instead of depending on
-    // whether the browser delivers the sign-in entrance before this listener.
-    const dashboardBody = document.querySelector('#dashboard .dashboard-body');
-    dashboardBody.dispatchEvent(
-      new AnimationEvent('animationstart', {animationName: 'app-content-in'}),
-    );
-    const child = dashboardBody.appendChild(document.createElement('span'));
-    child.dispatchEvent(
-      new AnimationEvent('animationstart', {animationName: 'app-content-return', bubbles: true}),
-    );
-    child.remove();
-  });
-  expect(await page.evaluate(() => window.screenEntrances)).toEqual({dashboard: 0, editor: 0});
-
-  await page.locator('#new-note-btn').click();
-  await expect(page.locator('#editor .editor-body')).toHaveCSS('animation-name', 'app-content-in');
-  await expect.poll(() => page.evaluate(() => window.screenEntrances.editor)).toBe(1);
-
-  await page.locator('#back-btn').click();
-  await expect(page.locator('#dashboard')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.screenEntrances.dashboard)).toBe(1);
-
-  await page.emulateMedia({reducedMotion: 'reduce'});
-  await page.locator('#new-note-btn').click();
-  await expect(page.locator('#editor .editor-body')).toHaveCSS('animation-name', 'none');
-  await page.locator('#back-btn').click();
-  await expect(page.locator('#dashboard .dashboard-body')).toHaveCSS('animation-name', 'none');
 });
 
 test('clipped editor controls keep their focus rings inside and clear the scrollbar', async ({

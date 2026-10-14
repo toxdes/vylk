@@ -25,10 +25,6 @@ func SessionTokenHash(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *SessionStore) Create() (string, error) {
-	return s.CreateDevice("", "Unknown browser")
-}
-
 func (s *SessionStore) CreateDeviceTx(tx *sql.Tx, deviceID, name string) (string, error) {
 	return createSession(tx, deviceID, name)
 }
@@ -106,10 +102,6 @@ func (s *SessionStore) ValidAndRenew(token string) (bool, bool) {
 	}
 	rows, err := result.RowsAffected()
 	return true, err == nil && rows > 0
-}
-
-func (s *SessionStore) Remove(token string) {
-	_ = s.revoke("token_hash = ?", []any{SessionTokenHash(token)}, "signed_out")
 }
 
 func (s *SessionStore) Cleanup() {

@@ -263,7 +263,6 @@
       decorateEntry,
       disconnect,
       entryForElement: (element) => entryByElement.get(element) || null,
-      undecorateEntry,
     };
   }
 

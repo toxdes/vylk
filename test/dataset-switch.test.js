@@ -43,13 +43,12 @@ test('Keep changes dismisses the dialog without clearing or resuming sync', asyn
   await expect(controller.inspect(config)).rejects.toMatchObject({code: 'server_instance_changed'});
   controller.keepChanges();
   expect(modal.classList.contains('hidden')).toBe(true);
-  expect(controller.paused()).toBe(true);
+  expect(dependencies.pause).toHaveBeenCalledOnce();
   expect(dependencies.offlineStore.switchDataset).not.toHaveBeenCalled();
   expect(dependencies.resume).not.toHaveBeenCalled();
   await expect(controller.inspect(config)).rejects.toMatchObject({code: 'server_instance_changed'});
   expect(modal.classList.contains('hidden')).toBe(true);
   await controller.inspect({instance_id: 'original', mode: 'legacy'});
-  expect(controller.paused()).toBe(false);
   expect(dependencies.resume).toHaveBeenCalledOnce();
 });
 
@@ -115,5 +114,5 @@ test('an unreachable server keeps local data and allows retry', async () => {
   await vi.waitFor(() => expect(confirm.disabled).toBe(false));
   expect(dependencies.offlineStore.switchDataset).not.toHaveBeenCalled();
   expect(dependencies.endSession).not.toHaveBeenCalled();
-  expect(controller.paused()).toBe(true);
+  expect(dependencies.resume).not.toHaveBeenCalled();
 });

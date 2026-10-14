@@ -47,7 +47,7 @@ describe('note pinning', () => {
     await app.hooks.putLocalNote(note);
     await app.hooks.queueOperation({type: 'note.save', note_id: note.id, base_revision: 0, note});
     const save = (await app.hooks.pendingOperations())[0];
-    await app.hooks.claimQueueOperation(save.id);
+    await app.hooks.markOperationAttempted(save.id);
     await app.hooks.toggleNotePin(note.id);
     const pinnedLocally = await app.hooks.getLocalNote(note.id);
 
@@ -196,7 +196,7 @@ describe('note pinning', () => {
       pinned: true,
     });
 
-    await expect(app.hooks.applyRemoteDeletion('note-a')).resolves.toBe(false);
+    await app.hooks.applyRemoteChangePage([{note_id: 'note-a', deleted: true}], new Map(), 1);
     expect(await app.hooks.getLocalNote('note-a')).toMatchObject({content: 'keep', pinned: true});
   });
 
@@ -264,7 +264,7 @@ describe('note pinning', () => {
       pin_order: 10,
     });
     const firstPin = (await app.hooks.pendingOperations())[0];
-    await app.hooks.claimQueueOperation(firstPin.id);
+    await app.hooks.markOperationAttempted(firstPin.id);
     await app.hooks.toggleNotePin('note-a');
 
     await app.hooks.applySyncAcknowledgement(firstPin, {
@@ -321,7 +321,7 @@ describe('note pinning', () => {
       pin_order: 10,
     });
     const firstPin = (await app.hooks.pendingOperations())[0];
-    await app.hooks.claimQueueOperation(firstPin.id);
+    await app.hooks.markOperationAttempted(firstPin.id);
     await app.hooks.toggleNotePin('note-a');
 
     await app.hooks.applySyncAcknowledgement(firstPin, {status: 'conflict', current_revision: 3});

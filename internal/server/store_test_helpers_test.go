@@ -1,6 +1,11 @@
 package server
 
-import "vylk/internal/store"
+import (
+	"database/sql"
+	"time"
+
+	"vylk/internal/store"
+)
 
 var (
 	openDB                          = store.OpenDB
@@ -12,8 +17,6 @@ var (
 	searchNotes                     = store.SearchNotes
 	listSyncChanges                 = store.ListSyncChanges
 	getNote                         = store.GetNote
-	upsertNote                      = store.UpsertNote
-	deleteNote                      = store.DeleteNote
 	listTags                        = store.ListTags
 	decodeNoteCursor                = store.DecodeNoteCursor
 	pruneMigrationBackups           = store.PruneMigrationBackups
@@ -23,3 +26,27 @@ var (
 )
 
 const maxMigrationBackups = store.MaxMigrationBackups
+
+func upsertNote(db *sql.DB, id, title, filename, tags string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := store.UpsertNoteTx(tx, id, title, filename, tags, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func deleteNote(db *sql.DB, id string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := store.DeleteNoteTx(tx, id, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return err
+	}
+	return tx.Commit()
+}

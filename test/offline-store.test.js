@@ -1,5 +1,6 @@
-import {beforeEach, describe, expect, test} from 'vitest';
+import {afterEach, beforeEach, describe, expect, test} from 'vitest';
 import {indexedDB} from 'fake-indexeddb';
+import {markOperationAttempted} from './offline-store-fixture.js';
 
 await import('../internal/web/static/js/core/indexeddb.js');
 await import('../internal/web/static/js/core/offline-store.js');
@@ -22,6 +23,15 @@ describe('offline store', () => {
     });
   });
 
+  afterEach(async () => {
+    await store.closeOfflineDatabaseConnection();
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(databaseName);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  });
+
   test('sorts visible notes by pin state, pin order, and update time', async () => {
     await store.putLocalNote({id: 'old', updated_at: '2026-01-01T00:00:00Z'});
     await store.putLocalNote({id: 'new', updated_at: '2026-02-01T00:00:00Z'});
@@ -34,7 +44,6 @@ describe('offline store', () => {
     await store.putLocalNote({id: 'deleted', deleted: true, updated_at: '2027-01-01T00:00:00Z'});
 
     expect((await store.getLocalNotes()).map((note) => note.id)).toEqual(['pinned', 'new', 'old']);
-    await store.clearOfflineData();
   });
 
   test('keeps unresolved and rejected edits bound to the original database', async () => {
@@ -47,7 +56,6 @@ describe('offline store', () => {
         await globalThis.VylkIndexedDB.requestValue(state.delete(key));
       });
     }
-    await store.clearOfflineData();
   });
 
   test('shares the incomplete snapshot marker across tabs without resetting the cursor again', async () => {
@@ -60,7 +68,6 @@ describe('offline store', () => {
     });
     await expect(tab.getOfflineState('syncSequence')).resolves.toBe(7);
     await tab.closeOfflineDatabaseConnection();
-    await store.clearOfflineData();
   });
 
   test('coalesces untouched saves but preserves the identity of an attempted operation', async () => {
@@ -78,7 +85,7 @@ describe('offline store', () => {
     expect(queued[0]).toMatchObject({op_id: 'operation-1', client_sequence: 1});
     expect(queued[0].note.title).toBe('latest');
 
-    await store.claimQueueOperation(queued[0].id);
+    await markOperationAttempted(store, queued[0].id);
     await store.queueOperation(operation('after-attempt'));
     queued = await store.pendingOperations();
     expect(queued).toHaveLength(2);
@@ -87,6 +94,5 @@ describe('offline store', () => {
       ['operation-2', 2],
     ]);
     expect(syncRequests).toBe(3);
-    await store.clearOfflineData();
   });
 });

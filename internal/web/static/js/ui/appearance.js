@@ -281,7 +281,6 @@
       bindFontControls,
       renderOptions,
       themeAccent: (themeID) => themeByID.get(themeID)?.vars.accent,
-      whenIdle: () => fontApplyQueue,
     };
   }
 

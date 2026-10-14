@@ -20,6 +20,8 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     headless: true,
+    // Keep interaction and geometry checks independent of animation progress.
+    contextOptions: {reducedMotion: 'reduce'},
     launchOptions: {executablePath: chromePath},
     trace: 'retain-on-failure',
   },

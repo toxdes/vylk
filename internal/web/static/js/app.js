@@ -109,13 +109,10 @@
     },
   });
   const {
-    claimQueueOperation,
-    clearOfflineData,
     closeOfflineDatabaseConnection,
     getAllLocalNotes,
     getLocalNote,
     getLocalNotes,
-    getOfflineDatabaseInfo,
     getOfflineState,
     getUnresolvedConflict,
     hasPendingOperation,
@@ -129,14 +126,12 @@
     queueOperationInStores,
     queueOperationPayload,
     rebaseQueuedNoteOperations,
-    rejectedSyncKey,
     removeLocalNote,
     removeLocalNoteAndQueue,
     removeLocalNoteAndSupersede,
     removePendingOperationIfIdentityMatches,
     repairSyncSequenceGap,
     saveLocalNoteAndQueue,
-    setOfflineState,
     setUnresolvedConflict,
     supersedeQueuedNoteOperations,
     syncDeviceID,
@@ -530,7 +525,6 @@
     api,
     getAllLocalNotes,
     getCurrentNoteID: () => currentNoteId,
-    getLocalNote,
     getOfflineState,
     handleServerIdentity,
     handleActiveDeletion: async () => {
@@ -539,17 +533,10 @@
       setDashboardRoute({replace: true});
     },
     isDirty: () => isDirty,
-    putLocalNote,
-    rejectedSyncKey,
     requestValue,
-    unresolvedConflictKey,
     updateOpenNote,
     withOfflineStore,
   });
-  const applyRemoteDeletion = remoteNotes.applyDeletion;
-  const applyRemoteChangePage = remoteNotes.applyChangePage;
-  const applyRemoteSnapshot = remoteNotes.applySnapshot;
-  const cacheRemoteNote = remoteNotes.cache;
   const pullRemoteChanges = remoteNotes.pull;
   const reconcileLocalNotes = remoteNotes.reconcile;
 
@@ -669,9 +656,7 @@
     onSaveResolution: conflictActions.save,
     openModal,
   });
-  const closeConflictResolver = conflictResolver.close;
   const showConflictResolver = conflictResolver.showEdit;
-  const showDeletedConflict = conflictResolver.showDeleted;
   const showConflictResolverFor = conflictResolver.showFor;
 
   function closePreferences() {
@@ -836,7 +821,6 @@
     apiClient,
     canSync: () => !credentialChangePaused && !datasetChangePaused && !authenticationRequired,
     authenticationRequired: () => authenticationRequired,
-    beforeCompletion: () => globalThis.__vylkDependencies?.beforeSyncCompletion?.(),
     clearDiagnostic: clearSyncDiagnostic,
     connectEvents: () => connectServerEvents(),
     document,
@@ -908,7 +892,6 @@
       serverEventClient.connect();
   };
   const disconnectServerEvents = serverEventClient.disconnect;
-  const handleServerChangeEvent = serverEventClient.handleChange;
   const isServerEventsHealthy = serverEventClient.healthy;
 
   // --- Auth ---
@@ -1238,10 +1221,7 @@
           }),
         );
       }),
-    persistLocalNote: (local, operation, expectedNote) => {
-      const persist = globalThis.__vylkDependencies?.saveLocalNoteAndQueue || saveLocalNoteAndQueue;
-      return persist(local, operation, expectedNote);
-    },
+    persistLocalNote: saveLocalNoteAndQueue,
     readEditor: () => ({
       title: $('#note-title').value.trim() || 'Untitled',
       tags: $('#note-tags').value.trim(),
@@ -1414,7 +1394,6 @@
   const decorateInteractivePreview = previewDecoration.decorate;
   const decoratePreviewEntry = previewDecoration.decorateEntry;
   const disconnectPreviewDecorationObserver = previewDecoration.disconnect;
-  const undecoratePreviewEntry = previewDecoration.undecorateEntry;
 
   function setInteractiveSourceLocked(locked) {
     interactivePreviewSession.setLocked(locked);
@@ -1428,7 +1407,6 @@
     return interactivePreviewSession.undo();
   }
   const previewNavigation = window.VylkPreviewNavigation;
-  const calculatePreviewScrollAdjustment = previewNavigation.scrollAdjustment;
   const previewEditPosition = (entry, source = editorSourceValue()) =>
     previewNavigation.editPosition(entry, source);
   const previewTokenTag = previewNavigation.tokenTag;
@@ -1443,10 +1421,6 @@
 
   function scheduleHighlight() {
     previewHighlighter.scheduleHighlight();
-  }
-
-  function highlightBlock() {
-    previewHighlighter.highlight();
   }
 
   function syncPreviewTaskCheckbox(item) {
@@ -1821,7 +1795,6 @@
   });
 
   const previewDragLayout = window.VylkPreviewDragLayout;
-  const previewAutoScrollDelta = previewDragLayout.autoScrollDelta;
   previewDrag = window.VylkPreviewDragController.create({
     applySource: applyInteractiveSource,
     decoration: previewDecoration,
@@ -2165,12 +2138,8 @@
     showToast,
     shortcuts: window.VylkShortcuts,
   });
-  const shortcutCommands = shortcutController.commands;
-  const shortcutCommandsByID = shortcutController.commandsByID;
   const registerShortcutCommand = shortcutController.register;
   const renderShortcutPreferences = shortcutController.render;
-  const shortcutBindingFor = shortcutController.bindingFor;
-  const shortcutPrefixBinding = shortcutController.prefixBinding;
   const executeShortcutCommand = shortcutController.execute;
 
   preferencesDialog = window.VylkPreferencesDialog.create({
@@ -2318,7 +2287,7 @@
   }
 
   /* __VYLK_TEST_HOOKS__ */
-  if (!globalThis.__vylkDisableAutoInit) init();
+  init();
 
   async function refreshInsecureVaultAccess() {
     if (

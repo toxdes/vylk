@@ -23,23 +23,20 @@ export default [
   },
   {
     ...js.configs.recommended,
-    files: ['internal/web/static/*.js'],
-    ignores: ['internal/web/static/*.test.js'],
+    files: ['internal/web/static/**/*.js'],
+    ignores: ['internal/web/static/**/*.test.js', 'internal/web/static/vendor/**'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'script',
       globals: sourceGlobals,
     },
     rules: {
-      // These helpers are exposed through the test hook bridge rather than
-      // referenced statically by the browser script.
       'no-unused-vars': [
         'error',
         {
           args: 'none',
           caughtErrors: 'none',
-          varsIgnorePattern:
-            '^(applyRemoteDeletion|cacheRemoteNote|claimQueueOperation|getOfflineDatabaseInfo)$',
+          ignoreRestSiblings: true,
         },
       ],
       // Best-effort cleanup and optional browser APIs intentionally ignore
@@ -52,8 +49,12 @@ export default [
     },
   },
   {
+    files: ['internal/web/static/js/core/vault-kdf-worker.js'],
+    languageOptions: {sourceType: 'module'},
+  },
+  {
     ...js.configs.recommended,
-    files: ['*.config.js', 'internal/web/static/*.test.js', 'test/**/*.js'],
+    files: ['*.config.js', 'internal/web/static/**/*.test.js', 'test/**/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',

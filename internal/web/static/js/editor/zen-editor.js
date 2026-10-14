@@ -866,5 +866,4 @@
   }
 
   global.VylkZenEditor = ZenEditor;
-  global.VylkZenMarkdown = {renderLineContent};
 })(window);

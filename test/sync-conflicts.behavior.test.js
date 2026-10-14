@@ -234,7 +234,7 @@ describe('F-02 immutable queue operations', () => {
       note: {id: 'note-a', title: 'Note', tags: '', content: 'first'},
     });
     const first = (await app.hooks.pendingOperations())[0];
-    const attempted = await app.hooks.claimQueueOperation(first.id);
+    const attempted = await app.hooks.markOperationAttempted(first.id);
 
     await app.hooks.queueOperation({
       type: 'note.save',
@@ -332,7 +332,7 @@ describe('F-02 immutable queue operations', () => {
       },
     });
     const first = (await app.hooks.pendingOperations())[0];
-    await app.hooks.claimQueueOperation(first.id);
+    await app.hooks.markOperationAttempted(first.id);
 
     await app.hooks.putLocalNote({
       ...remote,
@@ -636,7 +636,7 @@ describe('F-03 compacted acknowledgement recovery', () => {
       note,
     });
     const queued = (await app.hooks.pendingOperations())[0];
-    return app.hooks.claimQueueOperation(queued.id);
+    return app.hooks.markOperationAttempted(queued.id);
   }
 
   test('keeps the queue and local note when reconciliation times out', async () => {

@@ -54,7 +54,7 @@ func TestEventsRevocationRenewsExpiredWriteDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := &app{db: db, sessions: auth.NewSessionStore(db), events: event.NewBroker()}
-	token, err := a.sessions.Create()
+	token, err := a.sessions.CreateDevice("events-device", "Test browser")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,9 @@ func TestEventsRevocationRenewsExpiredWriteDeadline(t *testing.T) {
 	w.onFirstFlush = func() {
 		// Simulate an idle stream beyond its write deadline, without a timed sleep.
 		w.deadline = time.Now().Add(-time.Second)
-		a.sessions.Remove(token)
+		if err := a.sessions.RevokeDevice("events-device"); err != nil {
+			t.Fatal(err)
+		}
 		a.events.Publish(event.Change{Type: "notes"})
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

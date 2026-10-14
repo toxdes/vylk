@@ -31,7 +31,6 @@ func (a *app) publishChange(kind string) {
 
 const (
 	sseHeartbeatInterval = 25 * time.Second
-	sseReconnectDelay    = 3 * time.Second
 	sseWriteTimeout      = 10 * time.Second
 )
 

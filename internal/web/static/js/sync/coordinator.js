@@ -5,7 +5,6 @@
     apiClient,
     canSync = () => true,
     authenticationRequired,
-    beforeCompletion,
     clearDiagnostic,
     connectEvents,
     document,
@@ -154,7 +153,6 @@
           previousProgress = work.progress;
           reconcile = Boolean(pendingOptions.reconcile);
         }
-        await beforeCompletion();
         localStorage.setItem('vylk-offline-ready', '1');
         clearDiagnostic();
         failed = false;
@@ -279,7 +277,6 @@
       markOffline,
       now,
       schedule,
-      scheduleState: () => ({scheduled: Boolean(scheduleTimer), options: {...scheduleOptions}}),
       waitForIdle,
     };
   }
