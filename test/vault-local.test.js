@@ -58,7 +58,7 @@ describe('encrypted offline store', () => {
     const migratingTab = makeStore(databaseName);
     const staleTab = makeStore(databaseName);
     try {
-      await staleTab.getOfflineDatabaseInfo();
+      await staleTab.openOfflineDB();
       await migratingTab.putLocalNote({id: 'existing', title: 'Before migration'});
       await migratingTab.unlockVaultLocal(rootKey, vaultID, false, 1);
 
@@ -81,7 +81,7 @@ describe('encrypted offline store', () => {
     const migratingTab = makeStore(databaseName);
     const staleTab = makeStore(databaseName);
     try {
-      await staleTab.getOfflineDatabaseInfo();
+      await staleTab.openOfflineDB();
       await migratingTab.putLocalNote({id: 'converted', title: 'Already encrypted'});
       await migratingTab.putLocalNote({id: 'pending', title: 'Still plaintext'});
       const db = await migratingTab.openOfflineDB();

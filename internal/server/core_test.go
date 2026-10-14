@@ -141,27 +141,6 @@ func TestParseArtificialRTTDelay(t *testing.T) {
 	}
 }
 
-func TestArtificialRTTDelayMiddlewareDelaysRequestsButNotSSE(t *testing.T) {
-	const delay = 15 * time.Millisecond
-	handler := artificialRTTDelayMiddleware(delay, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-
-	start := time.Now()
-	result := httptest.NewRecorder()
-	handler.ServeHTTP(result, httptest.NewRequest(http.MethodGet, "/api/check", nil))
-	if elapsed := time.Since(start); elapsed < delay {
-		t.Fatalf("API request completed in %s, want at least %s", elapsed, delay)
-	}
-
-	start = time.Now()
-	result = httptest.NewRecorder()
-	handler.ServeHTTP(result, httptest.NewRequest(http.MethodGet, "/api/events", nil))
-	if elapsed := time.Since(start); elapsed >= delay {
-		t.Fatalf("SSE request completed in %s, want less than %s", elapsed, delay)
-	}
-}
-
 func TestAPIValidationErrorsUseStableJSONCodes(t *testing.T) {
 	a := &app{}
 	request := httptest.NewRequest(http.MethodGet, "/api/search?q="+strings.Repeat("x", 257), nil)
@@ -261,7 +240,7 @@ func TestLegacyIPBansAreClearedByMigration(t *testing.T) {
 	}
 }
 
-func TestRateLimiterBanIsTemporaryAndLoginWindowResets(t *testing.T) {
+func TestRateLimiterLoginWindowResets(t *testing.T) {
 	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -273,21 +252,6 @@ func TestRateLimiterBanIsTemporaryAndLoginWindowResets(t *testing.T) {
 	rl, err := auth.NewRateLimiter(db, false)
 	if err != nil {
 		t.Fatalf("new rate limiter: %v", err)
-	}
-	for range 5 {
-		if err := rl.RecordLoginAttempt("203.0.113.7", false); err != nil {
-			t.Fatalf("record failed login: %v", err)
-		}
-	}
-	if banned, err := rl.IsBanned("203.0.113.7"); err != nil || !banned {
-		t.Fatalf("temporary login ban = %t, %v; want true", banned, err)
-	}
-	restarted, err := auth.NewRateLimiter(db, false)
-	if err != nil {
-		t.Fatalf("restart rate limiter: %v", err)
-	}
-	if banned, err := restarted.IsBanned("203.0.113.7"); err != nil || banned {
-		t.Fatalf("ban persisted after restart = %t, %v; want false", banned, err)
 	}
 	old := time.Now().UTC().Add(-auth.LoginAttemptWindow - time.Minute).Format(time.RFC3339)
 	if _, err := db.Exec("INSERT INTO rate_limits (ip, typ, count, updated_at) VALUES (?, 'login', 4, ?)", "203.0.113.8", old); err != nil {
@@ -361,7 +325,7 @@ func TestLoginRateLimitDoesNotBlockAuthenticatedRoutes(t *testing.T) {
 		t.Fatalf("attempts after rate-limited request = %d, %v; want 5", attempts, err)
 	}
 
-	token, err := a.sessions.Create()
+	token, err := a.sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}

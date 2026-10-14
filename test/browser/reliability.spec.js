@@ -68,28 +68,17 @@ test('does not issue sync requests for unchanged dashboard navigation', async ({
   expect(syncRequests).toEqual([]);
 });
 
-test('restores the warm dashboard and reports startup time', async ({page}) => {
+test('restores the cached dashboard when sync APIs are unavailable', async ({page}) => {
   await signIn(page);
   const context = page.context();
   await page.close();
-  const samples = [];
-  for (let iteration = 0; iteration < 3; iteration++) {
-    const samplePage = await context.newPage();
-    await samplePage.route('**/api/**', (route) => route.abort());
-    const started = Date.now();
-    await samplePage.goto('/', {waitUntil: 'domcontentloaded'});
-    await expect(samplePage.locator('#dashboard')).toBeVisible();
-    samples.push(Date.now() - started);
-    await samplePage.close();
-  }
-
-  samples.sort((left, right) => left - right);
-  const p95 = samples[Math.ceil(samples.length * 0.95) - 1];
-  console.log(`warm dashboard p95: ${p95} ms; samples: ${samples.join(', ')} ms`);
-  if (process.env.WARM_DASHBOARD_BUDGET_MS) {
-    expect(p95, `warm dashboard samples: ${samples.join(', ')}`).toBeLessThan(
-      Number(process.env.WARM_DASHBOARD_BUDGET_MS),
-    );
+  const cachedPage = await context.newPage();
+  await cachedPage.route('**/api/**', (route) => route.abort());
+  try {
+    await cachedPage.goto('/', {waitUntil: 'domcontentloaded'});
+    await expect(cachedPage.locator('#dashboard')).toBeVisible();
+  } finally {
+    await cachedPage.close();
   }
 });
 

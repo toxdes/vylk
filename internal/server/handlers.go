@@ -211,17 +211,6 @@ func currentNoteRevision(db *sql.DB, id string) (int64, error) {
 	return store.CurrentNoteRevision(db, id)
 }
 
-func checkNoteRevision(db *sql.DB, id string, expected int64) error {
-	latest, err := currentNoteRevision(db, id)
-	if err != nil {
-		return err
-	}
-	if latest != expected {
-		return errRevisionConflict
-	}
-	return nil
-}
-
 func (a *app) writeNoteRevisionConflict(w http.ResponseWriter, noteID string) {
 	revision, err := currentNoteRevision(a.db, noteID)
 	if err != nil {

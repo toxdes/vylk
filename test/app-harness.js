@@ -3,6 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {JSDOM} from 'jsdom';
 import {indexedDB, IDBKeyRange} from 'fake-indexeddb';
+import {markOperationAttempted} from './offline-store-fixture.js';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const staticDirectory = path.join(testDirectory, '..', 'internal', 'web', 'static');
@@ -240,29 +241,33 @@ globalThis.__vylkTestHooks = {
   getLocalNotes,
   pendingOperations,
   pendingOperationsForNote,
-  claimQueueOperation,
+  markOperationAttempted: id => window.__vylkTestFixtures.markOperationAttempted(offlineStore, id),
   removePendingOperationIfIdentityMatches,
   withSyncLeadership,
   registerServiceWorker,
   acknowledgeCompactedOperation,
   applySyncAcknowledgement,
-  applyRemoteSnapshot,
+  applyRemoteSnapshot: remoteNotes.applySnapshot,
   removeLocalNoteAndSupersede,
   savePref,
   applyFonts: appearance.applyFonts,
   loadPrefs,
-  applyRemoteDeletion,
-  applyRemoteChangePage,
+  applyRemoteChangePage: remoteNotes.applyChangePage,
   getLocalNote,
-  getOfflineDatabaseInfo,
+  getOfflineDatabaseInfo: async () => {
+    const db = await offlineStore.openOfflineDB();
+    return {
+      version: db.version,
+      queueIndexes: [...db.transaction('queue', 'readonly').objectStore('queue').indexNames],
+    };
+  },
   getOfflineState,
-  setOfflineState,
-  clearOfflineData,
+  setOfflineState: offlineStore.setOfflineState,
   api,
   cancelActiveSyncRequests,
   scheduleSync,
   syncNow,
-  handleServerChangeEvent,
+  handleServerChangeEvent: serverEventClient.handleChange,
   putLocalNote,
   init,
   inspectDataset: config => datasetSwitch.inspect(config),
@@ -294,9 +299,9 @@ globalThis.__vylkTestHooks = {
   updatePreview,
   setPanelState,
   executeShortcutCommand,
-  getShortcutBinding: id => shortcutBindingFor(shortcutCommandsByID.get(id)),
-  getShortcutPrefix: () => shortcutPrefixBinding(),
-  shortcutCommands: () => shortcutCommands.map(command => command.id),
+  getShortcutBinding: id => shortcutController.bindingFor(shortcutController.commandsByID.get(id)),
+  getShortcutPrefix: shortcutController.prefixBinding,
+  shortcutCommands: () => shortcutController.commands.map(command => command.id),
   undoInteractivePreview,
   setInteractiveSourceLocked,
   getInteractivePreviewState: () => ({
@@ -306,21 +311,17 @@ globalThis.__vylkTestHooks = {
     ghostTransform: previewDrag.active()?.ghost?.style.transform || '',
     outside: document.documentElement.classList.contains('preview-drag-outside'),
   }),
-  previewAutoScrollDelta,
-  highlightBlock,
-  calculatePreviewScrollAdjustment,
+  previewAutoScrollDelta: previewDragLayout.autoScrollDelta,
+  highlightBlock: previewHighlighter.highlight,
+  calculatePreviewScrollAdjustment: previewNavigation.scrollAdjustment,
   closeDatabase: closeOfflineDatabaseConnection,
   cancelScheduledSync: syncCoordinator.cancelScheduled,
   waitForSyncIdle: syncCoordinator.waitForIdle,
-  waitForPreferenceIdle: async () => {
-    await preferencesStore.whenIdle();
-    await appearance.whenIdle();
-  },
-  getSyncScheduleState: syncCoordinator.scheduleState,
+  waitForPreferenceIdle: window.__vylkTestFixtures.waitForPreferences,
 };
 `;
 
-const testHookMarker = '/* __VYLK_TEST_HOOKS__ */';
+const testHookMarker = '/* __VYLK_TEST_HOOKS__ */\n  init();';
 
 function response(status, body = '') {
   return {
@@ -391,8 +392,13 @@ export async function createApp({
   window.localStorage.setItem('vylk-prefs', JSON.stringify(preferences));
   // JSDOM omits this browser property; its localhost test origin is trustworthy.
   Object.defineProperty(window, 'isSecureContext', {configurable: true, value: true});
-  window.__vylkDisableAutoInit = true;
-  window.__vylkDependencies = {};
+  const preferenceTasks = new Set();
+  window.__vylkTestFixtures = {
+    markOperationAttempted,
+    waitForPreferences: async () => {
+      while (preferenceTasks.size) await Promise.allSettled([...preferenceTasks]);
+    },
+  };
   window.indexedDB = indexedDB;
   window.IDBKeyRange = IDBKeyRange;
   window.TextEncoder = TextEncoder;
@@ -459,6 +465,30 @@ export async function createApp({
   window.eval(preferencesDialogSource);
   window.eval(preferencesStoreSource);
   window.eval(appearanceSource);
+  // Observe asynchronous preference work in the fixture, without shipping
+  // test lifecycle bookkeeping in the application.
+  for (const [module, methods] of [
+    [window.VylkPreferencesStore, ['save', 'saveMany']],
+    [window.VylkAppearance, ['applyFonts']],
+  ]) {
+    const create = module.create;
+    module.create = (options) => {
+      const instance = create(options);
+      for (const method of methods) {
+        const original = instance[method];
+        instance[method] = (...args) => {
+          const task = Promise.resolve(original(...args));
+          preferenceTasks.add(task);
+          void task.then(
+            () => preferenceTasks.delete(task),
+            () => preferenceTasks.delete(task),
+          );
+          return task;
+        };
+      }
+      return instance;
+    };
+  }
   window.eval(modalSource);
   window.eval(conflictResolverSource);
   window.eval(feedbackSource);
@@ -501,13 +531,18 @@ export async function createApp({
   });
   const saveCalls = [];
   if (deferredSave) {
-    window.__vylkDependencies.saveLocalNoteAndQueue = async (note, operation) => {
-      saveCalls.push({note: structuredClone(note), operation: structuredClone(operation)});
-      if (saveCalls.length === 1) {
-        resolveFirstSaveStarted();
-        await firstSaveGate;
-      }
-    };
+    const createSaver = window.VylkNoteSaver.create;
+    window.VylkNoteSaver.create = (options) =>
+      createSaver({
+        ...options,
+        persistLocalNote: async (note, operation) => {
+          saveCalls.push({note: structuredClone(note), operation: structuredClone(operation)});
+          if (saveCalls.length === 1) {
+            resolveFirstSaveStarted();
+            await firstSaveGate;
+          }
+        },
+      });
   }
 
   let resolveSyncCompletionStarted;
@@ -520,11 +555,19 @@ export async function createApp({
   });
   let syncCompletionCalls = 0;
   if (deferredSyncCompletion) {
-    window.__vylkDependencies.beforeSyncCompletion = async () => {
-      syncCompletionCalls++;
-      if (syncCompletionCalls !== 1) return;
-      resolveSyncCompletionStarted();
-      await syncCompletionGate;
+    const createLeadership = window.VylkSyncLeadership.create;
+    window.VylkSyncLeadership.create = (options) => {
+      const leadership = createLeadership(options);
+      return {
+        run: async (...args) => {
+          const result = await leadership.run(...args);
+          if (++syncCompletionCalls === 1) {
+            resolveSyncCompletionStarted();
+            await syncCompletionGate;
+          }
+          return result;
+        },
+      };
     };
   }
 

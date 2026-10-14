@@ -21,7 +21,7 @@ func TestLogoutClearsUnknownSessionWithoutRevokingOtherDevices(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessions := auth.NewSessionStore(db)
-	token, err := sessions.Create()
+	token, err := sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatal(err)
 	}

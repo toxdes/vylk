@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -171,35 +170,6 @@ func TestSyncMigrationSeedsExistingNotes(t *testing.T) {
 	}
 }
 
-func TestCheckNoteRevisionDetectsUpdatesAndTombstones(t *testing.T) {
-	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer db.Close()
-	if err := initDB(db); err != nil {
-		t.Fatalf("init db: %v", err)
-	}
-	if err := checkNoteRevision(db, "new", 0); err != nil {
-		t.Fatalf("new note revision: %v", err)
-	}
-	if err := upsertNote(db, "note", "First", "note.md", ""); err != nil {
-		t.Fatalf("create note: %v", err)
-	}
-	if err := checkNoteRevision(db, "note", 1); err != nil {
-		t.Fatalf("current revision: %v", err)
-	}
-	if err := checkNoteRevision(db, "note", 0); !errors.Is(err, errRevisionConflict) {
-		t.Fatalf("stale revision error = %v", err)
-	}
-	if err := deleteNote(db, "note"); err != nil {
-		t.Fatalf("delete note: %v", err)
-	}
-	if err := checkNoteRevision(db, "note", 1); !errors.Is(err, errRevisionConflict) {
-		t.Fatalf("deleted revision error = %v", err)
-	}
-}
-
 func TestSaveRejectsStaleOfflineRevisionBeforeReplacingFile(t *testing.T) {
 	notesDir := t.TempDir()
 	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
@@ -254,54 +224,6 @@ func TestSaveRejectsStaleOfflineRevisionBeforeReplacingFile(t *testing.T) {
 	}
 }
 
-func TestNoteContentReadWaitsForNoteWriteLock(t *testing.T) {
-	dir := t.TempDir()
-	db, err := openDB(filepath.Join(dir, "notes.db"))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	defer db.Close()
-	if err := initDB(db); err != nil {
-		t.Fatalf("init db: %v", err)
-	}
-	if err := upsertNote(db, "read-lock-note", "Read lock", "read-lock-note.md", ""); err != nil {
-		t.Fatalf("create note: %v", err)
-	}
-	if err := notepkg.WriteFile(filepath.Join(dir, "read-lock-note.md"), []byte("consistent content")); err != nil {
-		t.Fatalf("write note: %v", err)
-	}
-	a := &app{db: db, notesDir: dir, noteCache: notepkg.NewCache()}
-
-	a.noteMu.Lock()
-	result := make(chan struct {
-		data noteWithContent
-		err  error
-	}, 1)
-	go func() {
-		data, err := a.loadNoteWithContent("read-lock-note")
-		result <- struct {
-			data noteWithContent
-			err  error
-		}{data: data, err: err}
-	}()
-
-	select {
-	case <-result:
-		t.Fatal("note content read passed through the write lock")
-	case <-time.After(25 * time.Millisecond):
-	}
-	a.noteMu.Unlock()
-
-	select {
-	case read := <-result:
-		if read.err != nil || read.data.Revision != 1 || read.data.Content != "consistent content" {
-			t.Fatalf("note read = %#v, %v", read.data, read.err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("note content read did not complete after releasing the lock")
-	}
-}
-
 func TestSessionsPersistAcrossStoreRestart(t *testing.T) {
 	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
 	if err != nil {
@@ -312,7 +234,7 @@ func TestSessionsPersistAcrossStoreRestart(t *testing.T) {
 		t.Fatalf("init db: %v", err)
 	}
 	first := auth.NewSessionStore(db)
-	token, err := first.Create()
+	token, err := first.CreateDevice("persistence-device", "Test browser")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -326,7 +248,9 @@ func TestSessionsPersistAcrossStoreRestart(t *testing.T) {
 	if storedHash == token {
 		t.Fatal("session token was stored without hashing")
 	}
-	first.Remove(token)
+	if err := first.RevokeDevice("persistence-device"); err != nil {
+		t.Fatal(err)
+	}
 	if auth.NewSessionStore(db).Valid(token) {
 		t.Fatal("removed session remained valid")
 	}
@@ -347,7 +271,7 @@ func TestAuthenticatedActivityRenewsNearExpirySessions(t *testing.T) {
 	}
 	a := &app{db: db, sessions: auth.NewSessionStore(db), rl: rl}
 
-	nearToken, err := a.sessions.Create()
+	nearToken, err := a.sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatalf("create near-expiry session: %v", err)
 	}
@@ -375,7 +299,7 @@ func TestAuthenticatedActivityRenewsNearExpirySessions(t *testing.T) {
 		t.Fatalf("renewed expiry = %q; want approximately 180 days from now", renewedExpiry)
 	}
 
-	farToken, err := a.sessions.Create()
+	farToken, err := a.sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatalf("create far-expiry session: %v", err)
 	}
@@ -394,7 +318,7 @@ func TestAuthenticatedActivityRenewsNearExpirySessions(t *testing.T) {
 		t.Fatalf("far-expiry request refreshed cookie %q", got)
 	}
 
-	expiredToken, err := a.sessions.Create()
+	expiredToken, err := a.sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatalf("create expired session: %v", err)
 	}

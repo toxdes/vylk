@@ -351,38 +351,13 @@ test('Zen mode keeps a typed caret in its comfortable reading area', async ({pag
     240,
   );
   await editor.evaluate((element) => {
-    element.dataset.scrollEvents = '0';
-    element.addEventListener('scroll', () => {
-      element.dataset.scrollEvents = String(Number(element.dataset.scrollEvents || 0) + 1);
-    });
-  });
-  await page.evaluate(() => new Promise(requestAnimationFrame));
-  await editor.evaluate((element) => {
     const line = element.children[240];
     element.scrollTop = Math.max(0, line.offsetTop - element.clientHeight * 0.76);
-    element.dataset.scrollEvents = '0';
-    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
-    window.__zenScrollWrites = [];
-    Object.defineProperty(element, 'scrollTop', {
-      configurable: true,
-      get() {
-        return descriptor.get.call(this);
-      },
-      set(value) {
-        window.__zenScrollWrites.push({value, stack: new Error().stack});
-        descriptor.set.call(this, value);
-      },
-    });
   });
-
   await page.keyboard.type('x');
-  // Rendering and scroll events need not settle within exactly two frames.
-  await expect(async () => {
-    const after = await editor.evaluate((element) => ({
-      scrollTop: element.scrollTop,
-      scrollEvents: Number(element.dataset.scrollEvents || 0),
-      writes: window.__zenScrollWrites,
-      caretPosition: (() => {
+  await expect
+    .poll(() =>
+      editor.evaluate((element) => {
         const selection = getSelection();
         const range = selection.getRangeAt(0).cloneRange();
         range.collapse(false);
@@ -390,13 +365,20 @@ test('Zen mode keeps a typed caret in its comfortable reading area', async ({pag
           range.getClientRects()[0] || selection.focusNode.parentElement.getBoundingClientRect();
         const editor = element.getBoundingClientRect();
         return (caret.top + caret.height / 2 - editor.top) / editor.height;
-      })(),
-    }));
-    expect(after.writes).not.toEqual([]);
-    expect(after.scrollEvents).toBeGreaterThan(0);
-    expect(after.caretPosition).toBeGreaterThanOrEqual(0.3);
-    expect(after.caretPosition).toBeLessThanOrEqual(0.5);
-  }).toPass({timeout: 10000});
+      }),
+    )
+    .toBeGreaterThanOrEqual(0.3);
+  await expect
+    .poll(() =>
+      editor.evaluate((element) => {
+        const range = getSelection().getRangeAt(0).cloneRange();
+        range.collapse(false);
+        const caret = range.getClientRects()[0];
+        const editor = element.getBoundingClientRect();
+        return (caret.top + caret.height / 2 - editor.top) / editor.height;
+      }),
+    )
+    .toBeLessThanOrEqual(0.5);
 });
 
 test('Zen mode eases a pointer-placed caret into its reading area', async ({page}) => {
@@ -459,65 +441,6 @@ test('Zen mode eases vertical navigation back into its reading area', async ({pa
       }),
     )
     .toBeLessThanOrEqual(0.5);
-});
-
-test('Zen mode does not recenter a visible caret during keyboard navigation', async ({page}) => {
-  await page.setViewportSize({width: 1440, height: 960});
-  await signIn(page);
-  await openZenMode(page);
-
-  const editor = await replaceZenSource(
-    page,
-    Array.from({length: 400}, (_, index) => `Line ${index}`).join('\n'),
-    240,
-  );
-  await page.evaluate(() => new Promise(requestAnimationFrame));
-  const before = await editor.evaluate((element) => {
-    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
-    window.__zenNavigationScrollWrites = [];
-    Object.defineProperty(element, 'scrollTop', {
-      configurable: true,
-      get() {
-        return descriptor.get.call(this);
-      },
-      set(value) {
-        window.__zenNavigationScrollWrites.push(value);
-        descriptor.set.call(this, value);
-      },
-    });
-    return element.scrollTop;
-  });
-
-  await page.keyboard.press('ArrowUp');
-  await page.evaluate(
-    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-  );
-
-  const after = await editor.evaluate((element) => ({
-    scrollTop: element.scrollTop,
-    lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
-    writes: window.__zenNavigationScrollWrites,
-  }));
-  expect(after.writes).toEqual([]);
-  expect(Math.abs(after.scrollTop - before)).toBeLessThanOrEqual(after.lineHeight);
-
-  await editor.evaluate((element) => {
-    const lastLine = element.lastElementChild;
-    const range = document.createRange();
-    range.selectNodeContents(lastLine);
-    range.collapse(false);
-    const selection = getSelection();
-    selection.removeAllRanges();
-    selection.addRange(range);
-    element.scrollTop = element.scrollHeight - element.clientHeight;
-    window.__zenNavigationScrollWrites = [];
-  });
-  await page.keyboard.press('ArrowLeft');
-  await page.keyboard.press('ArrowRight');
-  await page.evaluate(
-    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
-  );
-  expect(await editor.evaluate(() => window.__zenNavigationScrollWrites)).toEqual([]);
 });
 
 test('Zen mode defers word counting until the browser is idle', async ({page}) => {

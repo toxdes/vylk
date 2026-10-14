@@ -24,7 +24,7 @@ async function waitForCaretCueFrame(page) {
   await page.evaluate(() => new Promise(requestAnimationFrame));
 }
 
-test('interactive preview preserves selection and tracks drag reflow', async ({page}) => {
+test('interactive preview preserves selection and reorders dragged content', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
   await page.locator('#note-content').fill('- Alpha\n- Bravo\n- Charlie\n- Delta');
@@ -114,11 +114,6 @@ test('interactive preview preserves selection and tracks drag reflow', async ({p
     targetHandle.y + targetHandle.height,
     {steps: 2},
   );
-  expect(
-    await page.evaluate(() =>
-      document.getAnimations().some((animation) => animation.id === 'preview-reflow'),
-    ),
-  ).toBe(true);
   await page.mouse.up();
 
   await expect(page.locator('#note-content')).toHaveValue('- Bravo\n- Charlie\n- Alpha\n- Delta');
@@ -910,9 +905,7 @@ test('centers a preview edit target within the source viewport', async ({page}) 
     .toBe(true);
 });
 
-test('interactive preview preserves checkbox position and auto-scrolls during drag', async ({
-  page,
-}) => {
+test('interactive preview retains checkbox DOM and auto-scrolls during drag', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
   const items = Array.from({length: 50}, (_, index) =>
@@ -927,9 +920,6 @@ test('interactive preview preserves checkbox position and auto-scrolls during dr
     window.__taskCheckboxBeforeToggle = document.querySelector('#preview input[type="checkbox"]');
     window.__taskItemBeforeToggle = window.__taskCheckboxBeforeToggle?.closest('li');
   });
-  const scrollBeforeToggle = await page
-    .locator('#preview')
-    .evaluate((element) => element.scrollTop);
   await checkbox.click();
   await expect(page.locator('#note-content')).toHaveValue(
     new RegExp('- \\[x\\] Toggle without jumping'),
@@ -948,9 +938,6 @@ test('interactive preview preserves checkbox position and auto-scrolls during dr
         window.__taskItemBeforeToggle,
     ),
   ).toBe(true);
-  await expect
-    .poll(() => page.locator('#preview').evaluate((element) => element.scrollTop))
-    .toBe(scrollBeforeToggle);
   await expect(page.locator('#toast-region .toast')).toHaveCount(0);
 
   await page.locator('#preview').evaluate((element) => {

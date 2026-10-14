@@ -77,20 +77,6 @@
     );
   }
 
-  function eventMatchesStep(event, value) {
-    const step = normalizeStep(value, {allowBare: true});
-    if (!step || event.isComposing || event.altKey) return false;
-    const mac = platformIsMac();
-    const primaryPressed = mac ? event.metaKey : event.ctrlKey;
-    const otherPrimaryPressed = mac ? event.ctrlKey : event.metaKey;
-    return (
-      Boolean(primaryPressed) === step.modifiers.includes(PRIMARY) &&
-      !otherPrimaryPressed &&
-      Boolean(event.shiftKey) === step.modifiers.includes('Shift') &&
-      normalizeKey(event.key) === step.key
-    );
-  }
-
   function capturedStep(event) {
     if (event.isComposing || event.altKey) return null;
     const mac = platformIsMac();
@@ -168,7 +154,6 @@
     DEFAULT_PREFIX,
     normalizeBinding,
     sameBinding,
-    eventMatchesStep,
     capturedStep,
     capturedSequenceStep,
     bindingFromEvent,

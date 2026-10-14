@@ -39,11 +39,11 @@ func TestCredentialChangeRespectsOtherDevicesChoice(t *testing.T) {
 				t.Fatal(err)
 			}
 			a := &app{db: db, sessions: auth.NewSessionStore(db), rl: rl}
-			current, err := a.sessions.Create()
+			current, err := a.sessions.CreateDevice("", "Test browser")
 			if err != nil {
 				t.Fatal(err)
 			}
-			other, err := a.sessions.Create()
+			other, err := a.sessions.CreateDevice("", "Test browser")
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -178,7 +178,6 @@
       current,
       dashboardState,
       initialize,
-      isDashboard,
       isNote,
       isPreferences,
       noteID,

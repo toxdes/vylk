@@ -91,7 +91,7 @@ func TestDisabledVaultChangesBlockEveryMutationRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessions := auth.NewSessionStore(db)
-	token, err := sessions.Create()
+	token, err := sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestVaultMigrationCutoverRemovesActivePlaintext(t *testing.T) {
 	if err := initDB(db); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertNote(db, "note-a", "Private title", "note-a.md", "secret"); err != nil {
+	if err := upsertNote(db, "note-a", "Private title", "note-a.md", "secret"); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(notesDir, "note-a.md"), []byte("Private body"), 0600); err != nil {
@@ -158,7 +158,7 @@ func TestVaultMigrationCutoverRemovesActivePlaintext(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.noteCache.Set("note-a", "Private body")
-	tokenBeforeMigration, err := a.sessions.Create()
+	tokenBeforeMigration, err := a.sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +316,7 @@ func TestVaultMigrationCutoverRemovesActivePlaintext(t *testing.T) {
 	if err != nil || note.Revision != 2 {
 		t.Fatalf("conflicting push changed note: %#v, %v", note, err)
 	}
-	token, err := a.sessions.Create()
+	token, err := a.sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -332,7 +332,7 @@ func TestVaultMigrationCutoverRemovesActivePlaintext(t *testing.T) {
 	if err != nil || subtle.ConstantTimeCompare(config.AuthHash, vaultProofHash([]byte(strings.Repeat("x", 32)))) != 1 {
 		t.Fatalf("master proof was not replaced: %#v, %v", config, err)
 	}
-	token, err = a.sessions.Create()
+	token, err = a.sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +430,7 @@ func TestVaultResetArchivesOldVaultAndRejectsOldEpoch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldSession, err := a.sessions.Create()
+	oldSession, err := a.sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatal(err)
 	}

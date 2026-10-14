@@ -919,8 +919,6 @@
       closeForRoute,
       open,
       openDetail,
-      openMaster,
-      openRecovery,
       refresh,
     };
   }

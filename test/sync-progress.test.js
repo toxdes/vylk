@@ -10,7 +10,6 @@ function createCoordinator(overrides = {}) {
   const dependencies = {
     apiClient: {consumeCancellation: () => false},
     authenticationRequired: () => false,
-    beforeCompletion: async () => {},
     clearDiagnostic: () => {},
     connectEvents: () => {},
     document: {visibilityState: 'visible'},
@@ -124,12 +123,10 @@ test('retains follow-up work until leadership cleanup finishes', async () => {
       },
       clearTimeout: () => {},
     },
-    beforeCompletion: async () => {
-      if (first) coordinator.schedule({reconcile: true}, 0);
-    },
     leadership: async (work) => {
       const result = await work();
       if (first) {
+        coordinator.schedule({reconcile: true}, 0);
         first = false;
         completed();
         await cleanupGate;

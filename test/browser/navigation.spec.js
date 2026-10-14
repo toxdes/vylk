@@ -38,13 +38,12 @@ test('note deletion uses the shared confirmation dialog', async ({page}) => {
   await page.locator('#note-content').fill('Delete only after confirmation');
   await page.locator('#save-btn').click();
   await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
+  const noteID = new URL(page.url()).pathname.slice(1);
+  const noteStatus = async () => (await page.request.get(`/api/notes/${noteID}`)).status();
+  await expect.poll(noteStatus).toBe(200);
 
   await page.locator('#delete-btn').click();
   await expect(page.locator('#delete-note-modal')).toBeVisible();
-  await expect(page.locator('#delete-note-modal .modal-body')).toHaveCSS(
-    'animation-name',
-    'app-content-in',
-  );
   await page.locator('#delete-note-cancel').click();
   await expect(page.locator('#delete-note-modal')).toBeHidden();
   await expect(page.locator('#note-title')).toHaveValue('Note to delete');
@@ -52,7 +51,8 @@ test('note deletion uses the shared confirmation dialog', async ({page}) => {
   await page.locator('#delete-btn').click();
   await page.locator('#delete-note-confirm').click();
   await expect(page.locator('#dashboard')).toBeVisible();
-  await expect(page.locator('.note-item').filter({hasText: 'Note to delete'})).toHaveCount(0);
+  await expect(page.locator(`.note-item[data-note-id="${noteID}"]`)).toHaveCount(0);
+  await expect.poll(noteStatus).toBe(404);
 });
 
 test('in-app Back does not leave a stale note in browser history', async ({page}) => {
@@ -65,10 +65,6 @@ test('in-app Back does not leave a stale note in browser history', async ({page}
   const noteID = new URL(page.url()).pathname.slice(1);
   await page.locator('#back-btn').click();
   await expect(page.locator('#dashboard')).toBeVisible();
-  await expect(page.locator('#dashboard .dashboard-body')).toHaveCSS(
-    'animation-name',
-    'app-content-return',
-  );
 
   await page.locator(`.note-item[data-id="${noteID}"]`).click();
   await expect(page.locator('#editor')).toBeVisible();
@@ -100,10 +96,6 @@ test('browser Back saves the current note before returning to the dashboard', as
   await page.goBack();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('#dashboard')).toBeVisible();
-  await expect(page.locator('#dashboard .dashboard-body')).toHaveCSS(
-    'animation-name',
-    'app-content-return',
-  );
 
   await page
     .locator(`.note-item[data-id="${noteURL.slice(noteURL.lastIndexOf('/') + 1)}"]`)

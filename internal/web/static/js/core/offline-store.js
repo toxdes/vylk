@@ -507,14 +507,6 @@
       );
     }
 
-    async function getOfflineDatabaseInfo() {
-      const db = await openOfflineDB();
-      return {
-        version: db.version,
-        queueIndexes: [...db.transaction('queue', 'readonly').objectStore('queue').indexNames],
-      };
-    }
-
     function putLocalNote(note) {
       return withOfflineStore(['notes'], 'readwrite', (stores) =>
         requestValue(stores.notes.put(note)),
@@ -786,18 +778,6 @@
         .sort((left, right) => right.client_sequence - left.client_sequence)[0];
     }
 
-    async function claimQueueOperation(id) {
-      return withOfflineStore(['queue'], 'readwrite', async (stores) => {
-        const operation = await requestValue(stores.queue.get(id));
-        if (!operation) return null;
-        if (!operation.attempted_at) {
-          operation.attempted_at = new Date().toISOString();
-          await requestValue(stores.queue.put(operation));
-        }
-        return operation;
-      });
-    }
-
     function queueOperationPayload(operation) {
       return JSON.stringify({
         type: operation.type,
@@ -984,39 +964,6 @@
       });
     }
 
-    async function clearOfflineData() {
-      beforeClear();
-      if (await vaultLocalFormat()) {
-        lockVaultLocal();
-        await withBoundTransaction(['keys'], 'readwrite', async (stores) => {
-          await requestValue(stores.keys.delete('root'));
-        });
-        return;
-      }
-      const dbPromise = databasePromise;
-      databasePromise = undefined;
-      if (dbPromise) {
-        try {
-          (await dbPromise).close();
-        } catch (_) {}
-      }
-      await new Promise((resolve, reject) => {
-        const request = databaseAPI().deleteDatabase(databaseName);
-        const timeout = setTimeout(
-          () => reject(new Error('local data cleanup is blocked by another app tab')),
-          5000,
-        );
-        request.onerror = () => {
-          clearTimeout(timeout);
-          reject(request.error);
-        };
-        request.onsuccess = () => {
-          clearTimeout(timeout);
-          resolve();
-        };
-      });
-    }
-
     async function discardVaultLocalData(preserveMetadataFor = null) {
       beforeClear();
       lockVaultLocal();
@@ -1060,19 +1007,16 @@
       checkServerIdentity,
       inspectDataset,
       switchDataset,
-      claimQueueOperation,
       cachedVaultBootstrap,
       cachedVaultWrappers,
       cacheVaultBootstrap,
       cacheVaultWrappers,
-      clearOfflineData,
       discardVaultLocalData,
       closeOfflineDatabaseConnection,
       commitNoteAcknowledgement,
       getAllLocalNotes,
       getLocalNote,
       getLocalNotes,
-      getOfflineDatabaseInfo,
       getOfflineState,
       getUnresolvedConflict,
       hasPendingOperation,
@@ -1088,7 +1032,6 @@
       queueOperationInStores,
       queueOperationPayload,
       rebaseQueuedNoteOperations,
-      rejectedSyncKey,
       removeLocalNote,
       removeLocalNoteAndQueue,
       removeLocalNoteAndSupersede,

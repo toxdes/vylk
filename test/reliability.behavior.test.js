@@ -88,7 +88,7 @@ describe('remote deletion coordination', () => {
       note: {id: 'note-a', content: 'Keep me'},
     });
 
-    expect(await app.hooks.applyRemoteDeletion('note-a')).toBe(false);
+    await app.hooks.applyRemoteChangePage([{note_id: 'note-a', deleted: true}], new Map(), 1);
     expect(await app.hooks.getLocalNote('note-a')).toMatchObject({
       title: 'Local edit',
       content: 'Keep me',
@@ -584,43 +584,5 @@ describe('deep-link restoration', () => {
     expect(app.window.location.pathname).toBe('/note-a');
     expect(app.window.document.querySelector('#note-title').value).toBe('Remote note');
     expect(await app.hooks.getLocalNote('note-a')).toMatchObject(remote);
-  });
-});
-
-describe('logout storage cleanup', () => {
-  test('waits for other database connections before reporting cleanup complete', async () => {
-    const first = track(await createApp());
-    const originalIndexedDB = first.window.indexedDB;
-    let deleteRequest;
-    let blocked = false;
-    Object.defineProperty(first.window, 'indexedDB', {
-      configurable: true,
-      value: {
-        open: (...args) => originalIndexedDB.open(...args),
-        deleteDatabase: () => {
-          deleteRequest = {};
-          queueMicrotask(() => {
-            blocked = true;
-            deleteRequest.onblocked?.();
-          });
-          return deleteRequest;
-        },
-      },
-    });
-
-    let completed = false;
-    const cleanup = first.hooks.clearOfflineData().then(() => {
-      completed = true;
-    });
-    await vi.waitFor(() => expect(blocked).toBe(true));
-    expect(completed).toBe(false);
-
-    deleteRequest.onsuccess();
-    await cleanup;
-    expect(completed).toBe(true);
-    Object.defineProperty(first.window, 'indexedDB', {
-      configurable: true,
-      value: originalIndexedDB,
-    });
   });
 });

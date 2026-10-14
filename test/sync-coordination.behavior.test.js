@@ -1,4 +1,5 @@
 import {describe, expect, test, vi} from 'vitest';
+import {IDBObjectStore} from 'fake-indexeddb';
 import {createApp, response} from './app-harness.js';
 import {installAppLifecycle} from './frontend-test-context.js';
 
@@ -275,14 +276,9 @@ describe('sync scheduling while hidden', () => {
     setVisibility('hidden');
     app.hooks.scheduleSync({reconcile: true});
     expect(requests).toHaveLength(0);
-    expect(app.hooks.getSyncScheduleState()).toEqual({
-      scheduled: false,
-      options: {reconcile: true},
-    });
 
     setVisibility('visible');
     app.window.document.dispatchEvent(new app.window.Event('visibilitychange'));
-    expect(app.hooks.getSyncScheduleState().scheduled).toBe(true);
     await vi.waitFor(() =>
       expect(requests.some((url) => String(url).includes('/api/sync'))).toBe(true),
     );
@@ -460,7 +456,6 @@ describe('server change invalidation', () => {
       expect(JSON.parse(app.window.localStorage.getItem('vylk-prefs')).revision).toBe(2),
     );
     expect(requests.some((path) => path.startsWith('/api/sync?'))).toBe(false);
-    expect(app.hooks.getSyncScheduleState()).toEqual({scheduled: false, options: {}});
   });
 
   test('ignores a note event already covered by the local sync cursor', async () => {
@@ -474,12 +469,10 @@ describe('server change invalidation', () => {
     await expect(app.hooks.handleServerChangeEvent({type: 'notes', sequence: 42})).resolves.toBe(
       false,
     );
-    expect(app.hooks.getSyncScheduleState()).toEqual({scheduled: false, options: {}});
 
     await expect(app.hooks.handleServerChangeEvent({type: 'notes', sequence: 43})).resolves.toBe(
       true,
     );
-    await vi.waitFor(() => expect(app.hooks.getSyncScheduleState().scheduled).toBe(true));
     app.hooks.cancelScheduledSync();
   });
 
@@ -547,9 +540,6 @@ describe('sync coordinator', () => {
   test('does not claim an edit was saved when local persistence fails', async () => {
     const app = track(await createApp());
     app.window.console.error = () => {};
-    app.window.__vylkDependencies.saveLocalNoteAndQueue = async () => {
-      throw new Error('storage unavailable');
-    };
     app.hooks.setEditorState({
       id: 'note-a',
       title: 'Note',
@@ -559,7 +549,14 @@ describe('sync coordinator', () => {
 
     app.hooks.markDirty();
     expect(app.window.document.querySelector('#editor-status').dataset.state).toBe('saving');
-    await expect(app.hooks.saveCurrentNote(false)).resolves.toBe(false);
+    const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    try {
+      await expect(app.hooks.saveCurrentNote(false)).resolves.toBe(false);
+    } finally {
+      put.mockRestore();
+    }
     const status = app.window.document.querySelector('#editor-status');
     expect(status.dataset.state).toBe('unsaved');
     expect(status.querySelector('.sync-indicator-label').textContent).toBe('Not saved');
@@ -602,7 +599,6 @@ describe('sync coordinator', () => {
     releaseSync();
     await sync;
     expect(syncRequests).toBe(1);
-    expect(app.hooks.getSyncScheduleState().scheduled).toBe(false);
   });
 
   test('keeps one logical syncing state across pull, push, and final pull', async () => {

@@ -100,7 +100,7 @@
     confirm.addEventListener('click', () => void switchDataset());
     modal.querySelector('.modal-backdrop').addEventListener('click', keepChanges);
 
-    return {inspect, keepChanges, paused: () => Boolean(target)};
+    return {inspect, keepChanges};
   }
 
   root.VylkDatasetSwitch = {create};

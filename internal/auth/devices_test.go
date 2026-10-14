@@ -75,11 +75,11 @@ func TestCredentialRevocationChoiceIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	sessions := auth.NewSessionStore(db)
-	a, err := sessions.Create()
+	a, err := sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := sessions.Create()
+	b, err := sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatal(err)
 	}

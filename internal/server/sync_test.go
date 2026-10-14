@@ -28,7 +28,7 @@ func TestEventsStreamSendsAnImmediateHeartbeat(t *testing.T) {
 		t.Fatalf("init db: %v", err)
 	}
 	a := &app{db: db, sessions: auth.NewSessionStore(db)}
-	token, err := a.sessions.Create()
+	token, err := a.sessions.CreateDevice("", "Test browser")
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -184,13 +184,13 @@ func TestSyncPushPublishesOneCoalescedNoteEventPerBatch(t *testing.T) {
 		if event.Type != "notes" || event.Sequence != 2 {
 			t.Fatalf("batch event = %#v", event)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for batch event")
+	default:
+		t.Fatal("batch handler did not publish its event")
 	}
 	select {
 	case event := <-subscriber:
 		t.Fatalf("unexpected second batch event = %#v", event)
-	case <-time.After(25 * time.Millisecond):
+	default:
 	}
 }
 
@@ -936,8 +936,8 @@ func TestDirectPreferencePatchUsesRevisionAndPublishesChange(t *testing.T) {
 		if event.Type != "preferences" || event.Revision != 3 {
 			t.Fatalf("preference event = %#v", event)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for preference event")
+	default:
+		t.Fatal("preference handler did not publish its event")
 	}
 	updated, err := getPrefs(db)
 	if err != nil || updated.Theme != "default-dark" || updated.SaveButtonLocation != "header" || updated.Revision != 3 {

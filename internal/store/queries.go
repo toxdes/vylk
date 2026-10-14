@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"vylk/internal/note"
 	"vylk/internal/notesync"
@@ -346,19 +345,6 @@ func NextPinOrderTx(tx *sql.Tx) (int64, error) {
 	return order, err
 }
 
-func UpsertNote(db *sql.DB, id, title, filename, tags string) error {
-	now := time.Now().UTC().Format(time.RFC3339)
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := UpsertNoteTx(tx, id, title, filename, tags, now); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 func UpsertNoteTx(tx *sql.Tx, id, title, filename, tags, now string) error {
 	_, err := tx.Exec(`
 		INSERT INTO notes (id, title, filename, tags, created_at, updated_at, revision)
@@ -395,18 +381,6 @@ func UpsertNoteTx(tx *sql.Tx, id, title, filename, tags, now string) error {
 		return err
 	}
 	return CompactSyncChangesTx(tx)
-}
-
-func DeleteNote(db *sql.DB, id string) error {
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if err := DeleteNoteTx(tx, id, time.Now().UTC().Format(time.RFC3339)); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 func DeleteNoteTx(tx *sql.Tx, id, now string) error {

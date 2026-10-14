@@ -13,8 +13,6 @@
     scheduleSync,
     setPreferences,
   }) {
-    const saveTasks = new Set();
-
     async function persist(values) {
       const previous = {...getPreferences()};
       const keys = Object.keys(values).filter((key) => key !== 'revision');
@@ -35,21 +33,12 @@
       scheduleSync();
     }
 
-    function track(task) {
-      saveTasks.add(task);
-      void task.then(
-        () => saveTasks.delete(task),
-        () => saveTasks.delete(task),
-      );
-      return task;
-    }
-
     function save(key, value) {
-      return track(persist({[key]: value}));
+      return persist({[key]: value});
     }
 
     function saveMany(values) {
-      return track(persist(values));
+      return persist(values);
     }
 
     async function load() {
@@ -77,11 +66,7 @@
       onLoaded();
     }
 
-    async function whenIdle() {
-      while (saveTasks.size) await Promise.allSettled([...saveTasks]);
-    }
-
-    return {load, save, saveMany, whenIdle};
+    return {load, save, saveMany};
   }
 
   global.VylkPreferencesStore = {create};

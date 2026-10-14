@@ -6,30 +6,18 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 )
 
 type RateLimiter struct {
 	db         *sql.DB
 	trustProxy bool
-	mu         sync.Mutex
-	bans       map[string]banCacheEntry
 }
 
-type banCacheEntry struct {
-	banned  bool
-	expires time.Time
-}
-
-const (
-	banCacheTTL        = 5 * time.Minute
-	maxCachedBanIPs    = 4096
-	LoginAttemptWindow = 15 * time.Minute
-)
+const LoginAttemptWindow = 15 * time.Minute
 
 func NewRateLimiter(db *sql.DB, trustProxy bool) (*RateLimiter, error) {
-	return &RateLimiter{db: db, trustProxy: trustProxy, bans: make(map[string]banCacheEntry)}, nil
+	return &RateLimiter{db: db, trustProxy: trustProxy}, nil
 }
 
 func (rl *RateLimiter) TrustProxy() bool { return rl.trustProxy }
@@ -56,38 +44,6 @@ func (rl *RateLimiter) RealIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
-func (rl *RateLimiter) IsBanned(ip string) (bool, error) {
-	rl.mu.Lock()
-	if cached, ok := rl.bans[ip]; ok && time.Now().Before(cached.expires) {
-		rl.mu.Unlock()
-		return cached.banned, nil
-	}
-	delete(rl.bans, ip)
-	rl.mu.Unlock()
-	return false, nil
-}
-
-func (rl *RateLimiter) cacheBan(ip string, banned bool) {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-	if len(rl.bans) >= maxCachedBanIPs {
-		now := time.Now()
-		for key, entry := range rl.bans {
-			if now.After(entry.expires) {
-				delete(rl.bans, key)
-			}
-		}
-		if len(rl.bans) >= maxCachedBanIPs {
-			return
-		}
-	}
-	rl.bans[ip] = banCacheEntry{banned: banned, expires: time.Now().Add(banCacheTTL)}
-}
-
-func (rl *RateLimiter) banIP(ip string) {
-	rl.cacheBan(ip, true)
-}
-
 func (rl *RateLimiter) RecordLoginAttempt(ip string, success bool) error {
 	if success {
 		_, err := rl.db.Exec("DELETE FROM rate_limits WHERE ip = ? AND typ = 'login'", ip)
@@ -102,18 +58,7 @@ func (rl *RateLimiter) RecordLoginAttempt(ip string, success bool) error {
 			count = CASE WHEN rate_limits.updated_at < ? THEN 1 ELSE rate_limits.count + 1 END,
 			updated_at = ?
 	`, ip, nowText, windowStart, nowText)
-	if err != nil {
-		return err
-	}
-	var count int
-	err = rl.db.QueryRow("SELECT count FROM rate_limits WHERE ip = ? AND typ = 'login'", ip).Scan(&count)
-	if err != nil {
-		return err
-	}
-	if count >= 5 {
-		rl.banIP(ip)
-	}
-	return nil
+	return err
 }
 
 func (rl *RateLimiter) LoginRetryAfter(ip string) (int, error) {
