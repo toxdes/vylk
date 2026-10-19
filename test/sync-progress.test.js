@@ -1,6 +1,7 @@
 import {expect, test, vi} from 'vitest';
 
 await import('../internal/web/static/js/sync/coordinator.js');
+await import('../internal/web/static/js/sync/leadership.js');
 await import('../internal/web/static/js/core/http.js');
 await import('../internal/web/static/js/sync/pusher.js');
 await import('../internal/web/static/js/sync/remote-notes.js');
@@ -145,6 +146,179 @@ test('retains follow-up work until leadership cleanup finishes', async () => {
   await coordinator.waitForIdle();
   expect(reconcileLocal).toHaveBeenCalledOnce();
   expect(timers).toHaveLength(0);
+});
+
+test.each(['Web Locks', 'IndexedDB lease'])(
+  'waits between refused %s attempts, then syncs once the other tab releases ownership',
+  async (mechanism) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-19T00:00:00Z'));
+    let coordinator;
+    try {
+      let heldByOtherTab = true;
+      const state = new Map([
+        [
+          'syncLease',
+          {key: 'syncLease', value: {owner: 'other-tab', expiresAt: Date.now() + 60_000}},
+        ],
+      ]);
+      const window = {
+        setTimeout: vi.fn((callback, delay) => setTimeout(callback, delay)),
+        clearTimeout: (timer) => clearTimeout(timer),
+        setInterval: (callback, delay) => setInterval(callback, delay),
+        clearInterval: (timer) => clearInterval(timer),
+      };
+      const leadership = globalThis.VylkSyncLeadership.create({
+        navigator:
+          mechanism === 'Web Locks'
+            ? {
+                locks: {
+                  request: async (_name, _options, work) => {
+                    // Lock acquisition completes asynchronously in the browser. Keep
+                    // that ordering deterministic without relying on elapsed real time.
+                    await Promise.resolve();
+                    return work(heldByOtherTab ? null : {});
+                  },
+                },
+              }
+            : {},
+        onUnavailable: () => coordinator.schedule({}, 500),
+        requestValue: async (request) => request,
+        tabID: 'current-tab',
+        window,
+        withOfflineStore: async (_names, _mode, work) => {
+          await Promise.resolve();
+          return work({
+            state: {
+              get: (key) => state.get(key),
+              put: (record) => state.set(record.key, record),
+              delete: (key) => state.delete(key),
+            },
+          });
+        },
+      });
+      const acquire = vi.fn(leadership.run);
+      const pull = vi.fn(async () => {});
+      const reconcileLocal = vi.fn(async () => {});
+      ({coordinator} = createCoordinator({
+        leadership: acquire,
+        pull,
+        reconcileLocal,
+        serverWorkRemains: () => false,
+        window,
+      }));
+
+      await expect(coordinator.now({reconcile: true})).resolves.toBe(false);
+      for (let attempts = 1; attempts <= 3; attempts++) {
+        expect(acquire).toHaveBeenCalledTimes(attempts);
+        expect(vi.getTimerCount()).toBe(1);
+        // Fail immediately on a zero-delay retry, before advancing a fake clock
+        // through that loop. The regression cannot hang or exhaust timer limits.
+        expect(window.setTimeout).toHaveBeenLastCalledWith(expect.any(Function), 500);
+        await vi.advanceTimersByTimeAsync(499);
+        expect(acquire).toHaveBeenCalledTimes(attempts);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(acquire).toHaveBeenCalledTimes(attempts + 1);
+        expect(pull).not.toHaveBeenCalled();
+      }
+
+      heldByOtherTab = false;
+      state.delete('syncLease');
+      await vi.advanceTimersByTimeAsync(499);
+      expect(acquire).toHaveBeenCalledTimes(4);
+      await vi.advanceTimersByTimeAsync(1);
+      await coordinator.waitForIdle();
+      expect(acquire).toHaveBeenCalledTimes(5);
+      expect(pull).toHaveBeenCalledOnce();
+      expect(reconcileLocal).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      coordinator?.cancelScheduled();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  },
+);
+
+test('keeps delayed work when immediate requests overlap, then clears the consumed delay', async () => {
+  vi.useFakeTimers();
+  let coordinator;
+  try {
+    let completed = 0;
+    const window = {
+      setTimeout: vi.fn((callback, delay) => setTimeout(callback, delay)),
+      clearTimeout: (timer) => clearTimeout(timer),
+    };
+    const pull = vi.fn(async () => {});
+    const reconcileLocal = vi.fn(async () => {});
+    ({coordinator} = createCoordinator({
+      pull,
+      reconcileLocal,
+      serverWorkRemains: () => false,
+      window,
+      leadership: async (work) => {
+        const result = await work();
+        if (++completed === 1) {
+          coordinator.schedule({reconcile: true}, 500);
+          coordinator.schedule({}, 0);
+        } else if (completed === 2) {
+          coordinator.schedule({}, 0);
+        }
+        return result;
+      },
+    }));
+
+    await coordinator.now();
+    expect(window.setTimeout).toHaveBeenLastCalledWith(expect.any(Function), 500);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(pull).toHaveBeenCalledOnce();
+    await vi.runAllTimersAsync();
+    expect(window.setTimeout.mock.calls.map(([, delay]) => delay)).toEqual([500, 0]);
+    expect(pull).toHaveBeenCalledTimes(3);
+    expect(reconcileLocal).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    coordinator?.cancelScheduled();
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  }
+});
+
+test('canceling pending work also clears its delay before a new immediate request', async () => {
+  vi.useFakeTimers();
+  let coordinator;
+  try {
+    let completed = 0;
+    const window = {
+      setTimeout: vi.fn((callback, delay) => setTimeout(callback, delay)),
+      clearTimeout: (timer) => clearTimeout(timer),
+    };
+    const pull = vi.fn(async () => {});
+    ({coordinator} = createCoordinator({
+      pull,
+      serverWorkRemains: () => false,
+      window,
+      leadership: async (work) => {
+        const result = await work();
+        if (++completed === 1) {
+          coordinator.schedule({}, 500);
+          coordinator.cancelScheduled();
+          coordinator.schedule({}, 0);
+        }
+        return result;
+      },
+    }));
+
+    await coordinator.now();
+    expect(window.setTimeout).toHaveBeenLastCalledWith(expect.any(Function), 0);
+    await vi.runAllTimersAsync();
+    expect(pull).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    coordinator?.cancelScheduled();
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  }
 });
 
 test.each([409, 200])('bounds repeated identical push batches after HTTP %s', async (status) => {
