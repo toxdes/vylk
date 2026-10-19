@@ -41,6 +41,7 @@
     let scheduleTimer = null;
     let scheduleOptions = {};
     let pendingWhileInFlight = false;
+    let pendingDelayMs = 0;
     let retryDelay = 0;
     let lastSuccessfulAt = 0;
     let lastProblem = '';
@@ -59,6 +60,7 @@
     function takePendingIntent() {
       const options = {...scheduleOptions};
       pendingWhileInFlight = false;
+      pendingDelayMs = 0;
       scheduleOptions = {};
       return options;
     }
@@ -67,6 +69,9 @@
       if (!canSync() || progressPaused) return;
       mergeOptions(options);
       if (inFlight || lifecyclePromise) {
+        // Leadership refusal requests backoff before its promise settles. Keep
+        // that delay even when another pending request asks to sync immediately.
+        pendingDelayMs = Math.max(pendingDelayMs, delayMs);
         pendingWhileInFlight = true;
         return;
       }
@@ -248,7 +253,10 @@
           lifecyclePromise = null;
           // The lease release may be asynchronous. Schedule follow-up work only
           // once it finishes, so its timer cannot be consumed by the old owner.
-          if (pendingWhileInFlight) schedule(takePendingIntent(), 0);
+          if (pendingWhileInFlight) {
+            const delay = pendingDelayMs;
+            schedule(takePendingIntent(), delay);
+          }
         }
       }
     }
@@ -258,6 +266,7 @@
       scheduleTimer = null;
       scheduleOptions = {};
       pendingWhileInFlight = false;
+      pendingDelayMs = 0;
     }
 
     async function waitForIdle() {
