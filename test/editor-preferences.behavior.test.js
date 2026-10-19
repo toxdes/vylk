@@ -234,6 +234,109 @@ describe('keyboard shortcuts', () => {
     ).toBe(false);
   });
 
+  test('Zen link edits save Markdown through the existing note lifecycle', async () => {
+    const app = track(await createApp({realMarked: true}));
+    const {window} = app;
+    const {document} = window;
+    window.Range.prototype.getClientRects = () => [
+      {top: 0, bottom: 20, left: 0, width: 50, height: 20},
+    ];
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', tags: '', content: 'Hello world'});
+    app.hooks.setPanelState('zen');
+    const editor = document.querySelector('#zen-source-editor');
+    const range = document.createRange();
+    range.setStart(editor.firstChild.firstChild, 0);
+    range.setEnd(editor.firstChild.firstChild, 5);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    await app.hooks.executeShortcutCommand('format.link');
+    expect(document.querySelector('#zen-link-popup').hidden).toBe(false);
+    document.querySelector('#zen-link-url').value = 'https://example.com';
+    document
+      .querySelector('#zen-link-popup')
+      .dispatchEvent(new window.Event('submit', {cancelable: true}));
+    expect(app.hooks.getState().isDirty).toBe(true);
+    app.hooks.setPanelState('editor');
+    expect(document.querySelector('#note-content').value).toBe(
+      '[Hello](https://example.com) world',
+    );
+    await app.hooks.saveCurrentNote(false);
+    expect((await app.hooks.getLocalNote('note-a')).content).toBe(
+      '[Hello](https://example.com) world',
+    );
+  });
+
+  test('Zen shortcuts toggle nested formatting uniformly through the app controller', async () => {
+    const app = track(await createApp({realMarked: true}));
+    const {window} = app;
+    const {document} = window;
+    window.Range.prototype.getClientRects = () => [
+      {top: 0, bottom: 20, left: 0, width: 50, height: 20},
+    ];
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', tags: '', content: 'foo bar'});
+    app.hooks.setPanelState('zen');
+    const editor = document.querySelector('#zen-source-editor');
+    editor.focus();
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.setStart(editor.firstChild.firstChild, 4);
+    range.setEnd(editor.firstChild.firstChild, 7);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const press = (key, shiftKey = false) =>
+      editor.dispatchEvent(
+        new window.KeyboardEvent('keydown', {
+          key,
+          ctrlKey: true,
+          shiftKey,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    press('b');
+    selection.selectAllChildren(editor);
+    press('i');
+    press('b');
+    expect(editor.querySelectorAll('.zen-md-strong').length).toBe(1);
+    press('b');
+    expect(editor.querySelectorAll('.zen-md-strong').length).toBe(0);
+    press('z');
+    expect(editor.querySelectorAll('.zen-md-strong').length).toBe(1);
+    press('z', true);
+    expect(editor.querySelectorAll('.zen-md-strong').length).toBe(0);
+    app.hooks.setPanelState('editor');
+    expect(document.querySelector('#note-content').value).toBe('*foo bar*');
+    expect(app.hooks.getState().isDirty).toBe(true);
+  });
+
+  test('unsupported Zen formatting explains the Markdown limitation without changing the note', async () => {
+    const app = track(await createApp({realMarked: true}));
+    const {window} = app;
+    const {document} = window;
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'Note', tags: '', content: 'a!b'});
+    app.hooks.setPanelState('zen');
+    const editor = document.querySelector('#zen-source-editor');
+    editor.focus();
+    const text = editor.firstChild.firstChild;
+    window.getSelection().setBaseAndExtent(text, 1, text, 2);
+    editor.dispatchEvent(
+      new window.KeyboardEvent('keydown', {
+        key: 'b',
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    expect(document.querySelector('#toast-region').textContent).toContain(
+      'Markdown cannot represent this formatting exactly. Select complete words or spans.',
+    );
+    expect(document.querySelector('#toast-region .toast.warning')).not.toBeNull();
+    expect(editor.textContent).toBe('a!b');
+    expect(app.hooks.getState().isDirty).toBe(false);
+    app.hooks.setPanelState('editor');
+    expect(document.querySelector('#note-content').value).toBe('a!b');
+  });
+
   test('keeps Zen settings in their own preference tab', async () => {
     const app = track(await createApp());
     app.window.document.querySelector('#editor-prefs-btn').click();
@@ -360,6 +463,35 @@ describe('keyboard shortcuts', () => {
 });
 
 describe('font preferences', () => {
+  test('Google Fonts copy is separate from each checkbox and links to the font catalogue', async () => {
+    const app = track(await createApp());
+    const {document} = app.window;
+    for (const id of [
+      'pref-font-google',
+      'pref-editor-font-google',
+      'pref-preview-font-google',
+      'pref-zen-font-google',
+    ]) {
+      const checkbox = document.getElementById(id);
+      const row = checkbox.closest('.font-fetch-toggle');
+      expect(checkbox.closest('label')).toBeNull();
+      const text = row.querySelector('span');
+      expect(checkbox.getAttribute('aria-labelledby')).toBe(text.id);
+      expect(text.textContent.replace(/\s+/g, ' ').trim()).toBe('Use Google Fonts to fetch');
+      text.click();
+      expect(checkbox.checked).toBe(false);
+      const link = row.querySelector('a');
+      expect(link.href).toBe('https://fonts.google.com/?sort=popularity');
+      expect(link.target).toBe('_blank');
+      expect(link.rel).toContain('noopener');
+      link.addEventListener('click', (event) => event.preventDefault());
+      link.click();
+      expect(checkbox.checked).toBe(false);
+      checkbox.click();
+      expect(checkbox.checked).toBe(true);
+    }
+  });
+
   test('uses font controls and preserves local-only font preferences', async () => {
     const app = track(await createApp());
 

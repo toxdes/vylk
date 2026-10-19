@@ -2,6 +2,7 @@
   'use strict';
 
   const SHOW_TEXT = global.NodeFilter?.SHOW_TEXT || 4;
+  const renderLineContent = global.VylkZenInline.render;
   const graphemes = global.Intl?.Segmenter
     ? new global.Intl.Segmenter(undefined, {granularity: 'grapheme'})
     : null;
@@ -47,119 +48,13 @@
     return {start, end, inserted: next.slice(start, nextEnd)};
   }
 
-  function appendText(parent, value, className = '') {
-    if (!value) return;
-    const node = className ? document.createElement('span') : document.createTextNode(value);
-    if (className) {
-      node.className = className;
-      node.textContent = value;
-    }
-    parent.append(node);
-  }
-
-  function closingMarker(text, marker, start) {
-    let index = start;
-    while ((index = text.indexOf(marker, index)) >= 0) {
-      if (text[index - 1] !== '\\' && index > start && !/\s/.test(text[index - 1])) return index;
-      index += marker.length;
-    }
-    return -1;
-  }
-
-  function nextInlineToken(text, start) {
-    for (let index = start; index < text.length; index++) {
-      if (text[index] === '\\') {
-        index++;
-        continue;
-      }
-      const candidates = text.startsWith('***', index)
-        ? [['***', 'zen-md-strong zen-md-em']]
-        : text.startsWith('___', index)
-          ? [['___', 'zen-md-strong zen-md-em']]
-          : text.startsWith('**', index)
-            ? [['**', 'zen-md-strong']]
-            : text.startsWith('__', index)
-              ? [['__', 'zen-md-strong']]
-              : text.startsWith('~~', index)
-                ? [['~~', 'zen-md-strike']]
-                : text[index] === '*'
-                  ? [['*', 'zen-md-em']]
-                  : text[index] === '_'
-                    ? [['_', 'zen-md-em']]
-                    : text[index] === '`'
-                      ? [['`', 'zen-md-code']]
-                      : [];
-      for (const [marker, className] of candidates) {
-        const contentStart = index + marker.length;
-        if (contentStart >= text.length || /\s/.test(text[contentStart])) continue;
-        const end = closingMarker(text, marker, contentStart);
-        if (end >= 0) return {start: index, end, marker, className};
-        if (!/[*_~`]/.test(text[contentStart])) {
-          return {start: index, end: text.length, marker, className, provisional: true};
-        }
-      }
-    }
-    return null;
-  }
-
-  function appendInline(parent, text) {
-    let offset = 0;
-    while (offset < text.length) {
-      const token = nextInlineToken(text, offset);
-      if (!token) {
-        appendText(parent, text.slice(offset));
-        return;
-      }
-      appendText(parent, text.slice(offset, token.start));
-      appendText(parent, token.marker, 'zen-md-marker');
-      const content = document.createElement('span');
-      content.className = token.className;
-      const inner = text.slice(token.start + token.marker.length, token.end);
-      if (token.className === 'zen-md-code') content.textContent = inner;
-      else appendInline(content, inner);
-      parent.append(content);
-      if (!token.provisional) appendText(parent, token.marker, 'zen-md-marker');
-      offset = token.end + token.marker.length;
-    }
-  }
-
   function structuralLineKind(source) {
     const heading = source.match(/^ {0,3}(#{1,6})\s+/);
     if (heading) return `heading-${heading[1].length}`;
     if (/^ {0,3}> ?/.test(source)) return 'quote';
+    const list = global.VylkZenInline.listPrefix(source);
+    if (list) return `list-${list}`;
     return 'plain';
-  }
-
-  function renderLineContent(element, source) {
-    element.className = 'zen-editor-line';
-    element.replaceChildren();
-    if (!source) {
-      element.append(document.createElement('br'));
-      return;
-    }
-    const heading = source.match(/^( {0,3})(#{1,6})(\s+)(.*)$/);
-    if (heading) {
-      element.classList.add('zen-md-heading', `zen-md-h${heading[2].length}`);
-      appendText(element, heading[1]);
-      appendText(element, heading[2], 'zen-md-marker zen-md-heading-marker');
-      appendText(element, heading[3]);
-      appendInline(element, heading[4]);
-      return;
-    }
-    const quote = source.match(/^( {0,3})(>)( ?)(.*)$/);
-    if (quote) {
-      element.classList.add('zen-md-quote');
-      appendText(element, quote[1]);
-      appendText(element, quote[2], 'zen-md-marker zen-md-quote-marker');
-      appendText(element, quote[3]);
-      appendInline(element, quote[4]);
-      return;
-    }
-    if (!/[*_~`]/.test(source)) {
-      appendText(element, source);
-      return;
-    }
-    appendInline(element, source);
   }
 
   class FenwickTree {
@@ -239,6 +134,10 @@
       element.addEventListener('keydown', (event) => this.onKeyDown(event));
       element.addEventListener('keyup', (event) => this.onKeyUp(event));
       element.addEventListener('paste', (event) => this.onPaste(event));
+      element.addEventListener('click', (event) => {
+        if (event.target.closest?.('.zen-md-link') && !(event.ctrlKey || event.metaKey))
+          event.preventDefault();
+      });
       element.addEventListener('copy', (event) => this.onCopy(event));
       element.addEventListener('cut', (event) => this.onCut(event));
       element.addEventListener('compositionstart', () => {
@@ -257,6 +156,11 @@
       element.addEventListener('compositionend', () => this.finishComposition());
       document.addEventListener('selectionchange', () => this.updateActiveLine());
       this.setValue('');
+      this.selectionController = global.VylkZenSelection?.create({
+        editor: this,
+        document,
+        window: global,
+      });
     }
 
     get value() {
@@ -272,6 +176,7 @@
     set active(value) {
       this._active = Boolean(value);
       if (!this._active) this.cancelTypingAnchor();
+      if (!this._active) this.selectionController?.cancel();
     }
 
     get length() {
@@ -287,6 +192,8 @@
     }
 
     setValue(value, selectionStart = 0, selectionEnd = selectionStart) {
+      this.selectionController?.cancel();
+      this.documentRevision = (this.documentRevision || 0) + 1;
       this.cancelTypingAnchor();
       this.composing = false;
       this.composition = null;
@@ -351,6 +258,12 @@
     }
 
     pointOffset(node, offset) {
+      // Native Select All places endpoints on the contenteditable container,
+      // rather than inside a line's text. Child offsets are line boundaries.
+      if (node === this.element) {
+        const line = this.element.childNodes[offset]?.__zenLine;
+        return line ? this.offsets.prefix(line.index) : offset <= 0 ? 0 : this.length;
+      }
       const lineElement = (
         node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
       )?.closest?.('.zen-editor-line');
@@ -373,10 +286,147 @@
       const walker = document.createTreeWalker(line.element, SHOW_TEXT);
       let node;
       while ((node = walker.nextNode())) {
-        if (remaining <= node.data.length) return {node, offset: remaining};
+        if (remaining <= node.data.length) {
+          const syntax = node.parentElement.closest('.zen-md-inline-syntax');
+          if (syntax) {
+            const prefix = syntax.dataset.zenBoundary === 'start';
+            const anchor = prefix ? syntax.nextElementSibling : syntax.previousElementSibling;
+            if ((!prefix && remaining === node.data.length) || (prefix && remaining === 0))
+              return {
+                node: syntax.parentNode,
+                offset: [...syntax.parentNode.childNodes].indexOf(syntax) + (prefix ? 0 : 1),
+              };
+            const texts = document.createTreeWalker(anchor, SHOW_TEXT, {
+              acceptNode: (text) => (text.parentElement.closest('.zen-md-inline-syntax') ? 2 : 1),
+            });
+            let last = texts.nextNode();
+            if (prefix) return last ? {node: last, offset: 0} : {node: anchor, offset: 0};
+            let next;
+            while ((next = texts.nextNode())) last = next;
+            return last ? {node: last, offset: last.data.length} : {node: anchor, offset: 0};
+          }
+          return {node, offset: remaining};
+        }
         remaining -= node.data.length;
       }
       return {node: line.element, offset: line.element.childNodes.length};
+    }
+
+    linkAt(start, end = start) {
+      const first = this.offsets.locate(start);
+      if (this.offsets.locate(end).line !== first.line) return null;
+      const base = this.offsets.prefix(first.line);
+      const link = global.VylkZenInline.links(this.lines[first.line].element)?.find(
+        (entry) => first.offset >= entry.start && end - base <= entry.end,
+      );
+      return link
+        ? {
+            ...link,
+            start: base + link.start,
+            end: base + link.end,
+            labelStart: base + link.labelStart,
+            labelEnd: base + link.labelEnd,
+          }
+        : null;
+    }
+
+    inlineFormatChange(start, end, kind) {
+      const first = this.offsets.locate(start).line;
+      const last = this.offsets.locate(end).line;
+      const selections = [];
+      for (let index = first; index <= last; index++) {
+        const base = this.offsets.prefix(index);
+        selections.push({
+          element: this.lines[index].element,
+          source: this.lines[index].text,
+          start: Math.max(0, start - base),
+          end: Math.min(this.lines[index].text.length, end - base),
+        });
+      }
+      const result = global.VylkZenInline.formatSelection(selections, kind);
+      if (!result) return null;
+      if (result.unsupported) return result;
+      const base = this.offsets.prefix(first);
+      return {
+        start: base,
+        end: this.offsets.prefix(last) + this.lines[last].text.length,
+        inserted: result.value,
+        selection: {start: base + result.start, end: base + result.end},
+      };
+    }
+
+    inlineSegments(start, end) {
+      const pieces = [];
+      const first = this.offsets.locate(start).line;
+      const last = this.offsets.locate(end).line;
+      for (let index = first; index <= last; index++) {
+        const line = this.lines[index];
+        const base = this.offsets.prefix(index);
+        let cursor = base;
+        const add = (from, to) => {
+          const selectedStart = Math.max(start, from);
+          const selectedEnd = Math.min(end, to);
+          if (selectedStart < selectedEnd)
+            pieces.push({start: selectedStart, end: selectedEnd, boundStart: from, boundEnd: to});
+        };
+        for (const link of global.VylkZenInline.links(line.element) || []) {
+          if (!link.safeHref) continue;
+          add(cursor, base + link.start);
+          add(base + link.labelStart, base + link.labelEnd);
+          cursor = base + link.end;
+        }
+        add(cursor, base + line.text.length);
+      }
+      return pieces;
+    }
+
+    canLinkSelection(start, end) {
+      const first = this.offsets.locate(start).line;
+      if (first !== this.offsets.locate(end).line) return false;
+      if (this.linkAt(start, end)) return true;
+      const base = this.offsets.prefix(first);
+      return (
+        start !== end &&
+        (global.VylkZenInline.links(this.lines[first].element) || []).every(
+          (link) => !link.safeHref || end <= base + link.start || start >= base + link.end,
+        )
+      );
+    }
+
+    inlineSpans(start, end = start) {
+      const first = this.offsets.locate(start).line;
+      const last = this.offsets.locate(end).line;
+      const entries = [];
+      for (const index of first === last ? [first] : [first, last]) {
+        const base = this.offsets.prefix(index);
+        for (const span of global.VylkZenInline.spans(this.lines[index].element))
+          entries.push({
+            ...span,
+            start: base + span.start,
+            end: base + span.end,
+            contentStart: base + span.contentStart,
+            contentEnd: base + span.contentEnd,
+          });
+      }
+      return entries;
+    }
+
+    replaceVisibleRange(start, end, inserted, options) {
+      if (start === end && !inserted.includes('\n'))
+        return this.replaceRange(start, end, inserted, options);
+      const spans = this.inlineSpans(start, end);
+      if (!spans.length) return this.replaceRange(start, end, inserted, options);
+      // Read only boundary fragments; backspace must not join the whole note.
+      const change = global.VylkZenInline.visibleEdit(
+        (from, to) => this.textBetween(from, to),
+        start,
+        end,
+        inserted,
+        spans,
+      );
+      this.replaceRange(change.start, change.end, change.inserted, options);
+      this.setSelection(change.caret);
+      return change;
     }
 
     setSelection(start, end = start, direction = 'forward') {
@@ -538,16 +588,15 @@
         const line = this.lines[first.line];
         const startPoint = this.domPoint(safeStart);
         const endPoint = this.domPoint(safeEnd);
-        const syntaxChanged = /[*_~`#>]/.test(removed + replacement);
+        const syntaxChanged = /[*_~`#>[\]()]/.test(removed + replacement);
         const structuralStyleChanged =
           structuralLineKind(line.text) !== structuralLineKind(nextTexts[0]);
         const marker = line.element.querySelector('.zen-md-marker');
-        const inlineStyleStarted =
-          !marker && /[*_~`]/.test(nextTexts[0]) && Boolean(nextInlineToken(nextTexts[0], 0));
+        const inlineCandidate = /[*_~`[]/.test(nextTexts[0]);
         if (
           !syntaxChanged &&
           !structuralStyleChanged &&
-          !inlineStyleStarted &&
+          !inlineCandidate &&
           !marker &&
           startPoint.node === endPoint.node &&
           startPoint.node.nodeType === Node.TEXT_NODE
@@ -557,6 +606,7 @@
             replacement +
             startPoint.node.data.slice(endPoint.offset);
           line.text = nextTexts[0];
+          line.element.classList.toggle('zen-md-blank', !line.text.trim());
           this.offsets.set(first.line, line.text.length + 1);
           this.cachedValue = null;
           this.element.classList.toggle('is-empty', this.length === 0);
@@ -630,12 +680,44 @@
 
     replaceSelection(inserted, inputType = 'insertText') {
       const selection = this.selection();
-      this.replaceRange(selection.start, selection.end, inserted, {inputType});
+      this.replaceVisibleRange(selection.start, selection.end, inserted, {inputType});
+    }
+
+    deleteInlineBoundary(selection, backward) {
+      if (selection.start !== selection.end) return false;
+      const spans = this.inlineSpans(selection.start);
+      // Innermost style wins when delimiters share a visible boundary.
+      for (const span of [...spans].reverse()) {
+        if (
+          backward ? selection.start === span.contentStart : selection.start === span.contentEnd
+        ) {
+          const content = this.textBetween(span.contentStart, span.contentEnd);
+          this.replaceRange(span.start, span.end, content, {
+            inputType: backward ? 'deleteContentBackward' : 'deleteContentForward',
+          });
+          this.setSelection(backward ? span.start : span.start + content.length);
+          return true;
+        }
+      }
+      // From outside a completed token, delete its visible text rather than a
+      // hidden delimiter. Nested styles may share this same boundary.
+      for (const span of spans) {
+        if (backward && selection.start === span.end)
+          selection.start = selection.end = span.contentEnd;
+        if (!backward && selection.start === span.start)
+          selection.start = selection.end = span.contentStart;
+      }
+      return false;
+    }
+
+    deleteVisibleRange(start, end, inputType) {
+      this.replaceVisibleRange(start, end, '', {inputType});
     }
 
     deleteBackward(selection, byWord = false) {
+      if (this.deleteInlineBoundary(selection, true)) return;
       if (selection.start !== selection.end)
-        return this.replaceRange(selection.start, selection.end, '', {
+        return this.replaceVisibleRange(selection.start, selection.end, '', {
           inputType: 'deleteContentBackward',
         });
       if (!selection.start) return;
@@ -649,15 +731,21 @@
         const before = this.value.slice(0, selection.start);
         start = before.search(/\S+\s*$/);
         if (start < 0) start = 0;
+        for (const span of this.inlineSpans(selection.start))
+          if (selection.start >= span.contentStart && selection.start <= span.contentEnd)
+            start = Math.max(start, span.contentStart);
       }
-      this.replaceRange(start, selection.end, '', {
-        inputType: byWord ? 'deleteWordBackward' : 'deleteContentBackward',
-      });
+      this.deleteVisibleRange(
+        start,
+        selection.end,
+        byWord ? 'deleteWordBackward' : 'deleteContentBackward',
+      );
     }
 
     deleteForward(selection, byWord = false) {
+      if (this.deleteInlineBoundary(selection, false)) return;
       if (selection.start !== selection.end)
-        return this.replaceRange(selection.start, selection.end, '', {
+        return this.replaceVisibleRange(selection.start, selection.end, '', {
           inputType: 'deleteContentForward',
         });
       if (selection.end >= this.length) return;
@@ -670,10 +758,15 @@
       if (byWord) {
         const match = this.value.slice(selection.end).match(/^\s*\S+/);
         end = selection.end + (match?.[0].length || 1);
+        for (const span of this.inlineSpans(selection.end))
+          if (selection.end >= span.contentStart && selection.end <= span.contentEnd)
+            end = Math.min(end, span.contentEnd);
       }
-      this.replaceRange(selection.start, end, '', {
-        inputType: byWord ? 'deleteWordForward' : 'deleteContentForward',
-      });
+      this.deleteVisibleRange(
+        selection.start,
+        end,
+        byWord ? 'deleteWordForward' : 'deleteContentForward',
+      );
     }
 
     undo() {
@@ -724,13 +817,13 @@
         this.deleteForward(selection);
       } else if (type.startsWith('delete')) {
         event.preventDefault();
-        this.replaceRange(selection.start, selection.end, '', {inputType: type});
+        this.replaceVisibleRange(selection.start, selection.end, '', {inputType: type});
       } else if (type === 'insertParagraph' || type === 'insertLineBreak') {
         event.preventDefault();
-        this.replaceRange(selection.start, selection.end, '\n', {inputType: type});
+        this.replaceVisibleRange(selection.start, selection.end, '\n', {inputType: type});
       } else if (type.startsWith('insert') && typeof event.data === 'string') {
         event.preventDefault();
-        this.replaceRange(selection.start, selection.end, event.data, {inputType: type});
+        this.replaceVisibleRange(selection.start, selection.end, event.data, {inputType: type});
       }
     }
 
@@ -796,7 +889,7 @@
       const selection = this.selection();
       if (selection.start === selection.end) return;
       this.onCopy(event);
-      this.replaceRange(selection.start, selection.end, '', {inputType: 'deleteByCut'});
+      this.replaceVisibleRange(selection.start, selection.end, '', {inputType: 'deleteByCut'});
     }
 
     finishComposition() {
@@ -841,10 +934,19 @@
       const start = this.offsets.prefix(state.first);
       if (text !== previous) {
         const change = changedRange(previous, text);
-        this.replaceRange(start + change.start, start + change.end, change.inserted, {
-          inputType: 'insertCompositionText',
-        });
-        this.setSelection(start + Math.min(text.length, caret));
+        const normalized = this.replaceVisibleRange(
+          start + change.start,
+          start + change.end,
+          change.inserted,
+          {
+            inputType: 'insertCompositionText',
+          },
+        );
+        this.setSelection(
+          normalized
+            ? normalized.caret + caret - change.start - change.inserted.length
+            : start + Math.min(text.length, caret),
+        );
       } else
         this.setSelection(state.selection.start, state.selection.end, state.selection.direction);
     }
