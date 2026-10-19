@@ -30,6 +30,35 @@ function setup() {
 }
 
 describe('modal controller', () => {
+  test('reopening a closing modal cancels cleanup and preserves the original opener', () => {
+    const context = setup();
+    context.window.matchMedia = () => ({matches: false});
+    const timers = new Map();
+    let next = 0;
+    context.window.setTimeout = (callback) => {
+      timers.set(++next, callback);
+      return next;
+    };
+    context.window.clearTimeout = (id) => timers.delete(id);
+    const opener = context.document.querySelector('#opener');
+    const modal = context.document.querySelector('#modal');
+    opener.focus();
+    context.controller.open(modal);
+    context.controller.close(modal);
+    const staleClose = timers.get(1);
+    context.controller.open(modal);
+    expect(timers.size).toBe(0);
+    staleClose();
+    expect(modal.classList.contains('hidden')).toBe(false);
+    expect(context.document.activeElement.id).toBe('first');
+    context.controller.close(modal);
+    timers.get(2)();
+    expect(modal.classList.contains('hidden')).toBe(true);
+    expect(context.document.activeElement).toBe(opener);
+    expect(timers.size).toBe(0);
+    context.window.close();
+  });
+
   test('moves focus into the modal and restores its opener', () => {
     const context = setup();
     const opener = context.document.querySelector('#opener');

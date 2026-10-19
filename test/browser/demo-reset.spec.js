@@ -212,46 +212,119 @@ test('demo resets stop stale sync and preserve pending edits until the original 
   }
 });
 
-test('Switch installs an updated app before automatically reloading', async ({browser}) => {
-  test.setTimeout(120000);
-  const demo = await createDemo();
-  const context = await browser.newContext({baseURL: demo.url});
-  try {
-    const page = await context.newPage();
-    await signIn(page, demo.url);
-    await expect
-      .poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)))
-      .toBe(true);
-    const originalRevision = await page
-      .locator('meta[name="vylk-revision"]')
-      .getAttribute('content');
-    const source = path.join(demo.root, 'updated-source');
-    await mkdir(source);
-    for (const entry of ['cmd', 'internal', 'go.mod', 'go.sum', 'VERSION'])
-      await cp(path.join(process.cwd(), entry), path.join(source, entry), {recursive: true});
-    // Change only a copied asset to exercise a genuine shell revision update.
-    await appendFile(
-      path.join(source, 'internal/web/static/style.css'),
-      '\n/* update fixture */\n',
-    );
-    await demo.reset({sourceDirectory: source});
-    const current = await (await page.request.get('/api/vault/bootstrap')).json();
-    expect(current.revision).not.toBe(originalRevision);
-    await page.reload();
-    await expect(page.locator('#dataset-switch-modal')).toBeVisible();
-    await page.locator('#dataset-switch-confirm').click();
-    await expect(page.locator('meta[name="vylk-revision"]')).toHaveAttribute(
-      'content',
-      current.revision,
-    );
-    await signInCurrentPage(page);
-    await expect(page.locator('.toast.update')).toHaveCount(0);
-    await createNote(page, 'Created after automatic update');
-  } finally {
-    await context.close();
-    await demo.dispose();
-  }
-});
+for (const {motion, pending} of [
+  {motion: 'system', pending: false},
+  {motion: 'always', pending: false},
+  {motion: 'never', pending: false},
+  {motion: 'never', pending: true},
+]) {
+  test(`Switch installs an updated app with saved ${motion} motion preferences${pending ? ' and pending edits' : ''}`, async ({
+    browser,
+  }) => {
+    test.setTimeout(120000);
+    const demo = await createDemo({
+      sourceDirectory: process.env.VYLK_BROWSER_UPGRADE_SOURCE || process.cwd(),
+    });
+    const context = await browser.newContext({baseURL: demo.url});
+    try {
+      const page = await context.newPage();
+      const errors = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      await signIn(page, demo.url);
+      for (let index = 0; index < 3; index++) await createNote(page, `Original note ${index}`);
+      await expect(page.locator('.note-item')).toHaveCount(3);
+      await page.locator('#prefs-btn').click();
+      await page.locator('#prefs-tab-appearance').click();
+      await page.locator('#pref-reduce-motion').selectOption(motion);
+      await page.locator('#pref-theme').selectOption('default-dark');
+      await page.locator('#pref-content-width').selectOption('wide');
+      await page.locator('#pref-font-size').selectOption('1.25rem');
+      await page.locator('#prefs-tab-editor').click();
+      await page.locator('#pref-interactive-preview').uncheck();
+      await page.locator('#prefs-tab-zen').click();
+      await page.locator('#pref-zen-page-width').selectOption('compact');
+      await page.locator('#prefs-close').click();
+      await expect(page.locator('#prefs-modal')).toBeHidden();
+      await expect
+        .poll(async () => {
+          const prefs = await (await page.request.get('/api/prefs')).json();
+          return {
+            reduceMotion: prefs.reduceMotion,
+            theme: prefs.theme,
+            contentWidth: prefs.contentWidth,
+            fontSize: prefs.fontSize,
+            interactivePreview: prefs.interactivePreview,
+            zenPageWidth: prefs.zenPageWidth,
+          };
+        })
+        .toEqual({
+          reduceMotion: motion,
+          theme: 'default-dark',
+          contentWidth: 'wide',
+          fontSize: '1.25rem',
+          interactivePreview: false,
+          zenPageWidth: 'compact',
+        });
+      if (pending) {
+        await context.setOffline(true);
+        await createNote(page, 'Pending note before switch', true);
+        await page.locator('#prefs-btn').click();
+        await page.locator('#prefs-tab-appearance').click();
+        await page.locator('#pref-content-width').selectOption('full');
+        await page.locator('#prefs-close').click();
+        await expect(page.locator('#prefs-modal')).toBeHidden();
+      }
+      await expect
+        .poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)))
+        .toBe(true);
+      const originalRevision = await page
+        .locator('meta[name="vylk-revision"]')
+        .getAttribute('content');
+      const source = path.join(demo.root, 'updated-source');
+      await mkdir(source);
+      const updatedSource = process.env.VYLK_BROWSER_UPDATED_SOURCE || process.cwd();
+      for (const entry of ['cmd', 'internal', 'go.mod', 'go.sum', 'VERSION'])
+        await cp(path.join(updatedSource, entry), path.join(source, entry), {recursive: true});
+      // The optional source override reproduces a real upgrade between worktrees.
+      // Without it, change a copied asset to exercise a shell revision update.
+      await appendFile(
+        path.join(source, 'internal/web/static/style.css'),
+        '\n/* update fixture */\n',
+      );
+      await demo.reset({sourceDirectory: source});
+      if (pending) await context.setOffline(false);
+      const current = await (await page.request.get('/api/vault/bootstrap')).json();
+      expect(current.revision).not.toBe(originalRevision);
+      await page.reload();
+      await expect(page.locator('#dataset-switch-modal')).toBeVisible();
+      await page.locator('#dataset-switch-confirm').click();
+      await expect(page.locator('meta[name="vylk-revision"]')).toHaveAttribute(
+        'content',
+        current.revision,
+      );
+      await signInCurrentPage(page);
+      await expect(page.locator('.note-item')).toHaveCount(0);
+      await expect(page.locator('#dashboard')).not.toHaveAttribute('inert', '');
+      await expect(page.locator('.modal:not(.hidden)')).toHaveCount(0);
+      await page.locator('#prefs-btn').click();
+      await expect(page.locator('#prefs-modal')).toBeVisible();
+      await page.locator('#prefs-tab-appearance').click();
+      await expect(page.locator('#pref-reduce-motion')).toHaveValue('system');
+      await expect(page.locator('#pref-theme')).toHaveValue('default-light');
+      await expect(page.locator('#pref-content-width')).toHaveValue('standard');
+      await expect(page.locator('#pref-font-size')).toHaveValue('1rem');
+      await page.locator('#prefs-close').click();
+      await expect(page.locator('#prefs-modal')).toBeHidden();
+      await expect(page.locator('.toast.update')).toHaveCount(0);
+      await createNote(page, 'Created after automatic update');
+      await expect(page.locator('.note-item')).toHaveCount(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close();
+      await demo.dispose();
+    }
+  });
+}
 
 test('switches from an encrypted server to a fresh database without losing data before confirmation', async ({
   browser,
@@ -293,10 +366,13 @@ test('switches from an encrypted server to a fresh database without losing data 
     await expect(other.locator('#dashboard')).toBeVisible();
     await context.setOffline(true);
     await createNote(page, 'Encrypted pending edit', true);
-    await demo.reset({sourceDirectory: process.cwd()});
+    await demo.reset({sourceDirectory: process.env.VYLK_BROWSER_UPDATED_SOURCE || process.cwd()});
     await context.setOffline(false);
     await page.reload();
-    if (previousSource !== process.cwd())
+    if (
+      previousSource !== process.cwd() &&
+      !(await page.evaluate(() => Boolean(window.VylkDatasetSwitch)))
+    )
       await page.locator('.toast-action').filter({hasText: 'Reload'}).click();
     await expect(page.locator('#dataset-switch-modal')).toBeVisible();
     // Leave an older application's tab open during upgrade coverage. Updating

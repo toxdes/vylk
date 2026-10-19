@@ -99,7 +99,6 @@
   --editor-content-gutter: 1.25rem;
   --editor-control-size: 1.5rem;
   --editor-action-row-height: 1.8125rem;
-  --editor-preview-measure: 72ch;
   --editor-writing-inset: 0.75rem;
   --editor-toolbar-height: 1.8125rem;
   --editor-toolbar-writing-inset: calc(var(--editor-toolbar-height) + var(--editor-writing-inset));
@@ -168,10 +167,6 @@
 #editor:not(.zen-mode) .panel-preview .preview {
   padding-inline: var(--editor-content-gutter);
   padding-top: var(--editor-writing-inset);
-}
-
-#editor:not(.zen-mode) .panels-single .panel-preview .preview > * {
-  max-width: min(100%, var(--editor-preview-measure));
 }
 
 #editor:not(.zen-mode) .editor-panels:not(.panels-single) .panel-preview .preview {

@@ -7,16 +7,41 @@
   transition-property: transform, opacity !important;
 }
 
+// Dialogs and anchored pickers share a restrained arrival and its reverse.
+@keyframes overlay-content-in {
+  from {
+    opacity: var(--overlay-start-opacity, 0);
+    transform: var(--overlay-start-transform, translateY(6px));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes overlay-content-out {
+  from {
+    opacity: var(--overlay-start-opacity, 1);
+    transform: var(--overlay-start-transform, none);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
 .table-picker:not(.hidden),
 .heading-picker:not(.hidden) {
-  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
+  animation: overlay-content-in var(--overlay-enter-duration) var(--overlay-enter-ease) backwards;
 }
 
 .table-picker.popup-leaving.hidden,
 .heading-picker.popup-leaving.hidden {
   display: block !important;
   pointer-events: none;
-  animation: app-content-out var(--motion-duration) var(--motion-ease) both;
+  animation: overlay-content-out var(--overlay-exit-duration) var(--overlay-exit-ease) both;
 }
 
 .heading-picker.popup-leaving.hidden {

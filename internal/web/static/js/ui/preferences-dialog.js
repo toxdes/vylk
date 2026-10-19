@@ -90,13 +90,13 @@
       if (route === 'push') setRoute({section, detail});
       else if (route === 'replace') setRoute({section, detail, replace: true});
       const modal = $('#prefs-modal');
-      const wasHidden = modal.classList.contains('hidden');
-      if (wasHidden) openModal(modal);
+      const opening = modal.classList.contains('hidden') || modal.classList.contains('is-closing');
+      if (opening) openModal(modal);
       suppressSectionRoute = true;
       selectSection(section);
       suppressSectionRoute = false;
       if (section === 'encryption') selectDetail(detail, {updateRoute: false});
-      if (wasHidden && !detail) $('#prefs-title').focus({preventScroll: true});
+      if (opening && !detail) $('#prefs-title').focus({preventScroll: true});
     }
 
     function closeRestoreDefaults() {
@@ -169,9 +169,6 @@
     $$('.prefs-nav').forEach((button) =>
       button.addEventListener('click', () => {
         const section = button.dataset.prefSection;
-        const tabs = [...$$('.prefs-nav')];
-        const previous = tabs.findIndex((item) => item.classList.contains('active'));
-        const returning = tabs.indexOf(button) < previous;
         $$('.prefs-nav').forEach((item) => {
           const active = item === button;
           item.classList.toggle('active', active);
@@ -180,7 +177,6 @@
         });
         $$('.prefs-section').forEach((panel) => {
           const active = panel.dataset.prefPanel === section;
-          panel.classList.toggle('returning', active && returning);
           panel.classList.toggle('active', active);
           panel.hidden = !active;
           if (active && section === 'encryption') panel.scrollTop = 0;

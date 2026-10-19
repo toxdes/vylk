@@ -8,6 +8,13 @@
 :root {
   --motion-duration: 180ms;
   --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --overlay-enter-duration: 180ms;
+  --overlay-exit-duration: 140ms;
+  --overlay-enter-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --overlay-exit-ease: cubic-bezier(0.4, 0, 1, 1);
+  --overlay-radius: 12px;
+  --overlay-shadow: 0 12px 32px rgb(15 23 42 / 0.2);
+  --overlay-backdrop: rgb(15 23 42 / 0.38);
   --bg: #fafafa;
   --fg: #0a4067;
   --muted: #5f6f82;
@@ -397,7 +404,7 @@ textarea:focus-visible {
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.38);
+  background: var(--overlay-backdrop);
 }
 
 .modal-body {
@@ -409,8 +416,8 @@ textarea:focus-visible {
   scrollbar-gutter: stable;
   background: var(--card-bg);
   border: 0;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
+  border-radius: var(--overlay-radius);
+  box-shadow: var(--overlay-shadow);
 }
 
 .modal-body--standard {
@@ -488,7 +495,7 @@ textarea:focus-visible {
 
 @keyframes modal-backdrop-in {
   from {
-    opacity: 0;
+    opacity: var(--overlay-backdrop-start-opacity, 0);
   }
   to {
     opacity: 1;
@@ -496,34 +503,36 @@ textarea:focus-visible {
 }
 @keyframes modal-backdrop-out {
   from {
-    opacity: 1;
+    opacity: var(--overlay-backdrop-start-opacity, 1);
   }
   to {
     opacity: 0;
   }
 }
 .modal:not(.hidden) .modal-backdrop {
-  animation: modal-backdrop-in 0.16s ease both;
+  animation: modal-backdrop-in var(--overlay-enter-duration) var(--overlay-enter-ease) both;
 }
 
 .modal:not(.hidden) .modal-body {
-  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
+  animation: overlay-content-in var(--overlay-enter-duration) var(--overlay-enter-ease) backwards;
   backface-visibility: hidden;
 }
 
 .modal.is-closing .modal-backdrop {
-  animation: modal-backdrop-out 0.16s ease both;
+  animation: modal-backdrop-out var(--overlay-exit-duration) var(--overlay-exit-ease) both;
 }
 
 .modal.is-closing .modal-body {
-  animation: app-content-out var(--motion-duration) var(--motion-ease) both;
+  animation: overlay-content-out var(--overlay-exit-duration) var(--overlay-exit-ease) both;
   backface-visibility: hidden;
 }
 
 @media (max-width: 640px) {
+  .modal-body {
+    padding: 1.25rem;
+  }
   .modal-body--form {
     max-height: calc(100dvh - 1rem);
-    padding: 1.25rem;
   }
 }
 /* Login */
@@ -1961,10 +1970,10 @@ header h1 {
   z-index: 110;
   width: max-content;
   padding: 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 0;
+  border-radius: var(--overlay-radius);
   background: var(--card-bg);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+  box-shadow: var(--overlay-shadow);
 }
 
 .heading-picker {
@@ -1975,7 +1984,7 @@ header h1 {
 .heading-picker button {
   min-width: 2.75rem;
   min-height: 2.75rem;
-  border-radius: 5px;
+  border-radius: var(--radius-action);
   background: transparent;
   color: var(--fg);
   font-weight: 600;
@@ -2491,10 +2500,6 @@ header h1 {
   }
 }
 /* Conflict resolution keeps both durable versions visible while the result remains editable. */
-.conflict-modal-body {
-  padding-bottom: 1.25rem;
-}
-
 .conflict-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2630,11 +2635,6 @@ header h1 {
   flex: 1;
 }
 
-.conflict-actions .btn-text {
-  min-height: 2rem;
-  padding: 0.3rem 0.5rem;
-}
-
 .note-conflict {
   display: inline-flex;
   align-items: center;
@@ -2695,9 +2695,6 @@ header h1 {
 }
 
 @media (max-width: 640px) {
-  .conflict-modal-body {
-    padding: 1.25rem;
-  }
   .conflict-fields,
   .conflict-metadata-compare,
   .conflict-compare {
@@ -2953,9 +2950,9 @@ header h1 {
 
 .prefs-content-header h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.125em;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
   line-height: 1.25;
 }
 
@@ -2972,11 +2969,6 @@ header h1 {
   overflow-y: auto;
   scroll-padding: 0.5rem;
   scrollbar-gutter: stable;
-  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
-}
-
-.prefs-section.active.returning {
-  animation-name: app-content-return;
 }
 
 .sync-indicator-label {
@@ -4106,7 +4098,6 @@ header h1 {
   --editor-content-gutter: 1.25rem;
   --editor-control-size: 1.5rem;
   --editor-action-row-height: 1.8125rem;
-  --editor-preview-measure: 72ch;
   --editor-writing-inset: 0.75rem;
   --editor-toolbar-height: 1.8125rem;
   --editor-toolbar-writing-inset: calc(var(--editor-toolbar-height) + var(--editor-writing-inset));
@@ -4175,10 +4166,6 @@ header h1 {
 #editor:not(.zen-mode) .panel-preview .preview {
   padding-inline: var(--editor-content-gutter);
   padding-top: var(--editor-writing-inset);
-}
-
-#editor:not(.zen-mode) .panels-single .panel-preview .preview > * {
-  max-width: min(100%, var(--editor-preview-measure));
 }
 
 #editor:not(.zen-mode) .editor-panels:not(.panels-single) .panel-preview .preview {
@@ -5292,16 +5279,36 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   transition-property: transform, opacity !important;
 }
 
+@keyframes overlay-content-in {
+  from {
+    opacity: var(--overlay-start-opacity, 0);
+    transform: var(--overlay-start-transform, translateY(6px));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes overlay-content-out {
+  from {
+    opacity: var(--overlay-start-opacity, 1);
+    transform: var(--overlay-start-transform, none);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
 .table-picker:not(.hidden),
 .heading-picker:not(.hidden) {
-  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
+  animation: overlay-content-in var(--overlay-enter-duration) var(--overlay-enter-ease) backwards;
 }
 
 .table-picker.popup-leaving.hidden,
 .heading-picker.popup-leaving.hidden {
   display: block !important;
   pointer-events: none;
-  animation: app-content-out var(--motion-duration) var(--motion-ease) both;
+  animation: overlay-content-out var(--overlay-exit-duration) var(--overlay-exit-ease) both;
 }
 
 .heading-picker.popup-leaving.hidden {

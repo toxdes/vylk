@@ -90,9 +90,9 @@
 
 .prefs-content-header h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.125em;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
   line-height: 1.25;
 }
 
@@ -109,11 +109,6 @@
   overflow-y: auto;
   scroll-padding: 0.5rem;
   scrollbar-gutter: stable;
-  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
-}
-
-.prefs-section.active.returning {
-  animation-name: app-content-return;
 }
 
 .sync-indicator-label {
