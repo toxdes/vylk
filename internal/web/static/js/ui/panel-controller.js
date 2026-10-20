@@ -72,7 +72,7 @@
       applyRatio();
     }
 
-    function setState(state) {
+    function setState(state, {focus = false} = {}) {
       cancelDrag();
       const wasZen = panelState === 'zen';
       if (wasZen && state !== 'zen') activateZen(false);
@@ -129,6 +129,12 @@
           renderPreview();
         } else schedulePreviewCheck();
       }
+      // Only explicit view changes transfer focus; restoring layout/preferences
+      // must leave fields and dialogs in control of their own focus.
+      if (focus) {
+        if (visibleState === 'preview') focusPreview();
+        else focusSource();
+      }
     }
 
     query('#editor-panels').addEventListener('click', (event) => {
@@ -147,14 +153,11 @@
       const action = event.target.closest('[data-zen-action]')?.dataset.zenAction;
       if (!action) return;
       if (action === 'exit') {
-        setState(zenReturnState);
-        focusSource();
+        setState(zenReturnState, {focus: true});
       } else {
         zenView = action;
-        setState('zen');
+        setState('zen', {focus: true});
       }
-      if (action === 'editor') focusSource();
-      else if (action === 'preview') focusPreview();
     });
 
     const resizer = query('#panel-resizer');

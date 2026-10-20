@@ -25,11 +25,61 @@ test('direct view shortcuts follow the editor button order', async ({page}) => {
       'aria-pressed',
       'true',
     );
+    const target =
+      panel === 'preview' ? '#preview' : panel === 'zen' ? '#zen-source-editor' : '#note-content';
+    await expect(page.locator(target)).toBeFocused();
   }
   await expect(page.locator('#editor')).not.toHaveClass(/zen-mode/);
   await expect(page.locator('#editor-panel')).toBeVisible();
   await expect(page.locator('#preview-panel')).toBeHidden();
 });
+
+for (const width of [1440, 390]) {
+  test(`view changes focus the visible writing pane at ${width}px`, async ({page}, testInfo) => {
+    await page.setViewportSize({width, height: 900});
+    await signIn(page);
+    await page.locator('#new-note-btn').click();
+    const source = page.locator('#note-content');
+    const preview = page.locator('#preview');
+    const zen = page.locator('#zen-source-editor');
+    await source.fill(Array.from({length: 100}, (_, i) => `Paragraph ${i + 1}.`).join('\n\n'));
+    await source.press('Control+Home');
+
+    for (const [key, panel, target] of [
+      ['2', 'preview', preview],
+      ['3', 'both', source],
+      ['4', 'zen', zen],
+      ['1', 'editor', source],
+    ]) {
+      await page.locator(`.view-control[data-panel="${panel}"]`).click();
+      await expect(target).toBeFocused();
+      await page.keyboard.press(`Control+${key}`);
+      await expect(target).toBeFocused();
+      await expect(target).toHaveCSS('outline-style', 'none');
+      if (panel === 'preview') {
+        await page.screenshot({path: testInfo.outputPath('preview-focused.png')});
+      }
+      const bounds = await target.boundingBox();
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      const scrollTop = await target.evaluate((element) => element.scrollTop);
+      await page.mouse.wheel(0, scrollTop > 0 ? -150 : 150);
+      const scrolled = expect.poll(() => target.evaluate((element) => element.scrollTop));
+      if (scrollTop > 0) await scrolled.toBeLessThan(scrollTop);
+      else await scrolled.toBeGreaterThan(scrollTop);
+      if (panel === 'zen') await page.locator('[data-zen-action="exit"]').click();
+    }
+
+    await page.keyboard.press('Control+4');
+    await page.locator('[data-zen-action="preview"]').click();
+    await expect(preview).toBeFocused();
+    await page.keyboard.press('Control+4');
+    await expect(preview).toBeFocused();
+    await page.locator('[data-zen-action="editor"]').click();
+    await expect(zen).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(source).toBeFocused();
+  });
+}
 
 test('note deletion uses the shared confirmation dialog', async ({page}) => {
   await signIn(page);

@@ -7,6 +7,13 @@
 :root {
   --motion-duration: 180ms;
   --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --overlay-enter-duration: 180ms;
+  --overlay-exit-duration: 140ms;
+  --overlay-enter-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --overlay-exit-ease: cubic-bezier(0.4, 0, 1, 1);
+  --overlay-radius: 12px;
+  --overlay-shadow: 0 12px 32px rgb(15 23 42 / 0.2);
+  --overlay-backdrop: rgb(15 23 42 / 0.38);
   --bg: #fafafa;
   --fg: #0a4067;
   --muted: #5f6f82;

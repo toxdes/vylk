@@ -4,6 +4,8 @@ import {useEditorFixture, waitForEditorEntrance} from './editor-fixture.js';
 const password = 'browser-test-password';
 
 async function signIn(page) {
+  // Exercise ordinary motion explicitly; most geometry suites reduce motion.
+  await page.emulateMedia({reducedMotion: 'no-preference'});
   await page.goto('/');
   await page.locator('#login-form input[name="password"]').fill(password);
   await page.locator('#login-form button[type="submit"]').click();
@@ -46,6 +48,206 @@ test('heading toolbar uses one compact picker for levels one through five', asyn
   expect(popup).not.toBeNull();
   expect(popup.x).toBeGreaterThanOrEqual(0);
   expect(popup.x + popup.width).toBeLessThanOrEqual(390);
+});
+
+test('dialogs and editor popups share the overlay surface across themes and viewports', async ({
+  page,
+}, testInfo) => {
+  if (process.env.VYLK_CAPTURE_STYLE) test.setTimeout(90_000);
+  await signIn(page);
+  const themes = await page.evaluate(() =>
+    window.VylkThemes.filter(({id}) => ['default-light', 'default-dark'].includes(id)),
+  );
+  expect(themes).toHaveLength(2);
+  for (const viewport of [
+    {width: 1440, height: 900},
+    {width: 390, height: 844},
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const theme of themes) {
+      const surfaces = await page.evaluate(({id, dark, vars}) => {
+        const root = document.documentElement;
+        root.dataset.theme = id;
+        root.classList.toggle('dark', dark);
+        Object.entries(vars).forEach(([name, value]) => {
+          const kebabName = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+          root.style.setProperty(`--${kebabName}`, value);
+        });
+        return [...document.querySelectorAll('.modal-body, .table-picker, .heading-picker')].map(
+          (element) => {
+            const style = getComputedStyle(element);
+            return {
+              id: element.id || element.parentElement.id || element.className,
+              background: style.backgroundColor,
+              radius: style.borderRadius,
+              border: style.borderWidth,
+              shadow: style.boxShadow,
+            };
+          },
+        );
+      }, theme);
+      const {id: firstID, ...expected} = surfaces[0];
+      expect(expected.radius).toBe('12px');
+      expect(expected.border).toBe('0px');
+      for (const {id, ...surface} of surfaces) {
+        expect(surface, `${id} should match ${firstID}`).toEqual(expected);
+      }
+      if (process.env.VYLK_CAPTURE_STYLE) {
+        const capture = async (name) => {
+          await expect(page.locator('html')).toHaveAttribute('data-theme', theme.id);
+          return page.screenshot({
+            path: testInfo.outputPath(`${viewport.width}-${theme.id}-${name}.png`),
+            animations: 'disabled',
+          });
+        };
+        await page.locator('#prefs-btn').click();
+        await page.locator('#prefs-tab-appearance').click();
+        await page.locator('#pref-theme').selectOption(theme.id);
+        await capture('preferences');
+        await page.locator('#prefs-tab-account').click();
+        await page.locator('#prefs-restore-defaults').click();
+        await capture('dialog');
+        await page.locator('#restore-defaults-cancel').click();
+        await expect(page.locator('#restore-defaults-modal')).toBeHidden();
+        await page.locator('#prefs-close').click();
+        await expect(page.locator('#prefs-modal')).toBeHidden();
+        await page.locator('#new-note-btn').click();
+        await waitForEditorEntrance(page);
+        await page.locator('.fmt-bar [data-fmt="table"]').click();
+        await capture('picker');
+        await page.locator('.fmt-bar [data-fmt="table"]').click();
+        await expect(page.locator('#table-picker')).toBeHidden();
+        await page
+          .locator('#note-content')
+          .fill(`# Preview layout\n\n${'Preview uses the selected page width. '.repeat(30)}`);
+        await page.locator('#view-controls [data-panel="preview"]').click();
+        await capture('preview');
+        await page.locator('#back-btn').click();
+        await expect(page.locator('#dashboard')).toBeVisible();
+      }
+    }
+  }
+});
+
+test('modal body and backdrop share entry and exit timing and release focus on completion', async ({
+  page,
+}) => {
+  await signIn(page);
+  const opener = page.locator('#prefs-btn');
+  await opener.click();
+  const modal = page.locator('#prefs-modal');
+  const styles = await modal.evaluate((element) => {
+    return ['.modal-body', '.modal-backdrop'].map((selector) => {
+      const style = getComputedStyle(element.querySelector(selector));
+      return {
+        name: style.animationName,
+        duration: style.animationDuration,
+        easing: style.animationTimingFunction,
+      };
+    });
+  });
+  expect(styles).toEqual([
+    {name: 'overlay-content-in', duration: '0.18s', easing: 'cubic-bezier(0.16, 1, 0.3, 1)'},
+    {name: 'modal-backdrop-in', duration: '0.18s', easing: 'cubic-bezier(0.16, 1, 0.3, 1)'},
+  ]);
+  await modal.evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations({subtree: true}).map((animation) => animation.finished),
+    );
+  });
+  await modal.evaluate((element) => {
+    window.modalExits = [];
+    element.addEventListener('animationstart', (event) => {
+      if (!['overlay-content-out', 'modal-backdrop-out'].includes(event.animationName)) return;
+      const animation = event.target.getAnimations()[0];
+      window.modalExits.push({
+        duration: animation.effect.getTiming().duration,
+        easing: animation.effect.getKeyframes()[0].easing,
+      });
+    });
+  });
+  await page.locator('#prefs-close').click();
+  await expect.poll(() => page.evaluate(() => window.modalExits.length)).toBe(2);
+  const exits = await page.evaluate(() => window.modalExits);
+  expect(exits).toEqual([
+    {duration: 140, easing: 'cubic-bezier(0.4, 0, 1, 1)'},
+    {duration: 140, easing: 'cubic-bezier(0.4, 0, 1, 1)'},
+  ]);
+  await expect(modal).toBeHidden();
+  await expect(opener).toBeFocused();
+});
+
+test('Preferences reverses interrupted entry and exit without jumping or hiding a reopened dialog', async ({
+  page,
+}) => {
+  await signIn(page);
+  for (const viewport of [
+    {width: 1280, height: 900},
+    {width: 390, height: 844},
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.locator('#prefs-btn').click();
+    const motion = await page.evaluate(async () => {
+      const modal = document.querySelector('#prefs-modal');
+      const body = modal.querySelector('.modal-body');
+      const backdrop = modal.querySelector('.modal-backdrop');
+      const sample = () =>
+        [body, backdrop].map((element) => {
+          const style = getComputedStyle(element);
+          return {
+            opacity: Number(style.opacity),
+            y: style.transform === 'none' ? 0 : new DOMMatrix(style.transform).m42,
+          };
+        });
+      const seek = (time) => {
+        for (const animation of modal.getAnimations({subtree: true})) {
+          animation.pause();
+          animation.currentTime = time;
+        }
+      };
+      seek(15);
+      const beforeClose = sample();
+      const closing = new Promise((resolve) => {
+        const observer = new MutationObserver(() => {
+          if (!modal.classList.contains('is-closing')) return;
+          observer.disconnect();
+          resolve();
+        });
+        observer.observe(modal, {attributes: true, attributeFilter: ['class']});
+      });
+      document.querySelector('#prefs-close').click();
+      await closing;
+      seek(0);
+      const afterClose = sample();
+      seek(70);
+      const beforeReopen = sample();
+      document.querySelector('#prefs-btn').click();
+      const reopened = !modal.classList.contains('is-closing');
+      seek(0);
+      const afterReopen = sample();
+      for (const animation of modal.getAnimations({subtree: true})) animation.play();
+      return {beforeClose, afterClose, beforeReopen, afterReopen, reopened};
+    });
+    for (let part = 0; part < 2; part++) {
+      expect(motion.afterClose[part].opacity).toBeCloseTo(motion.beforeClose[part].opacity, 3);
+      expect(motion.afterClose[part].y).toBeCloseTo(motion.beforeClose[part].y, 3);
+      expect(motion.afterReopen[part].opacity).toBeCloseTo(motion.beforeReopen[part].opacity, 3);
+      expect(motion.afterReopen[part].y).toBeCloseTo(motion.beforeReopen[part].y, 3);
+    }
+    expect(motion.reopened).toBe(true);
+    await expect(page.locator('#prefs-modal')).toBeVisible();
+    await page.locator('#prefs-modal').evaluate(async (modal) => {
+      await Promise.all(
+        modal.getAnimations({subtree: true}).map((animation) => animation.finished),
+      );
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    });
+    await expect(page.locator('#prefs-modal')).toBeVisible();
+    await expect(page).toHaveURL(/\/preferences$/);
+    await page.locator('#prefs-close').click();
+    await expect(page.locator('#prefs-modal')).toBeHidden();
+    await expect(page.locator('#prefs-btn')).toBeFocused();
+  }
 });
 
 test('login, dashboard, and editor use the shared page background', async ({page}) => {
@@ -480,18 +682,23 @@ test('scrollbars reserve their own space and stay below mobile preference tabs',
   expect(metrics.tabRailGap).toBeGreaterThanOrEqual(9.5);
 });
 
-test('preference sections respect the motion policy', async ({page}) => {
-  await page.emulateMedia({reducedMotion: 'no-preference'});
+test('preference sections switch immediately in both directions without animation', async ({
+  page,
+}) => {
   await signIn(page);
   await page.locator('#prefs-btn').click();
-  await page.locator('#prefs-tab-editor').click();
-  await expect(page.locator('#prefs-panel-editor')).toBeVisible();
-  await expect(page.locator('#prefs-panel-editor')).toHaveCSS('animation-name', 'app-content-in');
-
-  await page.emulateMedia({reducedMotion: 'reduce'});
-  await page.locator('#prefs-tab-encryption').click();
-  await expect(page.locator('#prefs-panel-encryption')).toBeVisible();
-  await expect(page.locator('#prefs-panel-encryption')).toHaveCSS('animation-name', 'none');
+  for (const reducedMotion of ['no-preference', 'reduce']) {
+    await page.emulateMedia({reducedMotion});
+    for (const section of ['editor', 'encryption', 'appearance']) {
+      await page.locator(`#prefs-tab-${section}`).click();
+      const panel = page.locator(`#prefs-panel-${section}`);
+      await expect(panel).toBeVisible();
+      await expect(panel).toHaveCSS('animation-name', 'none');
+      await expect(panel).toHaveCSS('transform', 'none');
+      await expect(panel).toHaveCSS('opacity', '1');
+      expect(await panel.evaluate((element) => element.getAnimations().length)).toBe(0);
+    }
+  }
 });
 
 test('motion choices control CSS and JavaScript effects and survive reload', async ({page}) => {
@@ -505,12 +712,9 @@ test('motion choices control CSS and JavaScript effects and survive reload', asy
   await choice.selectOption('never');
   await expect.poll(policy).toBe(false);
   await page.locator('#prefs-tab-editor').click();
-  await expect(page.locator('#prefs-panel-editor')).toHaveCSS('animation-name', 'app-content-in');
+  await expect(page.locator('#prefs-panel-editor')).toHaveCSS('animation-name', 'none');
   await page.locator('#prefs-tab-appearance').click();
-  await expect(page.locator('#prefs-panel-appearance')).toHaveCSS(
-    'animation-name',
-    'app-content-return',
-  );
+  await expect(page.locator('#prefs-panel-appearance')).toHaveCSS('animation-name', 'none');
   await choice.selectOption('always');
   await expect.poll(policy).toBe(true);
   await page.emulateMedia({reducedMotion: 'no-preference'});
@@ -526,6 +730,7 @@ test('motion choices control CSS and JavaScript effects and survive reload', asy
 
 test('navigation respects reduced motion and releases the outgoing screen', async ({page}) => {
   await signIn(page);
+  await page.emulateMedia({reducedMotion: 'reduce'});
   for (const browserBack of [false, true]) {
     await page.locator('#new-note-btn').click();
     await expect(page.locator('#editor')).toBeVisible();
@@ -727,22 +932,69 @@ test('editor and preview content stay aligned while the splitter remains unobtru
   ).toBeLessThanOrEqual(1);
 });
 
-test('preview-only mode keeps long prose at a readable measure', async ({page}) => {
-  await page.setViewportSize({width: 1440, height: 960});
+test('preview-only mode fills the shared content width in plain and interactive previews', async ({
+  page,
+}) => {
+  await page.setViewportSize({width: 1920, height: 960});
   await signIn(page);
   await page.locator('#new-note-btn').click();
   await page.locator('#note-content').fill(`Long-form preview ${'stays readable '.repeat(80)}`);
-  await enableInteractivePreview(page);
-  await page.locator('#view-controls [data-panel="preview"]').click();
-
-  const measure = await page
-    .locator('#preview .interactive-preview-block-card')
-    .evaluate((card) => {
-      const preview = card.closest('.preview').getBoundingClientRect();
-      const block = card.getBoundingClientRect();
-      return {blockWidth: block.width, previewWidth: preview.width};
-    });
-  expect(measure.blockWidth).toBeLessThanOrEqual(measure.previewWidth * 0.8);
+  for (const interactive of [false, true]) {
+    if (interactive) await enableInteractivePreview(page);
+    for (const [width, maxRem] of [
+      ['compact', 54],
+      ['standard', 76.25],
+      ['wide', 90],
+      ['full', null],
+    ]) {
+      await page.locator('#editor-prefs-btn').click();
+      await page.locator('#pref-content-width').selectOption(width);
+      await page.locator('#prefs-close').click();
+      await expect(page.locator('#prefs-modal')).toBeHidden();
+      await page.locator('#view-controls [data-panel="editor"]').click();
+      const source = await page.locator('#note-content').evaluate((element) => ({
+        width: element.getBoundingClientRect().width,
+        gutter: Number.parseFloat(getComputedStyle(element).paddingLeft),
+      }));
+      await page.locator('#view-controls [data-panel="preview"]').click();
+      const block = page.locator(
+        interactive ? '#preview > .interactive-preview-block-card' : '#preview > p',
+      );
+      await expect(block).toBeVisible();
+      const layout = await block.evaluate((element) => {
+        const preview = element.closest('.preview');
+        const style = getComputedStyle(preview);
+        const gutter = Number.parseFloat(style.paddingLeft);
+        return {
+          blockWidth: element.getBoundingClientRect().width,
+          contentWidth: preview.clientWidth - gutter - Number.parseFloat(style.paddingRight),
+          previewWidth: preview.getBoundingClientRect().width,
+          gutter,
+          containerWidth: document.querySelector('#editor .editor-body').getBoundingClientRect()
+            .width,
+          availableWidth: document.body.getBoundingClientRect().width,
+          rem: Number.parseFloat(getComputedStyle(document.documentElement).fontSize),
+        };
+      });
+      expect(
+        Math.abs(layout.blockWidth - layout.contentWidth),
+        `${width} preview content`,
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(layout.previewWidth - source.width),
+        `${width} source/preview panels`,
+      ).toBeLessThanOrEqual(1);
+      expect(layout.gutter).toBe(source.gutter);
+      const expectedWidth =
+        maxRem === null
+          ? layout.availableWidth
+          : Math.min(layout.availableWidth, maxRem * layout.rem);
+      expect(
+        Math.abs(layout.containerWidth - expectedWidth),
+        `${width} global container`,
+      ).toBeLessThanOrEqual(1);
+    }
+  }
 });
 
 test('mobile editor controls stay clear of the formatting toolbar', async ({page}) => {

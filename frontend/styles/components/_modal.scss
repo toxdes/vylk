@@ -11,7 +11,7 @@
 .modal-backdrop {
   position: absolute;
   inset: 0;
-  background: rgb(15 23 42 / 0.38);
+  background: var(--overlay-backdrop);
 }
 
 .modal-body {
@@ -23,8 +23,8 @@
   scrollbar-gutter: stable;
   background: var(--card-bg);
   border: 0;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgb(15 23 42 / 0.2);
+  border-radius: var(--overlay-radius);
+  box-shadow: var(--overlay-shadow);
 }
 
 .modal-body--standard {
@@ -102,7 +102,7 @@
 
 @keyframes modal-backdrop-in {
   from {
-    opacity: 0;
+    opacity: var(--overlay-backdrop-start-opacity, 0);
   }
 
   to {
@@ -112,7 +112,7 @@
 
 @keyframes modal-backdrop-out {
   from {
-    opacity: 1;
+    opacity: var(--overlay-backdrop-start-opacity, 1);
   }
 
   to {
@@ -121,26 +121,29 @@
 }
 
 .modal:not(.hidden) .modal-backdrop {
-  animation: modal-backdrop-in 0.16s ease both;
+  animation: modal-backdrop-in var(--overlay-enter-duration) var(--overlay-enter-ease) both;
 }
 
 .modal:not(.hidden) .modal-body {
-  animation: app-content-in var(--motion-duration) var(--motion-ease) backwards;
+  animation: overlay-content-in var(--overlay-enter-duration) var(--overlay-enter-ease) backwards;
   backface-visibility: hidden;
 }
 
 .modal.is-closing .modal-backdrop {
-  animation: modal-backdrop-out 0.16s ease both;
+  animation: modal-backdrop-out var(--overlay-exit-duration) var(--overlay-exit-ease) both;
 }
 
 .modal.is-closing .modal-body {
-  animation: app-content-out var(--motion-duration) var(--motion-ease) both;
+  animation: overlay-content-out var(--overlay-exit-duration) var(--overlay-exit-ease) both;
   backface-visibility: hidden;
 }
 
 @media (max-width: 640px) {
+  .modal-body {
+    padding: 1.25rem;
+  }
+
   .modal-body--form {
     max-height: calc(100dvh - 1rem);
-    padding: 1.25rem;
   }
 }

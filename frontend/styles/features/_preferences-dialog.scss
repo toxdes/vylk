@@ -437,10 +437,6 @@
 }
 
 /* Conflict resolution keeps both durable versions visible while the result remains editable. */
-.conflict-modal-body {
-  padding-bottom: 1.25rem;
-}
-
 .conflict-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -576,11 +572,6 @@
   flex: 1;
 }
 
-.conflict-actions .btn-text {
-  min-height: 2rem;
-  padding: 0.3rem 0.5rem;
-}
-
 .note-conflict {
   display: inline-flex;
   align-items: center;
@@ -641,10 +632,6 @@
 }
 
 @media (max-width: 640px) {
-  .conflict-modal-body {
-    padding: 1.25rem;
-  }
-
   .conflict-fields,
   .conflict-metadata-compare,
   .conflict-compare {

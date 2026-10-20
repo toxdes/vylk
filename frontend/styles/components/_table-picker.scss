@@ -5,10 +5,10 @@
   z-index: 110;
   width: max-content;
   padding: 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 0;
+  border-radius: var(--overlay-radius);
   background: var(--card-bg);
-  box-shadow: 0 10px 24px rgb(15 23 42 / 0.16);
+  box-shadow: var(--overlay-shadow);
 }
 
 .heading-picker {
@@ -19,7 +19,7 @@
 .heading-picker button {
   min-width: 2.75rem;
   min-height: 2.75rem;
-  border-radius: 5px;
+  border-radius: var(--radius-action);
   background: transparent;
   color: var(--fg);
   font-weight: 600;
