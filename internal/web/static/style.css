@@ -1305,6 +1305,7 @@ header h1 {
 }
 
 .preview {
+  outline: none;
   overflow-wrap: anywhere;
 }
 

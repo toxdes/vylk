@@ -1367,8 +1367,8 @@
   });
 
   // --- Panel toggle ---
-  function setPanelState(state) {
-    panelController.setState(state);
+  function setPanelState(state, options) {
+    panelController.setState(state, options);
   }
 
   panelController = window.VylkPanelController.create({
@@ -2089,27 +2089,21 @@
   }
 
   function setWritingView(view) {
-    setPanelState(view);
-    if (view === 'preview') focusPreview();
-    else focusCurrentSourceEditor();
+    setPanelState(view, {focus: true});
   }
 
   function switchEditorPreview() {
     if (panelController.state() === 'zen') {
       panelController.setZenView(panelController.zenView() === 'preview' ? 'editor' : 'preview');
-      setPanelState('zen');
-      if (panelController.zenView() === 'preview') focusPreview();
-      else focusCurrentSourceEditor();
+      setWritingView('zen');
       return;
     }
     if (panelController.state() === 'editor') {
-      setPanelState('preview');
-      focusPreview();
+      setWritingView('preview');
       return;
     }
     if (panelController.state() === 'preview') {
-      setPanelState('editor');
-      focusCurrentSourceEditor();
+      setWritingView('editor');
       return;
     }
     if (document.activeElement?.closest?.('#preview-panel')) focusCurrentSourceEditor();
@@ -2211,10 +2205,7 @@
       noteSaver.cancelAutoSave();
       return saveCurrentNote();
     },
-    setSplitView: () => {
-      setPanelState('both');
-      focusCurrentSourceEditor();
-    },
+    setSplitView: () => setWritingView('both'),
     setWritingView,
     switchEditorPreview,
   }).forEach(registerShortcutCommand);
