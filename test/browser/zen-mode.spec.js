@@ -248,6 +248,18 @@ test('Zen mode styles Markdown without replacing its editable source', async ({p
 
   await editor.press('End');
   await page.keyboard.type('!');
+  await expect(editor.locator('.zen-md-code')).toHaveText('code!');
+  await editor.press('Control+Z');
+  await expect(editor.locator('.zen-md-code')).toHaveText('code');
+
+  // End targets the visible code content. Place the caret after the editor's
+  // last child to test insertion past its hidden closing delimiter explicitly.
+  await editor.evaluate((element) => {
+    element.focus({preventScroll: true});
+    getSelection().collapse(element, element.childNodes.length);
+  });
+  await page.keyboard.type('!');
+  await expect(editor.locator('.zen-md-code')).toHaveText('code');
   await page.locator('[data-zen-action="exit"]').click();
   await expect(page.locator('#note-content')).toHaveValue(`${source}!`);
 });
@@ -287,29 +299,37 @@ test('Zen mode styles a heading as soon as its separating space is typed', async
   await expect(editor.locator('.zen-md-h2')).toHaveText('## Heading');
 });
 
-test('Zen mode styles supported inline tokens as soon as their first character is typed', async ({
-  page,
-}) => {
+test('Zen mode styles inline tokens only after their closing marker is typed', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
   await page.locator('[data-panel="zen"]').click();
 
   const editor = page.locator('#zen-source-editor');
   const cases = [
-    {source: '*i', selector: '.zen-md-em', text: 'i'},
-    {source: '_i', selector: '.zen-md-em', text: 'i'},
-    {source: '**b', selector: '.zen-md-strong', text: 'b'},
-    {source: '__b', selector: '.zen-md-strong', text: 'b'},
-    {source: '***x', selector: '.zen-md-strong.zen-md-em', text: 'x'},
-    {source: '___x', selector: '.zen-md-strong.zen-md-em', text: 'x'},
-    {source: '~~s', selector: '.zen-md-strike', text: 's'},
-    {source: '`c', selector: '.zen-md-code', text: 'c'},
+    {marker: '*', selectors: ['.zen-md-em'], text: 'i'},
+    {marker: '_', selectors: ['.zen-md-em'], text: 'i'},
+    {marker: '**', selectors: ['.zen-md-strong'], text: 'b'},
+    {marker: '__', selectors: ['.zen-md-strong'], text: 'b'},
+    {marker: '***', selectors: ['.zen-md-strong', '.zen-md-em'], text: 'x'},
+    {marker: '___', selectors: ['.zen-md-strong', '.zen-md-em'], text: 'x'},
+    {marker: '~~', selectors: ['.zen-md-strike'], text: 's'},
+    {marker: '`', selectors: ['.zen-md-code'], text: 'c'},
   ];
   for (const entry of cases) {
     await editor.press('Control+A');
     await editor.press('Backspace');
-    await page.keyboard.type(entry.source);
-    await expect(editor.locator(entry.selector)).toHaveText(entry.text);
+    const incomplete = entry.marker + entry.text;
+    await page.keyboard.type(incomplete);
+    await expect(editor).toHaveText(incomplete);
+    await expect(
+      editor.locator('.zen-md-em, .zen-md-strong, .zen-md-strike, .zen-md-code'),
+    ).toHaveCount(0);
+
+    await page.keyboard.type(entry.marker);
+    for (const selector of entry.selectors)
+      await expect(editor.locator(selector)).toHaveText(entry.text, {useInnerText: true});
+    expect(await editor.innerText()).toBe(entry.text);
+    await expect(editor).toHaveText(incomplete + entry.marker);
   }
 });
 
