@@ -7,6 +7,7 @@
   const editorSourceTextarea = $('#note-content');
   const editorSourceWrap = $('.editor-source-wrap');
   const editorCurrentLine = $('.editor-current-line');
+  let zenToolbar = null;
   const editorSource = window.VylkEditorSource.create({
     document,
     onInput: handleEditorSourceInput,
@@ -20,7 +21,10 @@
   const editorSourceSelection = editorSource.selection;
   const editorSourceValue = editorSource.value;
   const focusCurrentSourceEditor = editorSource.focus;
-  const setEditorSourceValue = editorSource.setValue;
+  const setEditorSourceValue = (...args) => {
+    zenToolbar?.hide();
+    editorSource.setValue(...args);
+  };
   const zenSourceIsActive = editorSource.zenActive;
 
   const bootScreen = $('#boot-screen');
@@ -262,6 +266,7 @@
   let finishScreenExit = null;
 
   function show(screen) {
+    zenToolbar?.hide();
     finishScreenExit?.();
     const outgoing = Object.values(screens).find((el) => !el.classList.contains('hidden'));
     if (screen !== screens.dashboard || screens.dashboard.classList.contains('hidden')) {
@@ -1332,7 +1337,27 @@
       requestPreviewRender({announceBusy: true});
     },
   });
-  const insertFmt = formattingToolbar.format;
+  zenToolbar = window.VylkZenToolbar.create({
+    document,
+    window,
+    getEditor: editorSource.zenEditor,
+    isLocked: () => interactivePreviewSession.locked() || hasOpenModal(),
+    onUnsupported: (message) => showToast(message, 'warning'),
+  });
+  const insertFmt = (type) => {
+    if (zenSourceIsActive() && ['bold', 'italic', 'strike', 'code', 'link'].includes(type)) {
+      const editor = editorSource.zenEditor();
+      const selection = editor.selection();
+      if (
+        selection.start !== selection.end ||
+        (type === 'link' && editor.linkAt(selection.start))
+      ) {
+        zenToolbar.format(type);
+        return;
+      }
+    }
+    formattingToolbar.format(type);
+  };
 
   // --- Meta pane toggle ---
   $('.meta-toggle')?.addEventListener('click', () => {
@@ -1364,7 +1389,10 @@
     getSource: editorSourceValue,
     localStorage,
     onExecuteCommand: (commandID) => executeShortcutCommand(commandID, {source: 'button'}),
-    onPanelChanged: syncInteractivePreviewMode,
+    onPanelChanged: () => {
+      zenToolbar.hide();
+      return syncInteractivePreviewMode();
+    },
     renderPreview: () => requestPreviewRender({announceBusy: true}),
     scheduleCaret: scheduleEditorCaretCue,
     schedulePreviewCheck,

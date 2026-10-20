@@ -205,6 +205,9 @@ SOFTWARE.
         <path d="M4 16a2 2 0 1 1 4 0c0 .591 -.5 1 -1 1.5l-3 2.5h4" />
         <path d="M6 10v-6l-2 2" />
       </symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24">
+        <path d="m5 12 4 4 10-10" />
+      </symbol>
       <symbol id="icon-check-square" viewBox="0 0 24 24">
         <path d="M9 11l3 3l8 -8" />
         <path d="M20 12v6a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h9" />
@@ -700,11 +703,24 @@ SOFTWARE.
                     <small id="pref-font-description" class="font-input-help"
                       >Used throughout the app.</small
                     >
-                    <label class="font-fetch-toggle"
-                      ><input type="checkbox" id="pref-font-google" /><span
-                        >Use Google Fonts to fetch</span
-                      ></label
-                    ><small id="pref-font-error" class="font-error" role="alert" hidden></small>
+                    <div class="font-fetch-toggle">
+                      <input
+                        type="checkbox"
+                        id="pref-font-google"
+                        aria-labelledby="pref-font-google-label"
+                      />
+                      <span id="pref-font-google-label"
+                        >Use
+                        <a
+                          href="https://fonts.google.com/?sort=popularity"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          >Google Fonts</a
+                        >
+                        to fetch</span
+                      >
+                    </div>
+                    <small id="pref-font-error" class="font-error" role="alert" hidden></small>
                   </div>
                 </div>
               </section>
@@ -761,11 +777,24 @@ SOFTWARE.
                       <small id="pref-editor-font-description" class="font-input-help"
                         >Used while writing Markdown.</small
                       >
-                      <label class="font-fetch-toggle"
-                        ><input type="checkbox" id="pref-editor-font-google" /><span
-                          >Use Google Fonts to fetch</span
-                        ></label
-                      ><small
+                      <div class="font-fetch-toggle">
+                        <input
+                          type="checkbox"
+                          id="pref-editor-font-google"
+                          aria-labelledby="pref-editor-font-google-label"
+                        />
+                        <span id="pref-editor-font-google-label"
+                          >Use
+                          <a
+                            href="https://fonts.google.com/?sort=popularity"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Google Fonts</a
+                          >
+                          to fetch</span
+                        >
+                      </div>
+                      <small
                         id="pref-editor-font-error"
                         class="font-error"
                         role="alert"
@@ -795,11 +824,24 @@ SOFTWARE.
                       <small id="pref-preview-font-description" class="font-input-help"
                         >Used for rendered note content.</small
                       >
-                      <label class="font-fetch-toggle"
-                        ><input type="checkbox" id="pref-preview-font-google" /><span
-                          >Use Google Fonts to fetch</span
-                        ></label
-                      ><small
+                      <div class="font-fetch-toggle">
+                        <input
+                          type="checkbox"
+                          id="pref-preview-font-google"
+                          aria-labelledby="pref-preview-font-google-label"
+                        />
+                        <span id="pref-preview-font-google-label"
+                          >Use
+                          <a
+                            href="https://fonts.google.com/?sort=popularity"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Google Fonts</a
+                          >
+                          to fetch</span
+                        >
+                      </div>
+                      <small
                         id="pref-preview-font-error"
                         class="font-error"
                         role="alert"
@@ -911,11 +953,24 @@ SOFTWARE.
                     <small id="pref-zen-font-description" class="font-input-help"
                       >Used while writing in Zen mode.</small
                     >
-                    <label class="font-fetch-toggle"
-                      ><input type="checkbox" id="pref-zen-font-google" /><span
-                        >Use Google Fonts to fetch</span
-                      ></label
-                    ><small id="pref-zen-font-error" class="font-error" role="alert" hidden></small>
+                    <div class="font-fetch-toggle">
+                      <input
+                        type="checkbox"
+                        id="pref-zen-font-google"
+                        aria-labelledby="pref-zen-font-google-label"
+                      />
+                      <span id="pref-zen-font-google-label"
+                        >Use
+                        <a
+                          href="https://fonts.google.com/?sort=popularity"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          >Google Fonts</a
+                        >
+                        to fetch</span
+                      >
+                    </div>
+                    <small id="pref-zen-font-error" class="font-error" role="alert" hidden></small>
                   </div>
                 </div>
                 <label class="pref-row"
@@ -2408,7 +2463,11 @@ SOFTWARE.
     <script src="/js/editor/shortcuts.js"></script>
     <script src="/js/editor/shortcut-controller.js"></script>
     <script src="/js/editor/default-commands.js"></script>
+    <script src="/js/editor/markdown-links.js"></script>
+    <script src="/js/editor/zen-selection.js"></script>
+    <script src="/js/editor/zen-inline.js"></script>
     <script src="/js/editor/zen-editor.js"></script>
+    <script src="/js/editor/zen-toolbar.js"></script>
     <script src="/js/editor/source-adapter.js"></script>
     <script src="/js/editor/zen-overlays.js"></script>
     <script src="/js/editor/caret-controller.js"></script>

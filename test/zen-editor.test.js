@@ -24,6 +24,14 @@ function createEditor(value) {
   dom.window.requestAnimationFrame = vi.fn(() => 1);
   dom.window.cancelAnimationFrame = vi.fn();
   dom.window.eval(motionSource);
+  for (const file of [
+    'vendor/marked.min.js',
+    'js/editor/markdown-links.js',
+    'js/editor/zen-inline.js',
+  ])
+    dom.window.eval(
+      readFileSync(new URL(`../internal/web/static/${file}`, import.meta.url), 'utf8'),
+    );
   dom.window.eval(source);
   const editor = new dom.window.VylkZenEditor(dom.window.document.querySelector('#editor'));
   editor.setValue(value);
@@ -46,6 +54,17 @@ test.each(['😀', '👩🏽‍💻', 'e\u0301', 'क़'])(
     expect(editor.value).toBe('AB');
   },
 );
+
+test('browser select-all boundaries map to the complete Markdown document', () => {
+  const original = 'One **two**\n- three\n\nLast';
+  const editor = createEditor(original);
+  dom.window.getSelection().selectAllChildren(editor.element);
+  expect(editor.selection()).toMatchObject({start: 0, end: original.length});
+  editor.deleteBackward(editor.selection());
+  expect(editor.value).toBe('');
+  editor.undo();
+  expect(editor.value).toBe(original);
+});
 
 test.each(['forward', 'backward'])(
   'reconciles a cross-line %s composition as one undoable edit',
@@ -83,6 +102,299 @@ test('formatting preserves prior undo and untouched line nodes', () => {
   editor.redo();
   editor.redo();
   expect(editor.value).toBe('**Hello!**\nUnchanged');
+});
+
+test('completed links render labels and retain exact source offsets and undo', () => {
+  const editor = createEditor('See [a **bold** label](https://example.com/a(b))\nUntouched');
+  const anchor = editor.element.querySelector('a');
+  expect(anchor.textContent).toBe('a **bold** label');
+  expect(anchor.querySelector('.zen-md-strong').textContent).toBe('bold');
+  const source = editor.value;
+  for (const offset of [0, 4, 5, 7, 12, 20, source.indexOf('\n'), source.length]) {
+    editor.setSelection(offset);
+    const point = editor.domPoint(offset);
+    expect(point.node.parentElement?.closest('.zen-md-link-syntax')).toBeFalsy();
+    expect(editor.selectionStart).toBe(offset);
+  }
+  const untouched = editor.lines[1].element;
+  editor.setSelection(6);
+  editor.replaceSelection('new');
+  expect(editor.value).toBe(source.slice(0, 6) + 'new' + source.slice(6));
+  expect(editor.lines[1].element).toBe(untouched);
+  editor.undo();
+  expect(editor.value).toBe(source);
+});
+
+test('a link becomes rendered only when its closing parenthesis arrives', () => {
+  const editor = createEditor('[link](https://example.com');
+  editor.setSelection(editor.length);
+  expect(editor.element.querySelector('a')).toBeNull();
+  editor.replaceSelection(')');
+  expect(editor.element.querySelector('a').textContent).toBe('link');
+  expect(editor.selectionStart).toBe(editor.length);
+  editor.undo();
+  expect(editor.element.querySelector('a')).toBeNull();
+});
+
+test.each([
+  ['**', 'zen-md-strong'],
+  ['__', 'zen-md-strong'],
+  ['*', 'zen-md-em'],
+  ['_', 'zen-md-em'],
+  ['~~', 'zen-md-strike'],
+  ['`', 'zen-md-code'],
+])('completed %s syntax is hidden without changing source or undo', (marker, className) => {
+  const editor = createEditor(`${marker}Hello\nUntouched`);
+  const untouched = editor.lines[1].element;
+  expect(editor.element.querySelector('.zen-md-inline-syntax')).toBeNull();
+  editor.setSelection(marker.length + 5);
+  editor.replaceSelection(marker);
+  expect(editor.element.querySelector(`.${className}`).textContent).toBe('Hello');
+  expect(editor.lines[0].element.querySelectorAll('.zen-md-inline-syntax')).toHaveLength(2);
+  expect(editor.lines[0].element.textContent).toBe(`${marker}Hello${marker}`);
+  expect(editor.selectionStart).toBe(marker.length * 2 + 5);
+  expect(editor.lines[1].element).toBe(untouched);
+  editor.replaceSelection(' after');
+  expect(editor.value).toBe(`${marker}Hello${marker} after\nUntouched`);
+  editor.undo();
+  editor.undo();
+  expect(editor.value).toBe(`${marker}Hello\nUntouched`);
+  expect(editor.element.querySelector('.zen-md-inline-syntax')).toBeNull();
+});
+
+test.each([
+  'word_with_underscores',
+  '\\*literal\\*',
+  '**unfinished',
+  '~~unfinished',
+  '`unfinished',
+])('keeps non-formatting or incomplete %s visible', (source) => {
+  const editor = createEditor(source);
+  expect(editor.element.querySelector('.zen-md-inline-syntax')).toBeNull();
+  expect(editor.element.textContent).toBe(source);
+});
+
+test('nested formatting and links preserve source and keep structural markers visible', () => {
+  const source = '# **a *nested* [link](https://example.com)**\n> ~~strike~~ and `code`\n- list';
+  const editor = createEditor(source);
+  expect(editor.element.textContent).toBe(source.replaceAll('\n', ''));
+  expect(editor.element.querySelector('.zen-md-strong .zen-md-em').textContent).toBe('nested');
+  expect(editor.element.querySelector('.zen-md-strong a').textContent).toBe('link');
+  expect(
+    editor.element.querySelectorAll('.zen-md-heading-marker, .zen-md-quote-marker'),
+  ).toHaveLength(2);
+  const marker = editor.element.querySelector('.zen-md-format-syntax');
+  expect(marker.getAttribute('aria-hidden')).toBe('true');
+});
+
+test.each([1, 2, 3, 4, 5, 6])(
+  'recognizes H%s and preserves its literal Markdown markers',
+  (level) => {
+    const source = '#'.repeat(level) + ' Heading';
+    const editor = createEditor(source);
+    expect(editor.lines[0].element.classList.contains(`zen-md-h${level}`)).toBe(true);
+    expect(editor.lines[0].element.querySelector('.zen-md-heading-marker').textContent).toBe(
+      '#'.repeat(level),
+    );
+    expect(editor.value).toBe(source);
+  },
+);
+
+test('seven hashes remain ordinary prose rather than an H7 heading', () => {
+  const editor = createEditor('####### Ordinary prose');
+  expect(editor.element.querySelector('.zen-md-heading')).toBeNull();
+  expect(editor.value).toBe('####### Ordinary prose');
+});
+
+test('blank-line styling follows whitespace edits through the plain-text fast path', () => {
+  const editor = createEditor(' \nUntouched');
+  const line = editor.lines[0].element;
+  expect(line.classList.contains('zen-md-blank')).toBe(true);
+  editor.setSelection(1);
+  editor.replaceSelection('text');
+  expect(editor.lines[0].element).toBe(line);
+  expect(line.classList.contains('zen-md-blank')).toBe(false);
+  editor.undo();
+  expect(line.classList.contains('zen-md-blank')).toBe(true);
+  expect(editor.value).toBe(' \nUntouched');
+});
+
+test.each(['- ', '* ', '+ ', '12. ', '3) ', '  - ', '\t- '])(
+  'list typography preserves the literal %s prefix and source selection',
+  (prefix) => {
+    const editor = createEditor(prefix + 'A **bold** item\nUntouched');
+    const line = editor.lines[0].element;
+    const untouched = editor.lines[1].element;
+    expect(line.querySelector('.zen-md-list-marker').textContent).toBe(prefix);
+    expect(line.querySelector('.zen-md-strong').textContent).toBe('bold');
+    editor.setSelection(prefix.length + 1);
+    editor.replaceSelection(' longer');
+    expect(editor.value).toBe(prefix + 'A longer **bold** item\nUntouched');
+    expect(editor.lines[1].element).toBe(untouched);
+    editor.undo();
+    expect(editor.value).toBe(prefix + 'A **bold** item\nUntouched');
+  },
+);
+
+test('typing and removing a list prefix updates its layout without changing source', () => {
+  const editor = createEditor('-');
+  editor.setSelection(1);
+  editor.replaceSelection(' ');
+  expect(editor.lines[0].element.classList.contains('zen-md-list')).toBe(true);
+  expect(editor.lines[0].element.querySelector('.zen-md-list-content')).not.toBeNull();
+  expect(editor.value).toBe('- ');
+  editor.undo();
+  expect(editor.lines[0].element.classList.contains('zen-md-list')).toBe(false);
+  expect(editor.lines[0].element.querySelector('.zen-md-list-content')).toBeNull();
+  expect(editor.value).toBe('-');
+});
+
+test.each(['**', '*', '~~', '`'])(
+  'deleting across hidden %s boundaries preserves unselected formatting',
+  (marker) => {
+    const original = `Before ${marker}Hello${marker} after`;
+    const editor = createEditor(original);
+    const middle = 7 + marker.length + 2;
+    editor.setSelection(0, middle);
+    editor.deleteBackward(editor.selection());
+    expect(editor.value).toBe(`${marker}llo${marker} after`);
+    editor.undo();
+    editor.setSelection(middle, editor.length);
+    editor.replaceSelection('!');
+    expect(editor.value).toBe(`Before ${marker}He${marker}!`);
+    editor.undo();
+    expect(editor.value).toBe(original);
+  },
+);
+
+test('deleting the final visible nested character removes all empty wrappers', () => {
+  const editor = createEditor('**[~~😀~~](https://example.com)**');
+  const offset = editor.value.indexOf('😀') + 2;
+  editor.setSelection(offset);
+  editor.deleteBackward(editor.selection());
+  expect(editor.value).toBe('');
+  editor.undo();
+  expect(editor.value).toBe('**[~~😀~~](https://example.com)**');
+});
+
+test('hidden inline boundaries unwrap or delete visible text, with one-step undo', () => {
+  const editor = createEditor('A **Hello** B');
+  editor.setSelection(4);
+  editor.deleteBackward(editor.selection());
+  expect(editor.value).toBe('A Hello B');
+  editor.undo();
+  editor.setSelection(9);
+  editor.deleteForward(editor.selection());
+  expect(editor.value).toBe('A Hello B');
+  editor.undo();
+  editor.setSelection(11);
+  editor.deleteBackward(editor.selection());
+  expect(editor.value).toBe('A **Hell** B');
+  editor.undo();
+  editor.setSelection(2);
+  editor.deleteForward(editor.selection());
+  expect(editor.value).toBe('A **ello** B');
+});
+
+test('Enter inside nested formatting closes each retained fragment on its own line', () => {
+  const editor = createEditor('**one *two three* four**');
+  editor.setSelection(editor.value.indexOf(' three'));
+  editor.replaceSelection('\n');
+  expect(editor.value).toBe('**one *two***\n ***three* four**');
+  expect(editor.lines[1].element.querySelector('.zen-md-strong .zen-md-em').textContent).toBe(
+    'three',
+  );
+  editor.undo();
+  expect(editor.value).toBe('**one *two three* four**');
+});
+
+test('IME replacement across a hidden style boundary preserves its unselected prefix', () => {
+  const editor = createEditor('**Hello** world\nUntouched');
+  const untouched = editor.lines[1].element;
+  editor.setSelection(4, 12);
+  editor.element.dispatchEvent(new dom.window.CompositionEvent('compositionstart'));
+  editor.lines[0].element.textContent = '**He語rld';
+  dom.window.getSelection().collapse(editor.lines[0].element.firstChild, 5);
+  editor.element.dispatchEvent(new dom.window.CompositionEvent('compositionend', {data: '語'}));
+  expect(editor.value).toBe('**He**語rld\nUntouched');
+  expect(editor.selectionStart).toBe(7);
+  expect(editor.lines[1].element).toBe(untouched);
+  editor.undo();
+  expect(editor.value).toBe('**Hello** world\nUntouched');
+});
+
+test.each(['Plain', '**Hello**', '[Hello](https://example.com)'])(
+  'deleting inside %s does not materialize the full document',
+  (source) => {
+    const editor = createEditor(source + '\nUntouched');
+    editor.setSelection(source.indexOf('l') + 1);
+    const read = vi.spyOn(editor, 'value', 'get').mockImplementation(() => {
+      throw new Error('Full-document read on the deletion path');
+    });
+    editor.deleteBackward(editor.selection());
+    expect(read).not.toHaveBeenCalled();
+    read.mockRestore();
+    expect(editor.value).toBe(source.replace('l', '') + '\nUntouched');
+  },
+);
+
+test.each([
+  '`[code](https://example.com)`',
+  '![image](https://example.com)',
+  '\\[escaped](https://example.com)',
+  '[unsafe](javascript:alert(1))',
+])('does not turn %s into an active link', (text) => {
+  const editor = createEditor(text);
+  expect(editor.element.querySelector('a')).toBeNull();
+  expect(editor.value).toBe(text);
+});
+
+test('deleting at hidden link boundaries preserves visible text and stays undoable', () => {
+  const editor = createEditor('A [label](https://example.com) B');
+  const link = editor.linkAt(4);
+  editor.setSelection(link.labelStart);
+  editor.deleteBackward(editor.selection());
+  expect(editor.value).toBe('A label B');
+  expect(editor.selectionStart).toBe(2);
+  editor.undo();
+  editor.setSelection(link.labelStart, link.labelEnd);
+  editor.deleteForward(editor.selection());
+  expect(editor.value).toBe('A  B');
+  editor.undo();
+  editor.setSelection(link.end);
+  editor.deleteBackward(editor.selection());
+  expect(editor.value).toBe('A [labe](https://example.com) B');
+});
+
+test.each(['delete', 'type', 'cut'])(
+  '%s across a partial link preserves the unselected linked label and destination',
+  (action) => {
+    const original = 'Before [Hello](https://example.com) after';
+    const editor = createEditor(original);
+    editor.setSelection(0, 10);
+    if (action === 'delete') editor.deleteBackward(editor.selection());
+    else if (action === 'type') editor.replaceSelection('New ');
+    else editor.onCut({preventDefault() {}, clipboardData: {setData() {}}});
+    expect(editor.value).toBe(
+      (action === 'type' ? 'New ' : '') + '[llo](https://example.com) after',
+    );
+    editor.undo();
+    expect(editor.value).toBe(original);
+    editor.setSelection(10, editor.length);
+    editor.replaceSelection('!');
+    expect(editor.value).toBe('Before [He](https://example.com)!');
+    editor.undo();
+    expect(editor.value).toBe(original);
+  },
+);
+
+test.each(['😀', 'word'])('deleting the final linked %s removes its hidden wrapper', (label) => {
+  const editor = createEditor(`[${label}](https://example.com)`);
+  editor.setSelection(label.length + 1);
+  editor.deleteBackward(editor.selection(), label === 'word');
+  expect(editor.value).toBe('');
+  editor.undo();
+  expect(editor.value).toBe(`[${label}](https://example.com)`);
 });
 
 test('Shift+Tab leaves navigation to the browser and does not edit text', () => {

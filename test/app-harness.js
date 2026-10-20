@@ -450,7 +450,17 @@ export async function createApp({
   window.eval(shortcutsSource);
   window.eval(shortcutControllerSource);
   window.eval(defaultCommandsSource);
+  window.eval(
+    fs.readFileSync(path.join(staticDirectory, 'js', 'editor', 'zen-selection.js'), 'utf8'),
+  );
+  window.eval(fs.readFileSync(path.join(staticDirectory, 'js', 'editor', 'zen-inline.js'), 'utf8'));
   window.eval(zenEditorSource);
+  window.eval(
+    fs.readFileSync(path.join(staticDirectory, 'js', 'editor', 'markdown-links.js'), 'utf8'),
+  );
+  window.eval(
+    fs.readFileSync(path.join(staticDirectory, 'js', 'editor', 'zen-toolbar.js'), 'utf8'),
+  );
   window.eval(editorSourceAdapterSource);
   window.eval(zenOverlaysSource);
   window.eval(caretControllerSource);
@@ -495,11 +505,8 @@ export async function createApp({
   window.eval(panelControllerSource);
   window.eval(navigationControllerSource);
   if (realMerge) window.eval(mergeSource);
-  if (realMarked) {
-    window.eval(markedSource);
-  } else {
-    window.marked = {parse: () => ''};
-  }
+  window.eval(markedSource);
+  if (!realMarked) window.marked = {...window.marked, parse: () => ''};
   window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
   window.requestAnimationFrame = (callback) => window.setTimeout(callback, 0);
   window.cancelAnimationFrame = (id) => window.clearTimeout(id);
