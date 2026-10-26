@@ -77,3 +77,10 @@ publishes `dist`. Its build fetches the version and matching release-tag API
 specification/guides, generating HTML in the lander's existing styles. Generated
 HTML is not committed and adds no Vylk server runtime cost. See the lander
 repository's build instructions for version overrides and local previews.
+
+The lander also builds a **Releases** page from [`releases.md`](../releases.md).
+Keep release descriptions verbatim with their source links and labelled merge or
+publication dates. The build reads this history from `main` and only displays
+versions up to the selected stable release; local previews read it from the same
+`VYLK_API_SOURCE` checkout as the API docs. Publish the history before deploying
+the updated lander.
