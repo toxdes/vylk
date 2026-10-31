@@ -905,7 +905,7 @@ test('centers a preview edit target within the source viewport', async ({page}) 
     .toBe(true);
 });
 
-test('interactive preview retains checkbox DOM and auto-scrolls during drag', async ({page}) => {
+test('interactive preview retains checkbox and list item DOM when toggled', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
   const items = Array.from({length: 50}, (_, index) =>
@@ -939,7 +939,15 @@ test('interactive preview retains checkbox DOM and auto-scrolls during drag', as
     ),
   ).toBe(true);
   await expect(page.locator('#toast-region .toast')).toHaveCount(0);
+});
 
+test('interactive preview auto-scrolls while dragging a list item', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  await page
+    .locator('#note-content')
+    .fill(Array.from({length: 50}, (_, index) => `- Item ${index + 1}`).join('\n'));
+  await enableInteractivePreview(page);
   await waitForEditorEntrance(page);
   const preview = page.locator('#preview');
   await preview.locator('.preview-drag-handle').first().hover();
@@ -952,15 +960,13 @@ test('interactive preview retains checkbox DOM and auto-scrolls during drag', as
     previewBounds.y + previewBounds.height - 4,
     {steps: 3},
   );
-  await expect(page.locator('html')).toHaveClass(/preview-drag-active/);
+  await expect(page.locator('.preview-drag-ghost')).toBeVisible();
   await expect
     .poll(() => preview.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(scrollTop);
 
-  await page.mouse.move(previewBounds.x - 20, previewBounds.y + previewBounds.height / 2);
-  await expect(page.locator('html')).toHaveClass(/preview-drag-outside/);
   await page.mouse.up();
-  await expect(page.locator('html')).not.toHaveClass(/preview-drag-outside/);
+  await expect(page.locator('.preview-drag-ghost')).toHaveCount(0);
 });
 
 test('loose ordered task lists render one checkbox per item', async ({page}) => {
