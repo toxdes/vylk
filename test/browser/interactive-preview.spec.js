@@ -940,26 +940,22 @@ test('interactive preview retains checkbox DOM and auto-scrolls during drag', as
   ).toBe(true);
   await expect(page.locator('#toast-region .toast')).toHaveCount(0);
 
-  await page.locator('#preview').evaluate((element) => {
-    element.scrollTop = 0;
-  });
-  const previewBounds = await page.locator('#preview').boundingBox();
-  const handleBounds = await page.locator('#preview .preview-drag-handle').first().boundingBox();
-  expect(previewBounds).not.toBeNull();
-  expect(handleBounds).not.toBeNull();
-  await page.mouse.move(
-    handleBounds.x + handleBounds.width / 2,
-    handleBounds.y + handleBounds.height / 2,
-  );
+  await waitForEditorEntrance(page);
+  const preview = page.locator('#preview');
+  await preview.locator('.preview-drag-handle').first().hover();
   await page.mouse.down();
+  const previewBounds = await preview.boundingBox();
+  expect(previewBounds).not.toBeNull();
+  const scrollTop = await preview.evaluate((element) => element.scrollTop);
   await page.mouse.move(
     previewBounds.x + previewBounds.width / 2,
     previewBounds.y + previewBounds.height - 4,
     {steps: 3},
   );
+  await expect(page.locator('html')).toHaveClass(/preview-drag-active/);
   await expect
-    .poll(() => page.locator('#preview').evaluate((element) => element.scrollTop))
-    .toBeGreaterThan(0);
+    .poll(() => preview.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(scrollTop);
 
   await page.mouse.move(previewBounds.x - 20, previewBounds.y + previewBounds.height / 2);
   await expect(page.locator('html')).toHaveClass(/preview-drag-outside/);
