@@ -351,6 +351,8 @@ test('encrypts an existing note and syncs ciphertext between independent devices
     const signedOut = await page.request.delete(`/api/devices/${phoneDevice.value}`);
     expect(signedOut.status()).toBe(204);
     await second.setOffline(false);
+    // Transport emulation can reconnect without emitting the browser online event.
+    await phone.evaluate(() => window.dispatchEvent(new Event('online')));
     await expect(phone.locator('#login-screen')).toBeVisible({timeout: 30000});
     await phone.locator('#login-password').fill(master);
     await phone.locator('#login-form button[type="submit"]').click();
