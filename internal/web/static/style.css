@@ -1404,9 +1404,14 @@ header h1 {
 
 .preview blockquote {
   margin: 0 0 1em;
-  padding: 0.2rem 0 0.2rem 0.875rem;
-  border-left: 1px solid var(--accent);
+  padding: 0 0 0 0.75rem;
+  border-left: 3px solid var(--accent);
+  border-radius: 3px;
   color: var(--muted);
+}
+
+.preview blockquote > :last-child {
+  margin-bottom: 0;
 }
 
 .preview a {
