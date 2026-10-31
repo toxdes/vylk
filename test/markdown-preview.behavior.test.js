@@ -312,6 +312,10 @@ describe('markdown preview policy', () => {
     };
     card.getBoundingClientRect = () => rect;
     const preview = app.window.document.querySelector('#preview');
+    Object.defineProperties(preview, {
+      scrollHeight: {value: 1000, configurable: true},
+      clientHeight: {value: 240, configurable: true},
+    });
     preview.getBoundingClientRect = () => ({
       left: 80,
       top: 60,
@@ -359,11 +363,25 @@ describe('markdown preview policy', () => {
       pointerEvent(app.window, 'pointermove', {
         pointerId: 2,
         buttons: 1,
+        clientX: 170,
+        clientY: 296,
+      }),
+    );
+    await new Promise((resolve) => app.window.requestAnimationFrame(resolve));
+    expect(preview.scrollTop).toBeGreaterThan(0);
+    const scrollTop = preview.scrollTop;
+
+    app.window.document.dispatchEvent(
+      pointerEvent(app.window, 'pointermove', {
+        pointerId: 2,
+        buttons: 1,
         clientX: 460,
         clientY: 130,
       }),
     );
     await vi.waitFor(() => expect(app.hooks.getInteractivePreviewState().outside).toBe(true));
+    await new Promise((resolve) => app.window.requestAnimationFrame(resolve));
+    expect(preview.scrollTop).toBe(scrollTop);
 
     app.window.document.dispatchEvent(
       pointerEvent(app.window, 'pointerup', {pointerId: 2, button: 0, clientX: 460, clientY: 130}),
