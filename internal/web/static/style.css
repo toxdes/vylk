@@ -4144,6 +4144,10 @@ header h1 {
   border-radius: var(--radius-micro);
 }
 
+#editor:not(.zen-mode) .panel-header-actions:not(:has(.view-controls, #save-btn)) {
+  visibility: hidden;
+}
+
 #editor:not(.zen-mode) .panel-header-actions #save-btn .icon {
   width: 1rem;
   height: 1rem;

@@ -30,13 +30,18 @@
     );
 
     const query = (selector) => document.querySelector(selector);
+    const mobileViewport = window.matchMedia('(max-width: 640px)');
+
+    function usePreviewControls() {
+      return panelState === 'preview' || (panelState === 'both' && !mobileViewport.matches);
+    }
 
     function placeViewControls() {
       const controls = query('#view-controls');
       const editorActions = query('#editor-panel .panel-header-actions');
       const previewActions = query('#preview-view-controls-slot');
       if (!controls || !editorActions || !previewActions) return;
-      (panelState === 'preview' ? previewActions : editorActions).prepend(controls);
+      (usePreviewControls() ? previewActions : editorActions).prepend(controls);
     }
 
     function placeSaveButton() {
@@ -54,9 +59,14 @@
         headerSlot.append(saveButton);
         return;
       }
-      (previewOnly ? previewSlot : panelSlot).append(saveButton);
-      if (!previewOnly) panelActions.append(panelSlot);
+      (usePreviewControls() ? previewSlot : panelSlot).append(saveButton);
+      if (!usePreviewControls()) panelActions.append(panelSlot);
     }
+
+    mobileViewport.addEventListener('change', () => {
+      placeViewControls();
+      placeSaveButton();
+    });
 
     function applyRatio() {
       query('#editor-panels').style.setProperty(
