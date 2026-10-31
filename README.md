@@ -26,6 +26,11 @@ see [self-hosting](docs/self-hosting.md).
 Enable encryption in **Preferences → Encryption**. Remote encrypted access requires
 HTTPS; keep your recovery key safe. [Encryption guide](https://vylk.toxdes.com/docs/#end-to-end-encryption).
 
+## Arch Linux
+
+Build the latest tagged release with `yay -S vylk`. Use `vylk-bin` for the
+prebuilt release or `vylk-git` for the latest development source.
+
 ## Develop
 
 ```sh
