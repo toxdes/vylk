@@ -183,7 +183,7 @@ test('editor preferences are available after Save', async ({page}) => {
 
   const editorActions = page.locator('#editor header .header-right button');
   await expect(editorActions).toHaveCount(1);
-  await expect(page.locator('#editor-panel #save-btn')).toBeVisible();
+  await expect(page.locator('#preview-panel #save-btn')).toBeVisible();
   await expect(page.locator('#editor-prefs-btn')).toBeVisible();
   await page.locator('#editor-prefs-btn').click();
   await expect(page.locator('#prefs-modal')).toBeVisible();

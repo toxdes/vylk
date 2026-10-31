@@ -21,6 +21,54 @@ async function enableInteractivePreview(page) {
   await page.locator('#prefs-close').click();
 }
 
+test('desktop split controls stay on the preview edge and follow mobile layout changes', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({width: 1440, height: 900});
+  await signIn(page);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await page.locator('#new-note-btn').click();
+  await page
+    .locator('#note-content')
+    .fill('# A steady toolbar\n\nSwitch views without chasing controls.');
+  await waitForEditorEntrance(page);
+  await expect(page.locator('#preview')).toContainText('A steady toolbar');
+  const controls = page.locator('#view-controls');
+  const save = page.locator('#save-btn');
+  await expect(page.locator('#preview-panel #view-controls')).toBeVisible();
+  await expect(page.locator('#preview-save-slot #save-btn')).toBeEnabled();
+  await expect(page.locator('#editor-panel .panel-header-actions')).toBeHidden();
+  const splitBounds = await controls.boundingBox();
+  if (process.env.VYLK_CAPTURE_STYLE) {
+    await page.screenshot({path: testInfo.outputPath('desktop-split-controls.png')});
+  }
+  await controls.locator('[data-panel="preview"]').click();
+  await expect(save).toBeDisabled();
+  const previewBounds = await controls.boundingBox();
+  expect(Math.abs(splitBounds.x - previewBounds.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(splitBounds.y - previewBounds.y)).toBeLessThanOrEqual(1);
+  await controls.locator('[data-panel="both"]').click();
+  await expect(save).toBeEnabled();
+
+  await page.setViewportSize({width: 390, height: 844});
+  await expect(page.locator('#editor-panel #view-controls')).toBeVisible();
+  await expect(page.locator('#panel-save-slot #save-btn')).toBeEnabled();
+  if (process.env.VYLK_CAPTURE_STYLE) {
+    await page.screenshot({path: testInfo.outputPath('mobile-split-controls.png')});
+  }
+  await controls.locator('[data-panel="preview"]').click();
+  await expect(page.locator('#preview-panel #view-controls')).toBeVisible();
+  await expect(save).toBeDisabled();
+  await controls.locator('[data-panel="both"]').click();
+  await page.setViewportSize({width: 1440, height: 900});
+  await expect(page.locator('#preview-panel #view-controls')).toBeVisible();
+  await controls.locator('[data-panel="editor"]').click();
+  await expect(page.locator('#editor-panel #view-controls')).toBeVisible();
+  await controls.locator('[data-panel="both"]').click();
+  await save.click();
+  await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
+});
+
 test('heading toolbar uses one compact picker for levels one through five', async ({page}) => {
   await signIn(page);
   await page.locator('#new-note-btn').click();
@@ -813,7 +861,7 @@ test('editor and preview content stay aligned while the splitter remains unobtru
   await expect(page.locator('#save-btn')).toBeVisible();
 
   const desktopControlSurface = await page
-    .locator('#editor-panel .panel-header-actions')
+    .locator('#preview-panel .panel-header-actions')
     .evaluate((element) => {
       const style = getComputedStyle(element);
       const panel = element.closest('.panel').getBoundingClientRect();

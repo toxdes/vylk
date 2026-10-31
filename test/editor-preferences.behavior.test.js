@@ -816,19 +816,19 @@ describe('editor display preferences', () => {
     expect(app.window.document.querySelector('#pref-save-location')).not.toBeNull();
     expect(app.window.document.querySelector('#pref-content-width')).not.toBeNull();
     expect(app.window.document.querySelectorAll('.panel-width')).toHaveLength(0);
-    expect(app.window.document.querySelector('#panel-save-slot #save-btn')).not.toBeNull();
+    expect(app.window.document.querySelector('#preview-save-slot #save-btn')).not.toBeNull();
 
     await app.hooks.savePref('saveButtonLocation', 'header');
     expect(app.window.document.querySelector('#header-save-slot #save-btn')).not.toBeNull();
     await app.hooks.savePref('saveButtonLocation', 'panel');
-    expect(app.window.document.querySelector('#panel-save-slot #save-btn')).not.toBeNull();
+    expect(app.window.document.querySelector('#preview-save-slot #save-btn')).not.toBeNull();
 
     app.hooks.setPanelState('preview');
     const previewSave = app.window.document.querySelector('#preview-save-slot #save-btn');
     expect(previewSave).not.toBeNull();
     expect(previewSave.disabled).toBe(true);
     app.hooks.setPanelState('both');
-    expect(app.window.document.querySelector('#panel-save-slot #save-btn').disabled).toBe(false);
+    expect(app.window.document.querySelector('#preview-save-slot #save-btn').disabled).toBe(false);
 
     await app.hooks.savePref('statusDisplay', 'compact');
     expect(root.dataset.statusDisplay).toBe('compact');
