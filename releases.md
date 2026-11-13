@@ -5,6 +5,19 @@ identify PR merges or GitHub Release publication, as labelled.
 
 <!-- prettier-ignore-start -->
 
+## v3.1.2
+
+Merged: 2026-10-31
+Source: [Pull request #34](https://github.com/toxdes/vylk/pull/34)
+
+## Changes
+Changes since [last release](https://github.com/toxdes/vylk/releases/tag/v3.1.1) -
+1. fix(ui): keep view/save controls on the preview pane in desktop split view; hide empty control containers
+2. fix(preview): align `blockquote` text, remove trailing spacing, and refine quote borders
+3. chore(release): Update Yesb and pin Debian/RPM publisher container images.
+4. docs: Add release history and Arch installation instructions.
+5. test: Expand split-view coverage and stabilize preview/vault checks.
+
 ## v3.1.1
 
 Merged: 2026-10-20
