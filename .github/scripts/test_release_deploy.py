@@ -324,5 +324,27 @@ class HookIdempotencyTests(unittest.TestCase):
         self.assertEqual(request.get_header("Idempotency-key"), payload["idempotency_key"])
 
 
+class ReleaseNotesGateTests(unittest.TestCase):
+    def test_requires_the_tag_section_on_main(self):
+        main = "# Releases\n\n## v3.1.1\n\nMerged: 2026-10-20\n"
+        with patch.object(release_deploy, "run_git", return_value=main) as run_git:
+            with self.assertRaisesRegex(
+                release_deploy.ReleaseError, "no section for v3.1.2"
+            ):
+                release_deploy.ensure_release_notes("v3.1.2")
+        run_git.assert_called_once_with("show", "origin/main:releases.md")
+
+    def test_accepts_the_present_section(self):
+        main = "# Releases\n\n## v3.1.2\n\nMerged: 2026-10-31\n"
+        with patch.object(release_deploy, "run_git", return_value=main):
+            release_deploy.ensure_release_notes("v3.1.2")
+
+    def test_does_not_match_a_longer_version(self):
+        main = "# Releases\n\n## v3.1.20\n\nMerged: 2026-10-20\n"
+        with patch.object(release_deploy, "run_git", return_value=main):
+            with self.assertRaises(release_deploy.ReleaseError):
+                release_deploy.ensure_release_notes("v3.1.2")
+
+
 if __name__ == "__main__":
     unittest.main()

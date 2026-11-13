@@ -129,6 +129,21 @@ def previous_release_tag(tag: str, commit: str) -> str | None:
     return select_previous_tag(tag, tags)
 
 
+def ensure_release_notes(tag: str) -> None:
+    """Stop the deploy hooks when main cannot announce this release.
+
+    The lander reads releases.md from main at build time, so a missing section
+    would deploy a stale banner. The pull request check catches this earlier,
+    this guard covers releases that bypass it.
+    """
+    markdown = run_git("show", "origin/main:releases.md")
+    if not re.search(rf"^## {re.escape(tag)}$", markdown, re.MULTILINE):
+        raise ReleaseError(
+            f"releases.md on main has no section for {tag}; "
+            "add one before the release can be announced"
+        )
+
+
 def validate_tag(
     tag: str, commit: str, *, allow_rollback: bool = False
 ) -> tuple[str, str | None]:
@@ -362,6 +377,7 @@ def main() -> int:
 
     try:
         version, previous_tag = validate_tag(tag, commit, allow_rollback=allow_rollback)
+        ensure_release_notes(tag)
         hooks = configured_hooks()
         if not hooks:
             raise ReleaseError("no VYLK_DEPLOY_HOOK_<NAME>_URL secrets are configured")
