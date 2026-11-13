@@ -10,8 +10,6 @@ identify PR merges or GitHub Release publication, as labelled.
 Merged: 2026-10-31
 Source: [Pull request #34](https://github.com/toxdes/vylk/pull/34)
 
-## Changes
-Changes since [last release](https://github.com/toxdes/vylk/releases/tag/v3.1.1) -
 1. fix(ui): keep view/save controls on the preview pane in desktop split view; hide empty control containers
 2. fix(preview): align `blockquote` text, remove trailing spacing, and refine quote borders
 3. chore(release): Update Yesb and pin Debian/RPM publisher container images.
@@ -23,9 +21,6 @@ Changes since [last release](https://github.com/toxdes/vylk/releases/tag/v3.1.1)
 Merged: 2026-10-20
 Source: [Pull request #28](https://github.com/toxdes/vylk/pull/28)
 
-## Changes
-
-Changes since [previous release](https://github.com/toxdes/vylk/releases/tags/v3.1.0):
 1. feat(zen): inline formatting and links; hide markdown markers; add compact toolbar and link editor popups
 2. fix(zen): correct mixed formatting; "Select All" + "Delete" action; caret mapping, IME input, and undo action
 3. fix(editor): slower edge-drag selection scrolling; stop caret animations from running indefinitely
@@ -42,9 +37,6 @@ Changes since [previous release](https://github.com/toxdes/vylk/releases/tags/v3
 Merged: 2026-10-03
 Source: [Pull request #23](https://github.com/toxdes/vylk/pull/23)
 
-## Changes 
-
-Changes since [previous release](https://github.com/toxdes/vylk/releases/tag/v3.0.4):
 1. feat(e2ee): Add end-to-end encryption, recovery keys, passphrase management, and resumable vault migration.
 2. feat(devices): Add device management and remembered unlocks across tabs and refreshes.
 3. fix(sync): Prevent reset-induced sync loops, preserve pending edits, and safely detect database replacements.
