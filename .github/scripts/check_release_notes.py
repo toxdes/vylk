@@ -29,15 +29,16 @@ ENTRY = re.compile(
     re.DOTALL,
 )
 MISSING_ENTRY = """\
-releases.md has no section for {tag}. Add one before merging, using the release
-pull request description as the body:
+releases.md has no section for {tag}. Add one before merging, using only the
+bullet list from the release pull request description:
 
 ## {tag}
 
 Merged: YYYY-MM-DD
 Source: [Pull request #N](https://github.com/toxdes/vylk/pull/N)
 
-<release pull request description>"""
+1. first change
+2. second change"""
 
 
 class ReleaseNotesError(ValueError):
