@@ -245,6 +245,7 @@
     document.addEventListener(
       'keydown',
       (event) => {
+        if (event.isComposing || event.keyCode === 229) return;
         if (recording) {
           if (event.key === 'Escape') {
             event.preventDefault();
@@ -342,7 +343,7 @@
           event.preventDefault();
           return;
         }
-        if (event.defaultPrevented || event.isComposing || event.repeat || hasOpenModal()) return;
+        if (event.defaultPrevented || event.repeat || hasOpenModal()) return;
         const first = shortcuts.bindingFromEvent(event);
         if (!first) return;
         if (shortcuts.isLeader(first, prefixBinding().steps[0])) {

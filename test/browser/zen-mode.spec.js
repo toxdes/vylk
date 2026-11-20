@@ -109,6 +109,45 @@ async function signIn(page) {
   await useEditorFixture(page);
 }
 
+test('Zen restores the backward selection and scroll position after Preview', async ({page}) => {
+  await signIn(page);
+  await openZenMode(page);
+  const editor = page.locator('#zen-source-editor');
+  const position = await editor.evaluate((element) => {
+    const line = element.children[80];
+    const node = line.firstChild;
+    getSelection().setBaseAndExtent(node, 16, node, 2);
+    element.scrollTop = line.offsetTop - 80;
+    return element.scrollTop;
+  });
+  await page.locator('[data-zen-action="preview"]').click();
+  await page.locator('[data-zen-action="editor"]').click();
+  await expect(editor).toBeFocused();
+  expect(
+    await editor.evaluate((element) => {
+      const selection = getSelection();
+      return {
+        rightLine: selection.anchorNode.parentElement === element.children[80],
+        anchor: selection.anchorOffset,
+        focus: selection.focusOffset,
+        scrollTop: element.scrollTop,
+      };
+    }),
+  ).toEqual({rightLine: true, anchor: 16, focus: 2, scrollTop: position});
+});
+
+test('plain editor caret inside a URL enters Zen outside the link', async ({page}) => {
+  await signIn(page);
+  await page.locator('#new-note-btn').click();
+  const source = page.locator('#note-content');
+  await source.fill('[Docs](/docs) tail');
+  await source.evaluate((element) => element.setSelectionRange(9, 9));
+  await page.locator('[data-panel="zen"]').click();
+  await page.keyboard.type('!');
+  await page.locator('[data-zen-action="exit"]').click();
+  await expect(source).toHaveValue('[Docs](/docs)! tail');
+});
+
 async function openZenMode(page) {
   await page.locator('#new-note-btn').click();
   await page.locator('#note-title').fill('A calm page');
@@ -279,10 +318,12 @@ test('Zen mode keeps formatting shortcuts, structural edits, and undo', async ({
   await page.keyboard.type('Next line');
   await expect(editor.locator('.zen-editor-line')).toHaveCount(2);
   await editor.press('Control+Z');
-  await expect(editor.locator('.zen-editor-line').last()).toHaveText('Next lin');
+  await expect(editor.locator('.zen-editor-line').last()).toHaveText('');
+  await editor.press('Control+Shift+Z');
+  await expect(editor.locator('.zen-editor-line').last()).toHaveText('Next line');
 
   await page.locator('[data-zen-action="exit"]').click();
-  await expect(page.locator('#note-content')).toHaveValue('**Format me**\nNext lin');
+  await expect(page.locator('#note-content')).toHaveValue('**Format me**\nNext line');
 });
 
 test('Zen mode styles a heading as soon as its separating space is typed', async ({page}) => {

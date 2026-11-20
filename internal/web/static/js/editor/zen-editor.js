@@ -57,6 +57,48 @@
     return 'plain';
   }
 
+  function fenceState(text, previous) {
+    const quote = text.match(/^(?: {0,3}>[ \t]?)+/)?.[0] || '';
+    const depth = quote.split('>').length - 1;
+    const body = text.slice(quote.length);
+    const previousIndents = previous?.depth === depth ? previous.indents : [];
+    let indents = previousIndents;
+    if (indents.length && body.trim()) {
+      const spaces = body.match(/^ */)[0].length;
+      while (indents.length && indents.at(-1) > spaces) indents = indents.slice(0, -1);
+    }
+    let indent = indents.at(-1) || 0;
+    if (previous?.marker && previous.depth === depth && previousIndents === indents) {
+      const closing = body.slice(indent).match(/^ {0,3}(`{3,}|~{3,})[ \t]*\r?$/)?.[1];
+      const closed =
+        closing?.[0] === previous.marker[0] && closing.length >= previous.marker.length;
+      return {literal: true, next: closed ? (indent ? {depth, indents} : null) : previous};
+    }
+    let list;
+    while ((list = body.slice(indent).match(/^ {0,3}(?:[-+*]|\d{1,9}[.)]) {1,4}(?=\S)/))) {
+      indent += list[0].length;
+      indents = [...indents, indent];
+    }
+    const match = body.slice(indent).match(/^ {0,3}(`{3,}|~{3,})([^\r\n]*)\r?$/);
+    if (!match || (match[1][0] === '`' && match[2].includes('`')))
+      return {literal: false, next: indent ? {depth, indents} : null};
+    return {literal: true, next: {depth, indents, marker: match[1]}};
+  }
+
+  function sameFence(a, b) {
+    return (
+      a === b ||
+      Boolean(
+        a &&
+        b &&
+        a.depth === b.depth &&
+        a.marker === b.marker &&
+        a.indents.length === b.indents.length &&
+        a.indents.every((indent, index) => indent === b.indents[index]),
+      )
+    );
+  }
+
   class FenwickTree {
     constructor(values) {
       this.values = new Array(values.length).fill(0);
@@ -107,8 +149,10 @@
       this.active = false;
       this.composing = false;
       this.composition = null;
+      this.pendingFormats = null;
       this.history = [];
       this.future = [];
+      this.typingGroup = false;
       this.lastSelection = {start: 0, end: 0, direction: 'none'};
       this.activeLine = null;
       this.typingAnchorFrame = null;
@@ -119,21 +163,46 @@
       element.setAttribute('role', 'textbox');
       element.setAttribute('aria-multiline', 'true');
       element.setAttribute('aria-label', 'Markdown note content');
+      element.setAttribute('aria-description', 'Tab indents. Shift+Tab moves focus out.');
       element.setAttribute('autocapitalize', 'sentences');
       element.setAttribute('enterkeyhint', 'enter');
       element.addEventListener('beforeinput', (event) => this.onBeforeInput(event));
+      element.addEventListener('input', () => {
+        if (!this.nativeEdit || this.composing) return;
+        this.composition = this.nativeEdit;
+        this.nativeEdit = null;
+        this.finishComposition();
+      });
       element.addEventListener('pointerdown', (event) => {
         if (event.button === 0 && event.isPrimary !== false) {
+          this.typingGroup = false;
           this.cancelTypingAnchor();
           this.smoothNextTypingAnchor = true;
         }
       });
       element.addEventListener('wheel', () => this.cancelTypingAnchor(), {passive: true});
       element.addEventListener('touchstart', () => this.cancelTypingAnchor(), {passive: true});
-      element.addEventListener('blur', () => this.cancelTypingAnchor());
+      element.addEventListener('blur', () => {
+        this.pastePlain = false;
+        this.cancelTypingAnchor();
+      });
       element.addEventListener('keydown', (event) => this.onKeyDown(event));
       element.addEventListener('keyup', (event) => this.onKeyUp(event));
       element.addEventListener('paste', (event) => this.onPaste(event));
+      element.addEventListener('dragstart', () => {
+        const selection = this.selection();
+        this.dragSource =
+          selection.start === selection.end
+            ? null
+            : {...selection, value: this.value, revision: this.documentRevision};
+      });
+      element.addEventListener('drop', () => {
+        this.internalDrop = this.dragSource;
+      });
+      element.addEventListener('dragend', () => {
+        this.dragSource = null;
+        this.internalDrop = null;
+      });
       element.addEventListener('click', (event) => {
         if (event.target.closest?.('.zen-md-link') && !(event.ctrlKey || event.metaKey))
           event.preventDefault();
@@ -175,8 +244,7 @@
 
     set active(value) {
       this._active = Boolean(value);
-      if (!this._active) this.cancelTypingAnchor();
-      if (!this._active) this.selectionController?.cancel();
+      if (!this._active) this.clearEditingState();
     }
 
     get length() {
@@ -191,10 +259,29 @@
       return this.selection().end;
     }
 
-    setValue(value, selectionStart = 0, selectionEnd = selectionStart) {
+    clearEditingState() {
+      this.pendingFormats = null;
+      this.dragSource = null;
+      this.internalDrop = null;
+      this.nativeEdit = null;
+      this.typingGroup = false;
       this.selectionController?.cancel();
-      this.documentRevision = (this.documentRevision || 0) + 1;
       this.cancelTypingAnchor();
+    }
+
+    resetSession() {
+      if (this.composing) this.finishComposition({commit: false});
+      this.closeRevealedPair();
+      this.clearEditingState();
+      this.history = [];
+      this.future = [];
+      this.documentRevision++;
+    }
+
+    setValue(value, selectionStart = 0, selectionEnd = selectionStart) {
+      this.clearEditingState();
+      this.revealedPair = null;
+      this.documentRevision = (this.documentRevision || 0) + 1;
       this.composing = false;
       this.composition = null;
       const source = String(value ?? '');
@@ -203,17 +290,10 @@
         const element = document.createElement('div');
         const line = {text, index, element};
         element.__zenLine = line;
-        renderLineContent(element, text);
         fragment.append(element);
         return line;
       });
-      if (!this.lines.length) {
-        const element = document.createElement('div');
-        this.lines = [{text: '', index: 0, element}];
-        element.__zenLine = this.lines[0];
-        renderLineContent(element, '');
-        fragment.append(element);
-      }
+      this.renderLines(0, this.lines.length);
       this.offsets = new FenwickTree(this.lines.map((line) => line.text.length + 1));
       this.cachedValue = source;
       this.history = [];
@@ -221,6 +301,62 @@
       this.element.replaceChildren(fragment);
       this.element.classList.toggle('is-empty', source.length === 0);
       this.setSelection(selectionStart, selectionEnd);
+    }
+
+    renderLine(line) {
+      renderLineContent(line.element, line.text, {
+        literal: line.fenced,
+        reveal: this.revealedPair?.line === line ? this.revealedPair : null,
+      });
+      line.element.classList.toggle('is-active', this.activeLine === line.element);
+    }
+
+    renderLines(start, count) {
+      let open = this.lines[start - 1]?.fenceAfter || null;
+      for (let index = start; index < this.lines.length; index++) {
+        const line = this.lines[index];
+        const fence = fenceState(line.text, open);
+        const unchanged = sameFence(fence.next, line.fenceAfter);
+        if (index >= start + count && unchanged && line.fenced === fence.literal) break;
+        line.fenceAfter = open = fence.next;
+        line.fenced = fence.literal;
+        this.renderLine(line);
+      }
+    }
+
+    updateRevealedPair(line, start, end, inserted, inputType) {
+      const pair = this.revealedPair;
+      if (pair?.line === line && start > pair.start && end < pair.end && !inserted.includes('\n')) {
+        pair.end += inserted.length - (end - start);
+        return;
+      }
+      if (pair) {
+        this.revealedPair = null;
+        if (pair.line !== line) this.renderLine(pair.line);
+      }
+      if (
+        line.fenced ||
+        start !== end ||
+        !inserted ||
+        inserted.includes('\n') ||
+        !['insertText', 'insertCompositionText'].includes(inputType)
+      )
+        return;
+      const opening = line.text.slice(0, start).match(/(?:\*{1,2}|_{1,2}|~~|`+)$/)?.[0];
+      if (!opening || !line.text.startsWith(opening, start)) return;
+      const left = start - opening.length;
+      const right = start + opening.length;
+      if (line.text[left - 1] === opening[0] || line.text[right] === opening[0]) return;
+      if ((line.text.slice(0, left).match(/\\+$/)?.[0].length || 0) % 2) return;
+      this.revealedPair = {line, start: left, end: right + inserted.length};
+    }
+
+    closeRevealedPair(selection = this.selection()) {
+      const pair = this.revealedPair;
+      if (!pair) return;
+      this.revealedPair = null;
+      this.renderLine(pair.line);
+      this.setSelection(selection.start, selection.end, selection.direction);
     }
 
     applyValue(value, start = 0, end = start, direction = 'forward') {
@@ -282,6 +418,7 @@
     domPoint(offset) {
       const location = this.offsets.locate(Math.max(0, Math.min(this.length, offset)));
       const line = this.lines[location.line];
+      if (!line.text) return {node: line.element, offset: 0};
       let remaining = Math.min(line.text.length, location.offset);
       const walker = document.createTreeWalker(line.element, SHOW_TEXT);
       let node;
@@ -316,8 +453,10 @@
       const first = this.offsets.locate(start);
       if (this.offsets.locate(end).line !== first.line) return null;
       const base = this.offsets.prefix(first.line);
-      const link = global.VylkZenInline.links(this.lines[first.line].element)?.find(
-        (entry) => first.offset >= entry.start && end - base <= entry.end,
+      const link = global.VylkZenInline.links(this.lines[first.line].element)?.find((entry) =>
+        start === end
+          ? first.offset > entry.start && first.offset < entry.end
+          : first.offset >= entry.start && end - base <= entry.end,
       );
       return link
         ? {
@@ -330,7 +469,7 @@
         : null;
     }
 
-    inlineFormatChange(start, end, kind) {
+    inlineSelections(start, end) {
       const first = this.offsets.locate(start).line;
       const last = this.offsets.locate(end).line;
       const selections = [];
@@ -343,6 +482,26 @@
           end: Math.min(this.lines[index].text.length, end - base),
         });
       }
+      return selections;
+    }
+
+    inlineFormatStates(start, end) {
+      if (start !== end)
+        return global.VylkZenInline.formatStates(this.inlineSelections(start, end));
+      const pending = this.pendingFormats;
+      if (pending?.offset === start)
+        return Object.fromEntries([...pending.active].map((kind) => [kind, true]));
+      return Object.fromEntries(
+        this.inlineSpans(start)
+          .filter((span) => start > span.contentStart && start < span.contentEnd)
+          .map((span) => [span.kind, true]),
+      );
+    }
+
+    inlineFormatChange(start, end, kind) {
+      const first = this.offsets.locate(start).line;
+      const last = this.offsets.locate(end).line;
+      const selections = this.inlineSelections(start, end);
       const result = global.VylkZenInline.formatSelection(selections, kind);
       if (!result) return null;
       if (result.unsupported) return result;
@@ -355,12 +514,120 @@
       };
     }
 
+    togglePendingFormat(kind) {
+      this.typingGroup = false;
+      const selection = this.selection();
+      if (selection.start !== selection.end) return;
+      if (this.lines[this.offsets.locate(selection.start).line].fenced) return;
+      if (!this.pendingFormats || this.pendingFormats.offset !== selection.start) {
+        const active = new Set(
+          this.inlineSpans(selection.start)
+            .filter(
+              (span) => selection.start > span.contentStart && selection.start < span.contentEnd,
+            )
+            .map((span) => span.kind),
+        );
+        this.pendingFormats = {offset: selection.start, active};
+      }
+      const active = this.pendingFormats.active;
+      if (active.has(kind)) active.delete(kind);
+      else active.add(kind);
+    }
+
+    insertWithPendingFormats(selection, text, inputType) {
+      const pending = this.pendingFormats;
+      if (
+        !pending ||
+        pending.offset !== selection.start ||
+        selection.start !== selection.end ||
+        text.includes('\n')
+      )
+        return false;
+      const location = this.offsets.locate(selection.start);
+      const line = this.lines[location.line];
+      const base = this.offsets.prefix(location.line);
+      if (!text.trim()) {
+        this.replaceRange(selection.start, selection.end, text, {inputType});
+        pending.offset = this.selection().start;
+        return true;
+      }
+      const element = document.createElement('div');
+      let original = line.text;
+      if (text === '*' || text === '_') {
+        const span = this.inlineSpans(selection.start).find(
+          (entry) =>
+            entry.kind === 'strong' &&
+            selection.start >= entry.contentStart &&
+            selection.start <= entry.contentEnd &&
+            this.textBetween(entry.start, entry.contentStart) === text.repeat(2),
+        );
+        if (span) {
+          const marker = text === '*' ? '__' : '**';
+          const opening = span.start - base;
+          const closing = span.contentEnd - base;
+          original =
+            original.slice(0, opening) +
+            marker +
+            original.slice(opening + 2, closing) +
+            marker +
+            original.slice(closing + 2);
+        }
+      }
+      let source = original.slice(0, location.offset) + text + original.slice(location.offset);
+      let start = location.offset;
+      let end = start + text.length;
+      if (
+        (text === '*' || text === '_') &&
+        pending.active.has('strong') &&
+        !this.inlineSpans(selection.start).some(
+          (span) =>
+            span.kind === 'strong' &&
+            selection.start >= span.contentStart &&
+            selection.start <= span.contentEnd,
+        )
+      ) {
+        const marker = text === '*' ? '__' : '**';
+        source = original.slice(0, start) + marker + text + marker + original.slice(start);
+        start += marker.length;
+        end += marker.length;
+      }
+      for (const kind of ['strong', 'em', 'del']) {
+        renderLineContent(element, source);
+        const active = global.VylkZenInline.spans(element).some(
+          (span) => span.kind === kind && start >= span.contentStart && end <= span.contentEnd,
+        );
+        if (active === pending.active.has(kind)) continue;
+        const change = global.VylkZenInline.formatSelection([{element, source, start, end}], kind);
+        if (!change || change.unsupported) {
+          const boundary = this.inlineSpans(selection.start).find(
+            (span) => selection.start === span.contentEnd && span.kind === kind,
+          );
+          if (!boundary) return false;
+          this.pendingFormats = null;
+          this.replaceRange(boundary.end, boundary.end, text, {inputType});
+          this.setSelection(boundary.end + text.length);
+          this.element.dispatchEvent(new Event('zenformatunsupported', {bubbles: true}));
+          return true;
+        }
+        source = change.value;
+        start = change.start;
+        end = change.end;
+      }
+      const change = changedRange(line.text, source);
+      this.replaceRange(base + change.start, base + change.end, change.inserted, {inputType});
+      this.setSelection(base + end);
+      if (this.history.length) this.history.at(-1).selectionAfter = this.selection();
+      pending.offset = this.selection().start;
+      return true;
+    }
+
     inlineSegments(start, end) {
       const pieces = [];
       const first = this.offsets.locate(start).line;
       const last = this.offsets.locate(end).line;
       for (let index = first; index <= last; index++) {
         const line = this.lines[index];
+        if (line.fenced) continue;
         const base = this.offsets.prefix(index);
         let cursor = base;
         const add = (from, to) => {
@@ -382,7 +649,7 @@
 
     canLinkSelection(start, end) {
       const first = this.offsets.locate(start).line;
-      if (first !== this.offsets.locate(end).line) return false;
+      if (first !== this.offsets.locate(end).line || this.lines[first].fenced) return false;
       if (this.linkAt(start, end)) return true;
       const base = this.offsets.prefix(first);
       return (
@@ -412,6 +679,11 @@
     }
 
     replaceVisibleRange(start, end, inserted, options) {
+      if (start === end && /^\s+$/u.test(inserted) && !inserted.includes('\n')) {
+        for (const span of [...this.inlineSpans(start)].reverse())
+          if (start === span.contentEnd && ['strong', 'em', 'del'].includes(span.kind))
+            start = end = span.end;
+      }
       if (start === end && !inserted.includes('\n'))
         return this.replaceRange(start, end, inserted, options);
       const spans = this.inlineSpans(start, end);
@@ -426,6 +698,7 @@
       );
       this.replaceRange(change.start, change.end, change.inserted, options);
       this.setSelection(change.caret);
+      if (this.history.length) this.history.at(-1).selectionAfter = this.selection();
       return change;
     }
 
@@ -572,11 +845,46 @@
       return parts.join('\n');
     }
 
-    replaceRange(start, end, inserted, {inputType = 'insertText', record = true} = {}) {
+    replaceRange(
+      start,
+      end,
+      inserted,
+      {inputType = 'insertText', record = true, group = false} = {},
+    ) {
+      const selectionBefore = record ? this.selection() : null;
       const safeStart = Math.max(0, Math.min(this.length, start));
       const safeEnd = Math.max(safeStart, Math.min(this.length, end));
       const replacement = String(inserted ?? '');
       const removed = this.textBetween(safeStart, safeEnd);
+      const recordChange = () => {
+        if (!record || (!removed && !replacement)) return;
+        const selectionAfter = this.selection();
+        const previous = this.history.at(-1);
+        if (
+          group &&
+          this.typingGroup &&
+          !removed &&
+          previous &&
+          !previous.removed &&
+          previous.start + previous.inserted.length === safeStart &&
+          previous.selectionAfter.start === selectionBefore.start &&
+          previous.selectionAfter.end === selectionBefore.end
+        ) {
+          previous.inserted += replacement;
+          previous.selectionAfter = selectionAfter;
+        } else {
+          this.history.push({
+            start: safeStart,
+            removed,
+            inserted: replacement,
+            selectionBefore,
+            selectionAfter,
+          });
+          if (this.history.length > 200) this.history.shift();
+        }
+        this.typingGroup = group && !removed;
+        this.future = [];
+      };
       const first = this.offsets.locate(safeStart);
       const last = this.offsets.locate(safeEnd);
       const combined =
@@ -584,6 +892,13 @@
         replacement +
         this.lines[last.line].text.slice(last.offset);
       const nextTexts = combined.split('\n');
+      this.updateRevealedPair(
+        this.lines[first.line],
+        first.offset,
+        last.line === first.line ? last.offset : this.lines[first.line].text.length,
+        replacement,
+        first.line === last.line ? inputType : '',
+      );
       if (first.line === last.line && nextTexts.length === 1) {
         const line = this.lines[first.line];
         const startPoint = this.domPoint(safeStart);
@@ -593,8 +908,12 @@
           structuralLineKind(line.text) !== structuralLineKind(nextTexts[0]);
         const marker = line.element.querySelector('.zen-md-marker');
         const inlineCandidate = /[*_~`[]/.test(nextTexts[0]);
+        const fence = fenceState(nextTexts[0], this.lines[first.line - 1]?.fenceAfter || null);
         if (
           !syntaxChanged &&
+          this.revealedPair?.line !== line &&
+          fence.literal === line.fenced &&
+          sameFence(fence.next, line.fenceAfter) &&
           !structuralStyleChanged &&
           !inlineCandidate &&
           !marker &&
@@ -617,11 +936,7 @@
             end: safeStart + replacement.length,
             direction: 'none',
           };
-          if (record && (removed || replacement)) {
-            this.history.push({start: safeStart, removed, inserted: replacement});
-            if (this.history.length > 200) this.history.shift();
-            this.future = [];
-          }
+          recordChange();
           this.dispatchEvent(
             new CustomEvent('input', {detail: {inputType, data: replacement, length: this.length}}),
           );
@@ -629,17 +944,13 @@
           return;
         }
         line.text = nextTexts[0];
-        renderLineContent(line.element, line.text);
+        this.renderLines(first.line, 1);
         this.offsets.set(first.line, line.text.length + 1);
         this.cachedValue = null;
         this.element.classList.toggle('is-empty', this.length === 0);
         const caret = safeStart + replacement.length;
         this.setSelection(caret, caret);
-        if (record && (removed || replacement)) {
-          this.history.push({start: safeStart, removed, inserted: replacement});
-          if (this.history.length > 200) this.history.shift();
-          this.future = [];
-        }
+        recordChange();
         this.dispatchEvent(
           new CustomEvent('input', {detail: {inputType, data: replacement, length: this.length}}),
         );
@@ -654,7 +965,6 @@
         const element = document.createElement('div');
         const line = {text, index: 0, element};
         element.__zenLine = line;
-        renderLineContent(element, text);
         fragment.append(element);
         return line;
       });
@@ -662,16 +972,13 @@
       this.lines.splice(first.line, removedLines.length, ...nextLines);
       for (let index = first.line; index < this.lines.length; index++)
         this.lines[index].index = index;
+      this.renderLines(first.line, nextLines.length);
       this.offsets = new FenwickTree(this.lines.map((line) => line.text.length + 1));
       this.cachedValue = null;
       this.element.classList.toggle('is-empty', this.length === 0);
       const caret = safeStart + replacement.length;
       this.setSelection(caret, caret);
-      if (record && (removed || replacement)) {
-        this.history.push({start: safeStart, removed, inserted: replacement});
-        if (this.history.length > 200) this.history.shift();
-        this.future = [];
-      }
+      recordChange();
       this.dispatchEvent(
         new CustomEvent('input', {detail: {inputType, data: replacement, length: this.length}}),
       );
@@ -686,17 +993,11 @@
     deleteInlineBoundary(selection, backward) {
       if (selection.start !== selection.end) return false;
       const spans = this.inlineSpans(selection.start);
-      // Innermost style wins when delimiters share a visible boundary.
       for (const span of [...spans].reverse()) {
         if (
           backward ? selection.start === span.contentStart : selection.start === span.contentEnd
         ) {
-          const content = this.textBetween(span.contentStart, span.contentEnd);
-          this.replaceRange(span.start, span.end, content, {
-            inputType: backward ? 'deleteContentBackward' : 'deleteContentForward',
-          });
-          this.setSelection(backward ? span.start : span.start + content.length);
-          return true;
+          selection.start = selection.end = backward ? span.start : span.end;
         }
       }
       // From outside a completed token, delete its visible text rather than a
@@ -711,6 +1012,29 @@
     }
 
     deleteVisibleRange(start, end, inputType) {
+      if (this.textBetween(start, end) === '\n') {
+        const leftSpans = this.inlineSpans(start);
+        const rightSpans = this.inlineSpans(end);
+        let leftBoundary = start;
+        let rightBoundary = end;
+        for (;;) {
+          const left = leftSpans.find(
+            (span) => span.end === leftBoundary && ['strong', 'em', 'del'].includes(span.kind),
+          );
+          const right = rightSpans.find(
+            (span) => span.start === rightBoundary && span.kind === left?.kind,
+          );
+          if (!left || !right) break;
+          const marker = this.textBetween(left.contentEnd, left.end);
+          if (marker !== this.textBetween(right.start, right.contentStart)) break;
+          leftBoundary -= marker.length;
+          rightBoundary += marker.length;
+        }
+        if (leftBoundary !== start) {
+          this.replaceRange(leftBoundary, rightBoundary, '', {inputType});
+          return;
+        }
+      }
       this.replaceVisibleRange(start, end, '', {inputType});
     }
 
@@ -770,6 +1094,8 @@
     }
 
     undo() {
+      this.pendingFormats = null;
+      this.typingGroup = false;
       const transaction = this.history.pop();
       if (!transaction) return;
       this.replaceRange(
@@ -778,10 +1104,18 @@
         transaction.removed,
         {inputType: 'historyUndo', record: false},
       );
+      if (transaction.selectionBefore)
+        this.setSelection(
+          transaction.selectionBefore.start,
+          transaction.selectionBefore.end,
+          transaction.selectionBefore.direction,
+        );
       this.future.push(transaction);
     }
 
     redo() {
+      this.pendingFormats = null;
+      this.typingGroup = false;
       const transaction = this.future.pop();
       if (!transaction) return;
       this.replaceRange(
@@ -790,13 +1124,66 @@
         transaction.inserted,
         {inputType: 'historyRedo', record: false},
       );
+      if (transaction.selectionAfter)
+        this.setSelection(
+          transaction.selectionAfter.start,
+          transaction.selectionAfter.end,
+          transaction.selectionAfter.direction,
+        );
       this.history.push(transaction);
+    }
+
+    rememberNativeEdit(selection, previousSelection, inputType) {
+      const first = this.offsets.locate(selection.start).line;
+      const last = this.offsets.locate(selection.end).line;
+      this.nativeEdit = {
+        selection: previousSelection,
+        first,
+        last,
+        inputType,
+        before: this.lines[first].element.previousSibling,
+        after: this.lines[last].element.nextSibling,
+      };
     }
 
     onBeforeInput(event) {
       if (!this.active || this.composing || event.defaultPrevented) return;
-      const selection = this.selection();
+      this.nativeEdit = null;
       const type = event.inputType || '';
+      let selection = this.selection();
+      const previousSelection = selection;
+      if (
+        ['insertReplacementText', 'insertFromDictation', 'insertFromDrop', 'deleteByDrag'].includes(
+          type,
+        ) &&
+        typeof event.getTargetRanges === 'function'
+      ) {
+        const ranges = event.getTargetRanges();
+        const range = ranges.length === 1 ? ranges[0] : null;
+        if (
+          ranges.length &&
+          (!range ||
+            !this.element.contains(range.startContainer) ||
+            !this.element.contains(range.endContainer))
+        ) {
+          event.preventDefault();
+          if (this.internalDrop) this.internalDrop = {cancel: true};
+          return;
+        }
+        if (
+          range &&
+          this.element.contains(range.startContainer) &&
+          this.element.contains(range.endContainer)
+        ) {
+          const start = this.pointOffset(range.startContainer, range.startOffset);
+          const end = this.pointOffset(range.endContainer, range.endOffset);
+          selection = {start: Math.min(start, end), end: Math.max(start, end)};
+        }
+      }
+      if (event.cancelable === false && (type.startsWith('insert') || type.startsWith('delete'))) {
+        this.rememberNativeEdit(selection, previousSelection, type);
+        return;
+      }
       if (type === 'historyUndo') {
         event.preventDefault();
         this.undo();
@@ -815,20 +1202,96 @@
       } else if (type.startsWith('deleteContentForward')) {
         event.preventDefault();
         this.deleteForward(selection);
+      } else if (type === 'deleteByDrag' && this.internalDrop) {
+        event.preventDefault();
+        this.internalDrop =
+          this.internalDrop.revision === this.documentRevision &&
+          this.internalDrop.value === this.value
+            ? {...selection, direction: this.internalDrop.direction, move: true}
+            : {cancel: true};
       } else if (type.startsWith('delete')) {
         event.preventDefault();
         this.replaceVisibleRange(selection.start, selection.end, '', {inputType: type});
       } else if (type === 'insertParagraph' || type === 'insertLineBreak') {
         event.preventDefault();
         this.replaceVisibleRange(selection.start, selection.end, '\n', {inputType: type});
-      } else if (type.startsWith('insert') && typeof event.data === 'string') {
+      } else if (type.startsWith('insert')) {
+        if (type === 'insertFromDrop' && this.internalDrop?.cancel) {
+          event.preventDefault();
+          this.internalDrop = null;
+          return;
+        }
+        if (
+          type === 'insertFromDrop' &&
+          event.dataTransfer?.types &&
+          !Array.from(event.dataTransfer.types).includes('text/plain')
+        ) {
+          event.preventDefault();
+          return;
+        }
+        const data =
+          typeof event.data === 'string' ? event.data : event.dataTransfer?.getData('text/plain');
+        if (typeof data !== 'string') {
+          if (type === 'insertFromDrop') event.preventDefault();
+          else this.rememberNativeEdit(selection, previousSelection, type);
+          return;
+        }
         event.preventDefault();
-        this.replaceVisibleRange(selection.start, selection.end, event.data, {inputType: type});
+        if (type === 'insertFromDrop' && this.internalDrop?.move) {
+          this.moveDrop(this.internalDrop, selection.start);
+          this.internalDrop = null;
+          return;
+        }
+        if (!this.insertWithPendingFormats(selection, data, type)) {
+          this.pendingFormats = null;
+          this.replaceVisibleRange(selection.start, selection.end, data, {
+            inputType: type,
+            group: type === 'insertText',
+          });
+        }
       }
     }
 
+    moveDrop(source, target) {
+      if (target >= source.start && target <= source.end) return;
+      const spans = this.inlineSpans(source.start, source.end);
+      const removal = global.VylkZenInline.visibleEdit(
+        (from, to) => this.textBetween(from, to),
+        source.start,
+        source.end,
+        '',
+        spans,
+      );
+      if (target > removal.start && target < removal.end) {
+        this.element.dispatchEvent(new Event('zendropunsupported', {bubbles: true}));
+        return;
+      }
+      const moved = this.copyRange(source.start, source.end);
+      const start = Math.min(target, removal.start);
+      const end = Math.max(target, removal.end);
+      const between = this.textBetween(start, end);
+      const without =
+        between.slice(0, removal.start - start) +
+        removal.inserted +
+        between.slice(removal.end - start);
+      const insertion =
+        target <= removal.start
+          ? target - start
+          : target - start - (removal.end - removal.start) + removal.inserted.length;
+      this.replaceRange(
+        start,
+        end,
+        without.slice(0, insertion) + moved + without.slice(insertion),
+        {inputType: 'insertFromDrop'},
+      );
+      this.setSelection(start + insertion + moved.length);
+      const transaction = this.history.at(-1);
+      transaction.selectionBefore = source;
+      transaction.selectionAfter = this.selection();
+    }
+
     onKeyDown(event) {
-      if (!this.active) return;
+      if (!this.active || this.composing || event.isComposing || event.keyCode === 229) return;
       if (
         [
           'ArrowUp',
@@ -840,9 +1303,13 @@
           'PageUp',
           'PageDown',
         ].includes(event.key)
-      )
+      ) {
+        this.pendingFormats = null;
+        this.typingGroup = false;
         this.cancelTypingAnchor();
+      }
       const mod = event.ctrlKey || event.metaKey;
+      if (mod && event.shiftKey && event.key.toLowerCase() === 'v') this.pastePlain = true;
       if (mod && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         if (event.shiftKey) this.redo();
@@ -860,7 +1327,8 @@
     }
 
     onKeyUp(event) {
-      if (!this.active) return;
+      if (!this.active || this.composing || event.isComposing || event.keyCode === 229) return;
+      if (event.key.toLowerCase() === 'v') this.pastePlain = false;
       if ((event.ctrlKey || event.metaKey) && ['Home', 'End'].includes(event.key)) {
         this.ensureSelectionVisible();
       } else if (!event.shiftKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
@@ -870,10 +1338,55 @@
 
     onPaste(event) {
       if (!this.active) return;
+      if (
+        event.clipboardData?.types &&
+        !Array.from(event.clipboardData.types).includes('text/plain')
+      ) {
+        event.preventDefault();
+        return;
+      }
       const text = event.clipboardData?.getData('text/plain');
       if (typeof text !== 'string') return;
       event.preventDefault();
+      const selection = this.selection();
+      const href = this.pastePlain ? null : global.VylkMarkdownLinks.inputHref(text);
+      this.pastePlain = false;
+      if (
+        href &&
+        selection.start !== selection.end &&
+        this.canLinkSelection(selection.start, selection.end) &&
+        !this.linkAt(selection.start, selection.end) &&
+        !this.inlineSpans(selection.start, selection.end).some(
+          (span) =>
+            span.kind === 'codespan' &&
+            selection.start < span.contentEnd &&
+            selection.end > span.contentStart,
+        )
+      ) {
+        const label = this.copyRange(selection.start, selection.end);
+        this.replaceVisibleRange(
+          selection.start,
+          selection.end,
+          `[${label}](${global.VylkMarkdownLinks.destination(href)})`,
+          {inputType: 'insertFromPaste'},
+        );
+        return;
+      }
       this.replaceSelection(text.replace(/\r\n?/g, '\n'), 'insertFromPaste');
+    }
+
+    copyRange(start, end) {
+      const spans = this.inlineSpans(start, end).filter(
+        (span) => span.kind !== 'link' || (start <= span.contentStart && end >= span.contentEnd),
+      );
+      return start === 0 && end === this.length
+        ? this.value
+        : global.VylkZenInline.fragment(
+            (from, to) => this.textBetween(from, to),
+            spans,
+            start,
+            end,
+          );
     }
 
     onCopy(event) {
@@ -881,7 +1394,8 @@
       const selection = this.selection();
       if (selection.start === selection.end) return;
       event.preventDefault();
-      event.clipboardData?.setData('text/plain', this.textBetween(selection.start, selection.end));
+      const text = this.copyRange(selection.start, selection.end);
+      event.clipboardData?.setData('text/plain', text);
     }
 
     onCut(event) {
@@ -892,7 +1406,7 @@
       this.replaceVisibleRange(selection.start, selection.end, '', {inputType: 'deleteByCut'});
     }
 
-    finishComposition() {
+    finishComposition({commit = true} = {}) {
       this.composing = false;
       const state = this.composition;
       this.composition = null;
@@ -927,19 +1441,34 @@
       nodes.forEach((node) => node.remove());
       const fragment = document.createDocumentFragment();
       for (const line of original) {
-        renderLineContent(line.element, line.text);
+        this.renderLine(line);
         fragment.append(line.element);
       }
       this.element.insertBefore(fragment, state.after);
       const start = this.offsets.prefix(state.first);
-      if (text !== previous) {
+      if (commit && text !== previous) {
         const change = changedRange(previous, text);
+        if (
+          state.selection.start === state.selection.end &&
+          start + change.start === state.selection.start &&
+          change.start === change.end &&
+          caret === change.start + change.inserted.length &&
+          this.insertWithPendingFormats(
+            state.selection,
+            change.inserted,
+            state.inputType || 'insertCompositionText',
+          )
+        ) {
+          this.history.at(-1).selectionBefore = state.selection;
+          return;
+        }
+        this.pendingFormats = null;
         const normalized = this.replaceVisibleRange(
           start + change.start,
           start + change.end,
           change.inserted,
           {
-            inputType: 'insertCompositionText',
+            inputType: state.inputType || 'insertCompositionText',
           },
         );
         this.setSelection(
@@ -947,12 +1476,31 @@
             ? normalized.caret + caret - change.start - change.inserted.length
             : start + Math.min(text.length, caret),
         );
+        if (this.history.length) {
+          this.history.at(-1).selectionBefore = state.selection;
+          this.history.at(-1).selectionAfter = this.selection();
+        }
       } else
         this.setSelection(state.selection.start, state.selection.end, state.selection.direction);
     }
 
     updateActiveLine() {
       const selection = global.getSelection?.();
+      const pair = this.revealedPair;
+      if (
+        pair &&
+        !this.composing &&
+        !this.nativeEdit &&
+        selection?.anchorNode &&
+        this.element.contains(selection.anchorNode) &&
+        selection.focusNode &&
+        this.element.contains(selection.focusNode)
+      ) {
+        const offsets = this.selection();
+        const base = this.offsets.prefix(pair.line.index);
+        if (offsets.end <= base + pair.start || offsets.start >= base + pair.end)
+          this.closeRevealedPair(offsets);
+      }
       const lineElement =
         selection?.focusNode && this.element.contains(selection.focusNode)
           ? (selection.focusNode.nodeType === Node.ELEMENT_NODE

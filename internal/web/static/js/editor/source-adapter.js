@@ -5,6 +5,8 @@
     const textarea = document.querySelector('#note-content');
     const zenElement = document.querySelector('#zen-source-editor');
     let zenEditor = null;
+    let writingPosition = null;
+    let restoredScroll = false;
 
     function ensureZenEditor() {
       if (!zenEditor && zenElement && window.VylkZenEditor) {
@@ -42,32 +44,79 @@
     }
 
     function setValue(nextValue, selectionStart = 0, selectionEnd = selectionStart) {
+      writingPosition = null;
+      restoredScroll = false;
       const source = String(nextValue ?? '');
       textarea.value = source;
       textarea.setSelectionRange(selectionStart, selectionEnd);
       // Setting a note snapshot is a document boundary, including while Zen is
       // inactive. Never carry one note's undo history into another note.
-      if (zenEditor) zenEditor.setValue(source, selectionStart, selectionEnd);
+      if (zenEditor) {
+        zenEditor.setValue(source, selectionStart, selectionEnd);
+        zenElement.scrollTop = 0;
+      }
       onLengthChange(source.length);
     }
 
     function activateZen() {
       const editor = ensureZenEditor();
       if (!editor || editor.active) return;
+      if (
+        editor.value !== textarea.value ||
+        writingPosition?.selection.start !== textarea.selectionStart ||
+        writingPosition?.selection.end !== textarea.selectionEnd ||
+        (textarea.selectionStart !== textarea.selectionEnd &&
+          writingPosition?.selection.direction !== textarea.selectionDirection)
+      )
+        writingPosition = null;
       editor.applyValue(
         textarea.value,
         textarea.selectionStart,
         textarea.selectionEnd,
         textarea.selectionDirection,
       );
+      const visibleOffset = (offset) => {
+        const link = editor.linkAt(offset);
+        return link?.safeHref && offset > link.labelEnd ? link.end : offset;
+      };
+      const start = visibleOffset(textarea.selectionStart);
+      const end = visibleOffset(textarea.selectionEnd);
+      if (start !== textarea.selectionStart || end !== textarea.selectionEnd)
+        editor.setSelection(start, end, textarea.selectionDirection);
       editor.cancelTypingAnchor();
       editor.active = true;
     }
 
+    function suspendZenWriting() {
+      if (!zenActive() || writingPosition) return;
+      if (zenEditor.composing) zenEditor.finishComposition();
+      const selection = zenEditor.selection();
+      writingPosition = {selection, scrollTop: zenElement.scrollTop};
+      zenEditor.clearEditingState();
+    }
+
+    function resumeZenWriting() {
+      if (!zenActive() || !writingPosition) return;
+      const {selection, scrollTop} = writingPosition;
+      writingPosition = null;
+      zenEditor.setSelection(selection.start, selection.end, selection.direction);
+      zenElement.scrollTop = scrollTop;
+      restoredScroll = true;
+      window.requestAnimationFrame(() => {
+        restoredScroll = false;
+      });
+    }
+
+    function resetZenSession() {
+      writingPosition = null;
+      restoredScroll = false;
+      zenEditor?.resetSession();
+    }
+
     function deactivateZen() {
       if (!zenActive()) return;
-      if (zenEditor.composing) zenEditor.finishComposition();
-      const currentSelection = zenEditor.selection();
+      suspendZenWriting();
+      const currentSelection = writingPosition.selection;
       textarea.value = zenEditor.value;
       textarea.setSelectionRange(
         currentSelection.start,
@@ -80,13 +129,17 @@
     function focus() {
       if (zenActive()) {
         zenEditor.focus({preventScroll: true});
-        window.requestAnimationFrame(() => zenEditor?.ensureSelectionVisible());
+        if (!restoredScroll)
+          window.requestAnimationFrame(() => zenEditor?.ensureSelectionVisible());
       } else textarea?.focus({preventScroll: true});
     }
 
     return {
       activateZen,
       deactivateZen,
+      suspendZenWriting,
+      resumeZenWriting,
+      resetZenSession,
       focus,
       selection,
       setValue,

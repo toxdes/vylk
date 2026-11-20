@@ -224,6 +224,15 @@ describe('keyboard shortcuts', () => {
     app.window.document.querySelector('[data-zen-action="exit"]').click();
     expect(editor.classList.contains('zen-mode')).toBe(false);
     app.hooks.setPanelState('zen');
+    const composingEscape = new app.window.KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+      isComposing: true,
+    });
+    app.window.document.dispatchEvent(composingEscape);
+    expect(composingEscape.defaultPrevented).toBe(false);
+    expect(editor.classList.contains('zen-mode')).toBe(true);
     app.window.document.dispatchEvent(
       new app.window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}),
     );
@@ -264,6 +273,49 @@ describe('keyboard shortcuts', () => {
     expect((await app.hooks.getLocalNote('note-a')).content).toBe(
       '[Hello](https://example.com) world',
     );
+  });
+
+  test('locking the vault and opening another note clears Zen drafts and undo history', async () => {
+    const app = track(await createApp({realMarked: true}));
+    const {window} = app;
+    const {document} = window;
+    window.Range.prototype.getClientRects = () => [
+      {top: 0, bottom: 20, left: 0, width: 50, height: 20},
+    ];
+    app.hooks.showNoteInEditor({id: 'note-a', title: 'First', content: 'Hello world'});
+    app.hooks.setPanelState('zen');
+    const editor = document.querySelector('#zen-source-editor');
+    editor.focus();
+    editor.dispatchEvent(
+      new window.InputEvent('beforeinput', {
+        inputType: 'insertText',
+        data: 'A',
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    const node = editor.firstChild.firstChild;
+    window.getSelection().setBaseAndExtent(node, 6, node, 1);
+    await app.hooks.executeShortcutCommand('format.link');
+    const popup = document.querySelector('#zen-link-popup');
+    expect(popup.hidden).toBe(false);
+    app.hooks.lockVault();
+    expect(popup.hidden).toBe(true);
+    const undo = () =>
+      editor.dispatchEvent(
+        new window.KeyboardEvent('keydown', {
+          key: 'z',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    undo();
+    expect(editor.textContent).toBe('AHello world');
+    app.hooks.showNoteInEditor({id: 'note-b', title: 'Second', content: 'Other note'});
+    app.hooks.setPanelState('zen');
+    undo();
+    expect(editor.textContent).toBe('Other note');
   });
 
   test('Zen shortcuts toggle nested formatting uniformly through the app controller', async () => {

@@ -49,7 +49,14 @@
     let offset = base;
     for (const token of tokens) {
       const span = tokenSpan(token, offset, state);
-      if (!span) {
+      if (
+        !span ||
+        (state.reveal &&
+          span.start < state.reveal.end &&
+          span.end > state.reveal.start &&
+          span.start >= state.reveal.start &&
+          span.end <= state.reveal.end)
+      ) {
         append(parent, token.raw);
         offset += token.raw.length;
         continue;
@@ -75,15 +82,20 @@
     }
   }
 
-  function render(element, source) {
+  function render(element, source, {literal = false, reveal = null} = {}) {
     element.className = 'zen-editor-line';
     element.replaceChildren();
-    const state = {source, links: [], spans: [], bodyStart: 0};
+    const state = {source, links: [], spans: [], bodyStart: 0, reveal};
     lines.set(element, state);
     if (!source.trim()) {
       element.classList.add('zen-md-blank');
       if (source) append(element, source);
       else element.append(document.createElement('br'));
+      return;
+    }
+    if (literal) {
+      state.bodyStart = source.length;
+      append(element, source);
       return;
     }
     let base = 0;
@@ -121,13 +133,19 @@
     const text = source.slice(base);
     if (!/[*_~`[]/.test(text)) return append(parent, text);
     const tokens = global.marked.Lexer.lexInline(text);
-    state.links = global.VylkMarkdownLinks.ranges(text, tokens).map((link) => ({
-      ...link,
-      start: base + link.start,
-      end: base + link.end,
-      labelStart: base + link.labelStart,
-      labelEnd: base + link.labelEnd,
-    }));
+    state.links = global.VylkMarkdownLinks.ranges(text, tokens)
+      .filter(
+        (link) =>
+          text.slice(link.labelStart, link.labelEnd).trim() &&
+          !(reveal && base + link.start >= reveal.start && base + link.end <= reveal.end),
+      )
+      .map((link) => ({
+        ...link,
+        start: base + link.start,
+        end: base + link.end,
+        labelStart: base + link.labelStart,
+        labelEnd: base + link.labelEnd,
+      }));
     state.linkStarts = new Map(state.links.map((link) => [link.start, link]));
     renderTokens(parent, tokens, base, state);
   }
@@ -142,6 +160,23 @@
 
   const formatBits = {strong: 1, em: 2, del: 4};
   const formatMarkers = ['**', '*', '~~'];
+
+  function formatStates(selections) {
+    const kinds = [...Object.keys(formatBits), 'codespan'];
+    const states = {};
+    for (const selection of selections) {
+      for (const run of formatRuns(selection).runs) {
+        if (!run.selected || !/\S/.test(run.raw)) continue;
+        for (const kind of kinds) {
+          const active =
+            kind === 'codespan' ? Boolean(run.code) : Boolean(run.mask & formatBits[kind]);
+          if (states[kind] === undefined) states[kind] = active;
+          else if (states[kind] !== active) states[kind] = 'mixed';
+        }
+      }
+    }
+    return states;
+  }
 
   // Work from complete parsed spans, not a re-lexed selection: its missing
   // delimiters cannot tell us which styles are inherited from surrounding text.
@@ -475,5 +510,14 @@
     };
   }
 
-  global.VylkZenInline = {render, spans, links, visibleEdit, listPrefix, formatSelection};
+  global.VylkZenInline = {
+    render,
+    spans,
+    links,
+    fragment,
+    visibleEdit,
+    listPrefix,
+    formatStates,
+    formatSelection,
+  };
 })(window);
