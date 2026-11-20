@@ -1,8 +1,10 @@
 /* Preserve this order: later layers intentionally refine earlier component rules. */
 @use 'settings/tokens';
 @use 'generic/base';
+@use 'components/icons';
 @use 'components/controls';
 @use 'components/modal';
+@use 'components/recovery-words';
 @use 'features/auth';
 @use 'features/dashboard';
 @use 'features/editor-shell';
@@ -16,4 +18,5 @@
 @use 'features/zen-toolbar';
 @use 'features/shortcuts';
 @use 'components/labeled-input';
+@use 'features/preferences-typography';
 @use 'components/motion';

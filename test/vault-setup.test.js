@@ -33,8 +33,8 @@ test.each(['error', 'load'])(
       closeModal: () => {},
       onComplete: () => {},
     });
-    const field = document.querySelector('#vault-master');
-    const feedback = document.querySelector('#vault-strength');
+    const field = document.querySelector('#vault-new-master');
+    const feedback = document.querySelector('#vault-new-master-strength');
     field.value = 'a long test passphrase';
     field.dispatchEvent(new dom.window.Event('input'));
     field.dispatchEvent(new dom.window.Event('input'));
@@ -43,7 +43,7 @@ test.each(['error', 'load'])(
     expect(document.querySelectorAll('script[src="/vendor/zxcvbn.js"]')).toHaveLength(1);
     failedScript.dispatchEvent(new dom.window.Event(failureEvent));
     await vi.waitFor(() =>
-      expect(feedback.textContent).toBe('Passphrase strength could not be checked.'),
+      expect(feedback.textContent).toBe('Password strength could not be checked.'),
     );
 
     field.dispatchEvent(new dom.window.Event('input'));
@@ -59,7 +59,7 @@ test.each(['error', 'load'])(
     );
     const retry = document.querySelector('script[src="/vendor/zxcvbn.js"]');
     retry.dispatchEvent(new dom.window.Event('load'));
-    await vi.waitFor(() => expect(feedback.textContent).toBe('Strong passphrase'));
+    await vi.waitFor(() => expect(feedback.textContent).toBe('Strong password'));
     expect(retry.isConnected).toBe(false);
     expect(retry.onload).toBeNull();
     expect(retry.onerror).toBeNull();

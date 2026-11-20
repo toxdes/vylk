@@ -8,7 +8,7 @@ import '/vendor/libsodium-sumo.min.js';
       await root.VylkSodium.ready;
       const {id, passphrase, salt, memoryKiB, iterations} = data;
       if (typeof passphrase !== 'string' || passphrase.length > 1024)
-        throw new Error('invalid passphrase');
+        throw new Error('invalid password');
       const key = root.VylkSodium.crypto_pwhash(
         32,
         passphrase,

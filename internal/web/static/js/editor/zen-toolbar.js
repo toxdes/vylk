@@ -80,10 +80,18 @@
       const top = viewport?.offsetTop || 0;
       const width = viewport?.width || window.innerWidth;
       const height = viewport?.height || window.innerHeight;
-      const gutter = 8;
-      element.style.maxWidth = `${Math.max(0, width - gutter * 2)}px`;
+      const gutter = parseFloat(window.getComputedStyle(element).paddingLeft) || 0;
+      const origin = document.body.getBoundingClientRect().left;
+      element.style.maxWidth = `${Math.max(0, width - origin - gutter * 2)}px`;
       element.style.maxHeight = `${Math.max(0, height - gutter * 2)}px`;
-      element.style.left = `${Math.max(left + gutter, Math.min(rect.left + rect.width / 2 - element.offsetWidth / 2, left + width - element.offsetWidth - gutter))}px`;
+      const x = Math.max(
+        left + origin + gutter,
+        Math.min(
+          rect.left + rect.width / 2 - element.offsetWidth / 2,
+          left + width - origin - element.offsetWidth - gutter,
+        ),
+      );
+      element.style.left = `${x - origin}px`;
       let y = rect.top - element.offsetHeight - gutter;
       if (y < top + gutter) y = rect.bottom + gutter;
       element.style.top = `${Math.max(top + gutter, Math.min(y, top + height - element.offsetHeight - gutter))}px`;

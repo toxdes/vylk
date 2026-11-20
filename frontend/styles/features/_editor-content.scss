@@ -8,7 +8,7 @@
 .preview {
   flex: 1;
   min-height: 0;
-  padding: 1rem var(--editor-content-gutter, 1.125rem);
+  padding: var(--panel-padding) var(--editor-content-gutter, var(--panel-padding));
   border: 0;
   border-radius: 0;
   background: var(--card-bg);
@@ -17,7 +17,7 @@
   font-size: 1rem;
   line-height: 1.65;
   overflow-y: auto;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
 }
 
 .preview {
@@ -85,34 +85,34 @@
 .preview ul,
 .preview ol {
   margin: 0 0 1em;
-  padding-left: 1.5rem;
+  padding-left: 1.5em;
 }
 
 .preview li + li {
-  margin-top: 0.25rem;
+  margin-top: 0.25em;
 }
 
 .preview code {
   padding: 0.12em 0.35em;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   background: color-mix(in srgb, var(--fg) 9%, transparent);
   font-family: var(--mono);
   font-size: 0.875em;
 }
 
 .preview pre {
-  margin: 0 0 1.125rem;
+  margin: 0 0 1.125em;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 0.0625rem solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
 }
 
 .preview pre code {
   display: block;
-  padding: 1rem;
+  padding: 1em;
   overflow-x: auto;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
   background: transparent;
   font-size: 0.8125rem;
   line-height: 1.6;
@@ -120,9 +120,9 @@
 
 .preview blockquote {
   margin: 0 0 1em;
-  padding: 0 0 0 0.75rem;
-  border-left: 3px solid var(--accent);
-  border-radius: 3px;
+  padding: 0 0 0 0.75em;
+  border-left: 0.1875rem solid var(--accent);
+  border-radius: var(--radius-xs);
   color: var(--muted);
 }
 
@@ -132,12 +132,12 @@
 
 .preview a {
   color: var(--accent);
-  text-decoration-thickness: 1px;
+  text-decoration-thickness: 0.0625rem;
   text-underline-offset: 0.15em;
 }
 
 .preview a:hover {
-  text-decoration-thickness: 2px;
+  text-decoration-thickness: 0.125rem;
 }
 
 .preview img {
@@ -146,18 +146,18 @@
 }
 
 .preview hr {
-  margin: 1.5rem 0;
+  margin: 1.5em 0;
   border: 0;
-  border-top: 1px solid var(--border);
+  border-top: 0.0625rem solid var(--border);
 }
 
 .preview table {
   display: block;
   width: 100%;
   margin: 0 0 1em;
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.5em;
   overflow-x: auto;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
   border-collapse: collapse;
   font-size: 0.875rem;
   line-height: 1.45;
@@ -165,115 +165,14 @@
 
 .preview th,
 .preview td {
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--border);
+  padding: 0.5em 0.65em;
+  border: 0.0625rem solid var(--border);
   text-align: left;
 }
 
 .preview th {
   background: var(--surface);
   font-weight: 700;
-}
-
-.offline-snackbar {
-  position: fixed;
-  z-index: 120;
-  top: 4.15rem;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  max-width: calc(100vw - 1.5rem);
-  padding: 0.55rem 0.75rem 0.55rem 1rem;
-  transform: translateX(-50%);
-  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
-  border-radius: 999px;
-  background: var(--card-bg);
-  box-shadow: 0 8px 20px rgb(15 23 42 / 0.16);
-  color: var(--fg);
-  font-size: 0.8125rem;
-  font-weight: 600;
-}
-
-.offline-retry {
-  padding: 0;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 750;
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-
-.offline-retry:disabled {
-  color: var(--muted);
-  text-decoration: none;
-}
-
-.toast-region {
-  position: fixed;
-  z-index: 130;
-  right: 1rem;
-  bottom: max(1rem, env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.5rem;
-  pointer-events: none;
-}
-
-.toast {
-  max-width: min(22rem, calc(100vw - 2rem));
-  padding: 0.65rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--card-bg);
-  box-shadow: 0 8px 20px rgb(15 23 42 / 0.16);
-  color: var(--fg);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  opacity: 0;
-  transform: translateY(0.35rem);
-  transition:
-    opacity 0.18s,
-    transform 0.18s;
-}
-
-.toast.visible {
-  opacity: 1;
-  transform: none;
-}
-
-.toast.warning {
-  border-color: color-mix(in srgb, #b45309 40%, var(--border));
-}
-
-.toast.update {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  pointer-events: auto;
-}
-
-.toast.update span {
-  min-width: 0;
-}
-
-.toast-action {
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  padding: 0.25rem;
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 750;
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-
-.toast-action:disabled {
-  color: var(--muted);
-  text-decoration: none;
 }
 
 /* Interactive Markdown preview: controls never displace rendered content. */
@@ -283,9 +182,9 @@
 }
 
 .interactive-preview-active {
-  --preview-action-size: 1.75rem;
-  --preview-action-gap: 0.125rem;
-  --preview-action-inset: 0.375rem;
+  --preview-action-size: var(--control-height);
+  --preview-action-gap: var(--space-0-5);
+  --preview-action-inset: var(--space-1-5);
   --preview-controls-width: calc(var(--preview-action-size) + var(--preview-action-size));
   --preview-controls-space: calc(var(--preview-action-gap) + var(--preview-action-inset));
   --preview-action-lane: calc(var(--preview-controls-width) + var(--preview-controls-space));
@@ -298,16 +197,15 @@
   min-width: 0;
   margin: 0;
   padding: 0 var(--preview-action-lane) 0 0;
-  border-radius: 6px;
-  outline: 1px solid transparent;
-  outline-offset: -1px;
+  border-radius: var(--radius-field);
+  outline: 0.0625rem solid transparent;
+  outline-offset: -0.0625rem;
   transition:
-    background-color 0.12s,
-    outline-color 0.12s;
+    background-color var(--control-duration) var(--control-ease),
+    outline-color var(--control-duration) var(--control-ease);
 }
 
 .interactive-preview-card:hover {
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
   outline-color: var(--border);
 }
 
@@ -322,7 +220,7 @@
   padding: 0;
   place-items: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-micro);
   background: transparent;
   color: var(--muted);
   cursor: grab;
@@ -332,8 +230,8 @@
   user-select: none;
   -webkit-touch-callout: none;
   transition:
-    color 0.12s,
-    opacity 0.12s;
+    color var(--control-duration) var(--control-ease),
+    opacity var(--control-duration) var(--control-ease);
 }
 
 .interactive-preview-card:is(:hover, :focus-within) > .preview-drag-handle,
@@ -353,13 +251,11 @@
 }
 
 .preview-drag-handle:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.0625rem;
 }
 
 .preview-drag-handle .icon {
-  width: 0.75rem;
-  height: 1.125rem;
   fill: currentcolor;
 }
 
@@ -371,35 +267,29 @@
   display: grid;
   width: var(--preview-action-size);
   height: var(--preview-action-size);
-  padding: 0.35rem;
+  padding: 0;
   place-items: center;
-  border-radius: 5px;
+  border-radius: var(--radius-micro);
   background: transparent;
   color: var(--muted);
   opacity: 0;
   pointer-events: none;
   transition:
-    background-color 0.12s,
-    color 0.12s,
-    opacity 0.12s;
+    background-color var(--control-duration) var(--control-ease),
+    color var(--control-duration) var(--control-ease),
+    opacity var(--control-duration) var(--control-ease);
 }
 
 .preview-edit-button:hover {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--fg);
+  background: transparent;
+  color: var(--accent);
 }
 
 .preview-edit-button:focus-visible {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--fg);
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.preview-edit-button .icon {
-  width: 1rem;
-  height: 1rem;
-  stroke-width: 1.8;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.0625rem;
 }
 
 .interactive-preview-card:is(:hover, :focus-within, .is-selected) > .preview-edit-button {
@@ -433,22 +323,22 @@
 
 .interactive-preview-block-card {
   margin-bottom: 0;
-  padding-block: 0.125rem;
+  padding-block: var(--space-0-5);
 }
 
 .interactive-preview-block-card + .interactive-preview-block-card {
-  margin-top: 0.75rem;
+  margin-top: 0.75em;
 }
 
 .interactive-preview-block-card:not(:first-child):has(
     > .preview-block-content > :is(h1, h2, h3, h4, h5, h6)
   ) {
-  margin-top: 1rem;
+  margin-top: 1em;
 }
 
 .interactive-preview-block-card:has(> .preview-block-content > :is(h1, h2, h3, h4, h5, h6))
   + .interactive-preview-block-card {
-  margin-top: 0.5rem;
+  margin-top: 0.5em;
 }
 
 .interactive-preview-rule-card {
@@ -484,29 +374,29 @@
 }
 
 .interactive-preview-list-item + .interactive-preview-list-item {
-  margin-top: 0.375rem;
+  margin-top: 0.375em;
 }
 
 .interactive-preview-list-item > :is(ul, ol) {
-  margin: 0.5rem 0 0.25rem 1.5rem;
+  margin: 0.5em 0 0.25em 1.5em;
 }
 
 .interactive-preview-list-card {
-  padding-block: 0.125rem;
+  padding-block: var(--space-0-5);
 }
 
 .interactive-preview-active > :is(ul, ol) {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.75em;
 }
 
 .interactive-preview-active > .interactive-preview-block-card + :is(ul, ol) {
-  margin-top: 0.75rem;
+  margin-top: 0.75em;
 }
 
 .preview-list-content {
   display: grid;
   grid-template-columns: minmax(1.5rem, max-content) minmax(0, 1fr);
-  column-gap: 0.25rem;
+  column-gap: 0.25em;
 }
 
 .interactive-preview-list-card.is-task:not(.has-marker) > .preview-list-content {
@@ -526,8 +416,8 @@
 
 .preview-list-marker[data-kind='bullet']::before {
   display: block;
-  width: 0.35rem;
-  height: 0.35rem;
+  width: calc(0.35 * var(--ui-unit));
+  height: calc(0.35 * var(--ui-unit));
   margin: 0.65em auto 0;
   border-radius: 50%;
   background: currentcolor;
@@ -545,21 +435,21 @@
 
 .interactive-preview-block-card[data-preview-drop='before'],
 .interactive-preview-list-item[data-preview-drop='before'] > .interactive-preview-card {
-  box-shadow: inset 0 2px 0 var(--accent);
+  box-shadow: inset 0 0.125rem 0 var(--accent);
 }
 
 .interactive-preview-block-card[data-preview-drop='after'],
 .interactive-preview-list-item[data-preview-drop='after'] > .interactive-preview-card {
-  box-shadow: inset 0 -2px 0 var(--accent);
+  box-shadow: inset 0 -0.125rem 0 var(--accent);
 }
 
 .preview-drag-placeholder {
   display: block !important;
   box-sizing: border-box;
-  min-height: 1.5rem;
+  min-height: var(--control-compact-height);
   margin: 0;
-  border: 1px dashed color-mix(in srgb, var(--accent) 58%, var(--border));
-  border-radius: 6px;
+  border: 0.0625rem dashed color-mix(in srgb, var(--accent) 58%, var(--border));
+  border-radius: var(--radius-field);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   opacity: 0.9;
   pointer-events: none;
@@ -574,13 +464,14 @@
   min-height: 0;
   padding: 0;
   overflow: visible;
+  scrollbar-gutter: auto;
   border: 0;
   background: transparent;
   pointer-events: none;
 }
 
 .preview-drag-ghost {
-  position: fixed;
+  position: absolute;
   z-index: 1;
   box-sizing: border-box;
   margin: 0;
@@ -606,16 +497,16 @@
   cursor: not-allowed !important;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 40em) {
   .preview:not(.interactive-preview-active) {
-    padding-inline: 1rem;
+    padding-inline: var(--panel-padding);
   }
 
   .interactive-preview-active {
-    --preview-action-size: 2.75rem;
-    --preview-action-inset: 0px;
-    --preview-action-tray-left: 0px;
-    --preview-action-tray-top: 0px;
+    --preview-action-size: var(--control-touch-size);
+    --preview-action-inset: 0rem;
+    --preview-action-tray-left: 0rem;
+    --preview-action-tray-top: 0rem;
   }
 
   .interactive-preview-card {
@@ -629,7 +520,7 @@
   }
 
   .interactive-preview-list-item > :is(ul, ol) {
-    margin-left: 1.25rem;
+    margin-left: 1.25em;
   }
 
   .interactive-preview-card.is-selected {
@@ -670,9 +561,9 @@
   .interactive-preview-card.is-selected > .preview-drag-handle::before {
     position: absolute;
     z-index: -1;
-    inset: 5px 0 5px 5px;
-    width: calc(var(--preview-action-size) * 2 - 10px);
-    border: 1px solid var(--border);
+    inset: var(--space-1-5) auto var(--space-1-5) var(--space-1-5);
+    width: calc(2 * (var(--preview-action-size) - var(--space-1-5)));
+    border: 0.0625rem solid var(--border);
     border-radius: var(--radius-micro);
     background: var(--card-bg);
     content: '';

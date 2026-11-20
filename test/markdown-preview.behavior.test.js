@@ -680,7 +680,7 @@ describe('markdown preview policy', () => {
     expect(styleSource).toContain('.editor-source-wrap.is-caret-visible .editor-current-line');
     expect(styleSource).toContain('background:color-mix(in srgb,var(--accent) 6%,transparent)');
     expect(styleSource).toContain(
-      '#note-content{padding-bottom:1rem;scroll-padding-bottom:1rem;caret-color:var(--accent)}',
+      '#note-content{padding-bottom:var(--space-4);scroll-padding-bottom:var(--space-4);caret-color:var(--accent)}',
     );
     expect(styleSource).not.toContain(
       '.editor-source-wrap:focus-within{box-shadow:inset 3px 0 0 var(--accent)}',

@@ -29,7 +29,7 @@ function setup() {
     writeSource: (value, cursor) => writes.push({value, cursor}),
     onFormatted: (options) => notifications.push(options),
   });
-  return {document: dom.window.document, notifications, writes};
+  return {document: dom.window.document, window: dom.window, notifications, writes};
 }
 
 describe('formatting toolbar', () => {
@@ -66,4 +66,17 @@ describe('formatting toolbar', () => {
     expect(picker.classList.contains('hidden')).toBe(true);
     expect(trigger.getAttribute('aria-expanded')).toBe('false');
   });
+});
+
+test('picker placement accounts for equal root scrollbar gutters', () => {
+  const context = setup();
+  const trigger = context.document.querySelector('[data-fmt="heading"]');
+  const picker = context.document.querySelector('#heading-picker');
+  context.document.body.getBoundingClientRect = () => ({left: 10});
+  Object.defineProperty(picker, 'offsetWidth', {value: 100});
+  context.window.innerWidth = 390;
+  picker.style.padding = '8px';
+  trigger.getBoundingClientRect = () => ({left: 380, bottom: 40});
+  trigger.click();
+  expect(picker.style.left).toBe('262px');
 });

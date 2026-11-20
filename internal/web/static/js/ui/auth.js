@@ -190,7 +190,7 @@
         if (['server_instance_changed', 'authentication_superseded'].includes(error.code)) return;
         document.querySelector('#login-error').textContent =
           error.code === 'invalid_credentials'
-            ? 'Wrong passphrase'
+            ? 'Wrong password'
             : error.code === 'login_rate_limited'
               ? 'Too many attempts. Please try again later.'
               : 'Could not sign in. Please try again.';

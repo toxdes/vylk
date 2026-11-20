@@ -31,28 +31,12 @@
     );
 
     const query = (selector) => document.querySelector(selector);
-    const mobileViewport = window.matchMedia('(max-width: 640px)');
-
-    function usePreviewControls() {
-      return panelState === 'preview' || (panelState === 'both' && !mobileViewport.matches);
-    }
-
-    function placeViewControls() {
-      const controls = query('#view-controls');
-      const editorActions = query('#editor-panel .panel-header-actions');
-      const previewActions = query('#preview-view-controls-slot');
-      if (!controls || !editorActions || !previewActions) return;
-      (usePreviewControls() ? previewActions : editorActions).prepend(controls);
-    }
-
     function placeSaveButton() {
       const preferences = getPreferences();
       const saveButton = query('#save-btn');
       const headerSlot = query('#header-save-slot');
       const panelSlot = query('#panel-save-slot');
-      const previewSlot = query('#preview-save-slot');
-      const panelActions = query('#editor-panel .panel-header-actions');
-      if (!saveButton || !headerSlot || !panelSlot || !previewSlot || !panelActions) return;
+      if (!saveButton || !headerSlot || !panelSlot) return;
       const previewOnly = panelState === 'preview';
       saveButton.disabled = previewOnly;
       saveButton.setAttribute('aria-disabled', String(previewOnly));
@@ -60,14 +44,8 @@
         headerSlot.append(saveButton);
         return;
       }
-      (usePreviewControls() ? previewSlot : panelSlot).append(saveButton);
-      if (!usePreviewControls()) panelActions.append(panelSlot);
+      panelSlot.append(saveButton);
     }
-
-    mobileViewport.addEventListener('change', () => {
-      placeViewControls();
-      placeSaveButton();
-    });
 
     function applyRatio() {
       query('#editor-panels').style.setProperty(
@@ -112,7 +90,6 @@
       query('#editor').classList.toggle('zen-mode', state === 'zen');
       query('#editor').classList.toggle('header-hidden', state === 'zen');
       const interactiveModeChanged = onPanelChanged();
-      placeViewControls();
       placeSaveButton();
       document.querySelectorAll('.view-control').forEach((button) => {
         const active =
@@ -149,7 +126,7 @@
       }
     }
 
-    query('#editor-panels').addEventListener('click', (event) => {
+    query('#view-controls').addEventListener('click', (event) => {
       const button = event.target.closest('.view-control');
       if (!button) return;
       const commandID = {

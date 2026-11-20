@@ -4,7 +4,7 @@
   inset: 0;
   z-index: 100;
   display: grid;
-  padding: 1rem;
+  padding: var(--space-3);
   place-items: center;
 }
 
@@ -18,9 +18,9 @@
   position: relative;
   width: min(100%, 28rem);
   max-height: calc(100dvh - 2rem);
-  padding: 1.5rem;
+  padding: var(--panel-padding);
   overflow-y: auto;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
   background: var(--card-bg);
   border: 0;
   border-radius: var(--overlay-radius);
@@ -42,10 +42,11 @@
 
 .modal-heading {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  min-height: var(--control-height);
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.1rem;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
 }
 
 .modal-heading :is(h2, h3) {
@@ -53,35 +54,13 @@
   font-size: 1.125em;
   font-weight: 700;
   letter-spacing: -0.015em;
-  line-height: 1.25;
-}
-
-.modal-close {
-  display: grid;
-  flex: none;
-  width: 2.25rem;
-  height: 2.25rem;
-  padding: 0.5rem;
-  place-items: center;
-  border-radius: var(--radius-action);
-  background: transparent;
-  color: var(--muted);
-}
-
-.modal-close:hover {
-  background: var(--surface);
-  color: var(--fg);
-}
-
-.modal-close .icon {
-  width: 1.25rem;
-  height: 1.25rem;
+  line-height: var(--control-height);
 }
 
 .modal-copy {
-  margin: -0.25rem 0 1.25rem;
+  margin: 0 0 var(--space-4);
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: calc(0.875 * var(--font-size));
   line-height: 1.5;
 }
 
@@ -91,13 +70,16 @@
 
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.5rem;
+  gap: var(--space-1-5);
 }
 
 .modal-actions button {
-  min-height: 2.25rem;
+  flex-shrink: 0;
+  max-width: 100%;
+  min-height: var(--control-height);
 }
 
 @keyframes modal-backdrop-in {
@@ -138,9 +120,9 @@
   backface-visibility: hidden;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 40em) {
   .modal-body {
-    padding: 1.25rem;
+    padding: var(--space-4);
   }
 
   .modal-body--form {

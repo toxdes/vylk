@@ -1713,13 +1713,17 @@
       if (!previewDrag?.active()) selectInteractivePreviewCard(null);
       return;
     }
-    const trayWidth = 88;
-    const trayHeight = 44;
-    // The visible frame is inset 5px inside the touch targets.
-    const frameInset = 5;
-    const gap = 6;
-    const rightEdge = Math.min(panelRect.right - 1, window.innerWidth);
-    const leftEdge = Math.max(panelRect.left + 1, 0);
+    const handle = selected.querySelector('.preview-drag-handle');
+    const edit = selected.querySelector('.preview-edit-button');
+    if (!handle || !edit) return;
+    const handleRect = handle.getBoundingClientRect();
+    const editRect = edit.getBoundingClientRect();
+    const trayWidth = handleRect.width + editRect.width;
+    const trayHeight = Math.max(handleRect.height, editRect.height);
+    const frameInset = parseFloat(getComputedStyle(handle, '::before').left);
+    const gap = frameInset;
+    const rightEdge = Math.min(panelRect.right - panel.clientLeft, window.innerWidth);
+    const leftEdge = Math.max(panelRect.left + panel.clientLeft, 0);
     const beside = cardRect.right + gap - frameInset + trayWidth <= rightEdge;
     const trayLeft = beside
       ? cardRect.right + gap - frameInset
@@ -1759,7 +1763,6 @@
   if (typeof ResizeObserver === 'function') {
     const previewActionObserver = new ResizeObserver(scheduleInteractivePreviewActionPosition);
     previewActionObserver.observe($('#preview-panel'));
-    previewActionObserver.observe($('#preview-panel .panel-header'));
   }
 
   $('#preview').addEventListener('click', (event) => {

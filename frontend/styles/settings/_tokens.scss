@@ -5,35 +5,68 @@
 }
 
 :root {
+  --ui-unit: calc(var(--font-size, 1rem) * 0.8);
+  --space-0-5: calc(0.125 * var(--font-size));
+  --space-1-5: calc(0.375 * var(--font-size));
+  --space-2-5: calc(0.625 * var(--font-size));
+  --space-5: calc(1.25 * var(--font-size));
+  --space-8: calc(2 * var(--font-size));
+  --space-10: calc(2.5 * var(--font-size));
+  --space-16: calc(4 * var(--font-size));
+  --radius-pill: 999rem;
+  --space-12: calc(3 * var(--font-size));
+  --space-1: calc(0.25 * var(--font-size));
+  --space-2: calc(0.5 * var(--font-size));
+  --space-3: calc(0.75 * var(--font-size));
+  --space-4: var(--font-size);
+  --space-6: calc(1.5 * var(--font-size));
+  --icon-size-sm: calc(0.75 * var(--font-size));
+  --icon-size-md: calc(0.875 * var(--font-size));
+  --icon-size-lg: var(--font-size);
+  --icon-stroke-width: 2;
+  --control-padding-inline: var(--space-2);
+  --control-gap: var(--space-1);
+  --panel-padding: var(--space-4);
+  --field-gap: var(--space-2);
+  --group-gap: var(--space-4);
+  --radius-xs: calc(0.125 * var(--font-size));
+  --radius-card: calc(0.5 * var(--font-size));
+  --control-touch-size: max(2.75rem, calc(2.75 * var(--font-size)));
+  --control-height: calc(1.75 * var(--font-size));
+  --settings-control-width: calc(11 * var(--font-size));
+  --control-compact-height: calc(1.5 * var(--font-size));
+  --radius-action: calc(0.375 * var(--font-size));
+  --radius-field: calc(0.375 * var(--font-size));
+  --radius-micro: calc(0.25 * var(--font-size));
+  --control-duration: 200ms;
+  --control-ease: ease;
   --motion-duration: 180ms;
   --motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   --overlay-enter-duration: 180ms;
   --overlay-exit-duration: 140ms;
   --overlay-enter-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --overlay-exit-ease: cubic-bezier(0.4, 0, 1, 1);
-  --overlay-radius: 12px;
-  --overlay-shadow: 0 12px 32px rgb(15 23 42 / 0.2);
+  --overlay-radius: calc(0.75 * var(--font-size));
+  --overlay-shadow: 0 0.75rem 2rem rgb(15 23 42 / 0.2);
   --overlay-backdrop: rgb(15 23 42 / 0.38);
   --bg: #fafafa;
   --fg: #0a4067;
   --muted: #5f6f82;
   --border: #e2e8f0;
   --accent: #ae2448;
-  --accent-hover: #8a1d3a;
+  --accent-hover: color-mix(in srgb, var(--accent) 82%, #000);
   --danger: #dc2626;
-  --danger-hover: #b91c1c;
+  --danger-hover: color-mix(in srgb, var(--danger) 82%, #000);
   --card-bg: #fff;
   --surface: var(--bg);
-  --radius: 8px;
+  --radius: var(--radius-card);
   --font: ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, 'Segoe UI', sans-serif;
   --mono: ui-monospace, sfmono-regular, menlo, monaco, consolas, 'Liberation Mono', monospace;
-  --shadow: 0 1px 3px rgb(0, 0, 0, 0.06);
+  --shadow: 0 0.0625rem 0.1875rem rgb(0, 0, 0, 0.06);
   --border-strong: color-mix(in srgb, var(--border) 72%, var(--fg));
   --surface-hover: color-mix(in srgb, var(--fg) 5%, var(--surface));
   --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--card-bg));
   --focus-ring: color-mix(in srgb, var(--accent) 24%, transparent);
-  --shadow-control: 0 1px 2px color-mix(in srgb, var(--fg) 8%, transparent);
-  --shadow-card: 0 8px 24px color-mix(in srgb, var(--fg) 7%, transparent);
   color-scheme: light;
 }
 
@@ -43,11 +76,26 @@
   --muted: #7c7fa8;
   --border: #1e293b;
   --accent: #f13c66;
-  --accent-hover: #d42e55;
+  --accent-hover: color-mix(in srgb, var(--accent) 82%, #000);
   --danger: #ef4444;
-  --danger-hover: #f87171;
+  --danger-hover: color-mix(in srgb, var(--danger) 82%, #000);
   --card-bg: #1a1d31;
   --surface: var(--bg);
-  --shadow: 0 1px 3px rgb(0, 0, 0, 0.2);
+  --shadow: 0 0.0625rem 0.1875rem rgb(0, 0, 0, 0.2);
   color-scheme: dark;
+}
+
+/* Keep scaled control edges crisp without introducing absolute sizing. */
+@supports (width: round(nearest, 1rem, 0.0625rem)) {
+  :root {
+    --control-height: round(nearest, 1.75 * var(--font-size), 0.0625rem);
+    --control-compact-height: round(nearest, 1.5 * var(--font-size), 0.0625rem);
+    --radius-xs: round(nearest, 0.125 * var(--font-size), 0.0625rem);
+    --radius-card: round(nearest, 0.5 * var(--font-size), 0.0625rem);
+    --radius-action: round(nearest, 0.375 * var(--font-size), 0.0625rem);
+    --radius-field: round(nearest, 0.375 * var(--font-size), 0.0625rem);
+    --radius-micro: round(nearest, 0.25 * var(--font-size), 0.0625rem);
+    --radius: var(--radius-card);
+    --overlay-radius: round(nearest, 0.75 * var(--font-size), 0.0625rem);
+  }
 }

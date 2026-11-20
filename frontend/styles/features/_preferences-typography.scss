@@ -1,0 +1,86 @@
+/* Preferences share one type scale, independent of editor and preview typography. */
+:root {
+  --prefs-title-size: var(--font-size);
+  --prefs-section-size: calc(0.875 * var(--font-size));
+  --prefs-text-size: calc(0.8125 * var(--font-size));
+  --prefs-caption-size: calc(0.75 * var(--font-size));
+}
+
+.prefs-page-body {
+  font-family: var(--font);
+  font-size: var(--prefs-text-size);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.prefs-sidebar-title,
+.prefs-content-header h2,
+.prefs-content-header h3 {
+  font-size: var(--prefs-title-size);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: var(--control-height);
+}
+
+.prefs-content .pref-subsection h3,
+.prefs-content .shortcut-group-title,
+.prefs-content .vault-overview strong {
+  font-size: var(--prefs-section-size);
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.4;
+}
+
+.prefs-page-body :is(.pref-control, .pref-row, .prefs-nav, .about-row, .shortcut-copy strong) {
+  font-size: var(--prefs-text-size);
+  line-height: 1.4;
+}
+
+.prefs-page-body :is(strong, .prefs-nav) {
+  font-weight: 500;
+}
+
+.prefs-page-body :is(small, .font-fetch-toggle, .font-error, .app-version),
+.prefs-content .pref-subsection > p,
+.prefs-content .vault-overview :is(p, .vault-overview-description),
+.prefs-content .vault-secure-context-note,
+.prefs-content .vault-master-methods p,
+.prefs-content .vault-hint,
+.prefs-content .vault-progress,
+.prefs-content .shortcut-recorder-status {
+  font-size: var(--prefs-caption-size);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.prefs-page-body :is(select, button:not(.shortcut-binding), input[type='text']) {
+  font-family: var(--font);
+  font-size: var(--prefs-text-size);
+  font-weight: 400;
+  line-height: 1.25;
+}
+
+.prefs-page-body .font-control .label-input__control {
+  font-family: var(--font);
+  font-size: var(--prefs-text-size);
+  font-variant-ligatures: normal;
+}
+
+.prefs-page-body .font-control .label-input > .label-input__label,
+.prefs-page-body .font-size-control > label {
+  font-size: var(--prefs-text-size);
+  font-weight: 500;
+}
+
+.prefs-page-body .shortcut-binding {
+  font-family: var(--mono);
+  font-size: var(--prefs-caption-size);
+  font-weight: 500;
+}
+
+.prefs-content .vault-option strong,
+.prefs-content .vault-master-method-summary {
+  font-size: var(--prefs-text-size);
+  font-weight: 500;
+  line-height: 1.4;
+}

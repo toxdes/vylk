@@ -1,10 +1,11 @@
 /* Preferences stays over the current screen while its sections share one navigator. */
 .prefs-modal-body {
-  width: min(100%, 68rem);
+  width: min(100%, 64rem);
   height: min(46rem, calc(100dvh - 2rem));
   max-height: calc(100dvh - 2rem);
   padding: 0;
   overflow: hidden;
+  scrollbar-gutter: auto;
 }
 
 .prefs-page-body {
@@ -17,19 +18,22 @@
 
 .prefs-sidebar {
   display: flex;
-  flex: 0 0 14rem;
+  flex: 0 0 calc(12 * var(--font-size));
   flex-direction: column;
-  padding: 1.5rem 1rem;
-  border-right: 1px solid var(--border);
+  padding: 0 var(--space-2);
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+  border-right: 0.0625rem solid var(--border);
   background: var(--surface);
 }
 
 .prefs-sidebar-title {
   display: flex;
+  min-height: var(--control-height);
   align-items: center;
-  margin: 0 0 1.5rem;
-  padding: 0 0.65rem;
-  font-size: 1.15rem;
+  margin: 0 0 var(--space-5);
+  padding: var(--space-2);
+  font-size: calc(1.15 * var(--font-size));
   font-weight: 700;
   letter-spacing: -0.015em;
   line-height: 1.25;
@@ -37,16 +41,16 @@
 
 .prefs-sidebar nav {
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-0-5);
 }
 
 .prefs-nav {
-  min-height: 2.125rem;
-  padding: 0.45rem 0.6rem;
-  border-radius: 6px;
+  min-height: var(--control-height);
+  padding: var(--space-1-5) var(--space-2);
+  border-radius: var(--radius-action);
   background: transparent;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: calc(0.875 * var(--font-size));
   font-weight: 600;
   text-align: left;
 }
@@ -62,30 +66,32 @@
 }
 
 .prefs-content {
-  display: flex;
   flex: 1;
   min-width: 0;
   min-height: 0;
-  flex-direction: column;
-  padding: 1.5rem 1.75rem 2rem;
-  overflow: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
 }
 
 .prefs-content-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-  flex: none;
+  gap: var(--space-3);
+  position: sticky;
+  top: 0;
+  z-index: 2;
   width: 100%;
-  padding-inline: 0.5rem;
-  overflow-y: hidden;
-  scrollbar-gutter: stable;
+  padding: var(--space-2) var(--panel-padding);
+  background: var(--card-bg);
 }
 
-.prefs-content-header .modal-close:focus-visible {
-  outline-offset: -2px;
+.prefs-sidebar-heading .prefs-close {
+  display: none;
+}
+
+.prefs-close:focus-visible {
+  outline-offset: -0.125rem;
 }
 
 .prefs-content-header h2 {
@@ -105,10 +111,7 @@
   box-sizing: border-box;
   min-height: 0;
   width: 100%;
-  padding: 0.5rem 0.5rem 1rem;
-  overflow-y: auto;
-  scroll-padding: 0.5rem;
-  scrollbar-gutter: stable;
+  padding: var(--panel-padding);
 }
 
 .sync-indicator-label {
@@ -135,15 +138,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  min-height: 4.5rem;
-  padding: 1rem 0;
-  border-top: 1px solid var(--border);
-  font-size: 0.9375rem;
+  gap: var(--space-3);
+  min-height: 0;
+  padding: var(--space-2) 0;
+  border-top: 0.0625rem solid var(--border);
+  font-size: calc(0.875 * var(--font-size));
 }
 
 .prefs-section > .pref-control:first-child {
-  padding-top: 0.5rem;
   border-top: 0;
 }
 
@@ -153,22 +155,22 @@
 
 .pref-control > span {
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 
 .pref-control small,
 .pref-row small {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: calc(0.75 * var(--font-size));
   font-weight: 400;
 }
 
 .pref-control select {
-  width: min(13rem, 45%);
-  padding: 0.45rem 0.55rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
+  width: min(var(--settings-control-width), 42%);
+  padding: var(--space-1-5) var(--space-2);
+  border: 0.0625rem solid var(--border-strong);
+  border-radius: var(--radius-action);
   background: var(--card-bg);
   color: var(--fg);
 }
@@ -180,15 +182,15 @@
 .pref-control select:focus {
   border-color: var(--accent);
   outline: 0;
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 0.1875rem var(--focus-ring);
 }
 
 .pref-control input[type='color'] {
-  width: 3rem;
-  height: 2rem;
-  padding: 0.15rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  width: calc(3 * var(--ui-unit));
+  height: calc(2 * var(--ui-unit));
+  padding: var(--space-0-5);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--radius-action);
   background: var(--card-bg);
   cursor: pointer;
 }
@@ -197,21 +199,25 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.5rem;
+  gap: var(--space-1-5);
   flex: 0 0 auto;
+  width: min(var(--settings-control-width), 42%);
 }
 
 .accent-actions select {
-  width: min(13rem, 45vw);
+  flex: 1;
+  min-width: 0;
+  width: 100%;
 }
 
 .prefs-content .pref-row {
-  padding: 0.85rem 0;
+  min-height: 0;
+  padding: var(--space-2) 0;
 }
 
 .prefs-content .pref-row > span {
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-0-5);
 }
 
 .pref-restore-settings {
@@ -223,57 +229,43 @@
   white-space: nowrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 40em) {
   .prefs-modal-body {
-    height: calc(100dvh - 2rem);
+    height: calc(100dvh - calc(2 * var(--ui-unit)));
   }
 
   .prefs-tabs-scroll {
-    margin: 0;
-    padding-bottom: 0.625rem;
+    margin-block-end: var(--space-2);
     overflow: auto hidden;
-    scrollbar-gutter: stable;
-    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
   }
 
   .prefs-sidebar nav {
     display: flex;
-    gap: 0;
+    gap: var(--space-0-5);
     width: max-content;
     min-width: 100%;
-    border-bottom: 1px solid var(--border);
+    padding: var(--space-0-5);
+    border-radius: var(--radius-action);
+    background: var(--surface-hover);
   }
 
   .prefs-nav {
-    flex: 0 0 auto;
-    padding: 0.65rem 1rem;
-    border-bottom: 2px solid transparent;
-    border-radius: 0;
-    background: transparent;
+    flex: 1 0 auto;
+    min-height: var(--control-height);
+    padding: var(--space-1) var(--control-padding-inline);
     text-align: center;
     white-space: nowrap;
   }
 
-  .prefs-nav:hover {
-    background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  .prefs-nav.active {
+    background: var(--card-bg);
     color: var(--fg);
   }
 
-  .prefs-nav.active {
-    border-bottom-color: var(--accent);
-    background: transparent;
-    color: var(--accent);
-  }
-
   .prefs-nav:focus-visible {
-    position: relative;
-    z-index: 1;
-    outline: 2px solid var(--accent);
-    outline-offset: -3px;
-  }
-
-  .prefs-content {
-    padding: 1rem 1rem 1.5rem;
+    outline: 0.125rem solid var(--accent);
+    outline-offset: -0.125rem;
   }
 
   .pref-control {
@@ -294,14 +286,6 @@
   .pref-control input[type='color'] {
     width: 100%;
   }
-}
-
-.toast:has(.toast-action) {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  pointer-events: auto;
 }
 
 select,
@@ -370,30 +354,30 @@ body {
 }
 
 .about-list {
-  border-top: 1px solid var(--border);
+  border-top: 0.0625rem solid var(--border);
 }
 
 .about-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  min-height: 4.25rem;
-  padding: 0.8rem 0;
-  border-bottom: 1px solid var(--border);
+  gap: var(--space-3);
+  min-height: var(--control-height);
+  padding-block: var(--space-2);
+  border-bottom: 0.0625rem solid var(--border);
   color: var(--fg);
   text-decoration: none;
 }
 
 .about-row > span:first-child {
   display: grid;
-  gap: 0.2rem;
+  gap: var(--space-0-5);
   min-width: 0;
 }
 
 .about-row small {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: calc(0.75 * var(--font-size));
   font-weight: 400;
 }
 
@@ -408,8 +392,8 @@ body {
 .about-row:focus-visible {
   position: relative;
   z-index: 1;
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: -0.125rem;
 }
 
 .about-row-static {
@@ -424,75 +408,66 @@ body {
   display: block;
   margin-top: 0;
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: calc(0.875 * var(--font-size));
   line-height: 1;
   white-space: nowrap;
 }
 
-.panel-switch {
-  display: none;
-  width: 1.75rem;
-  height: 1.75rem;
-  padding: 0;
-  place-items: center;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--accent);
-}
-
-.panel-switch:hover {
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  color: var(--accent);
-}
-
-.panel-switch .icon {
-  width: 1rem;
-  height: 1rem;
-  stroke-width: 2;
-}
-
-.panels-single .panel-editor:not(.panel-hidden) .panel-switch,
-.panels-single .panel-preview:not(.panel-hidden) .panel-switch {
-  display: grid;
-}
-
-@media (max-width: 640px) {
+@media (max-width: 40em) {
   .prefs-page-body {
     flex-direction: column;
   }
 
   .prefs-sidebar {
     flex: 0 0 auto;
-    padding: 1rem 1rem 0;
+    padding: 0 var(--panel-padding);
+    overflow: visible;
+    scrollbar-gutter: auto;
     border-right: 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 0.0625rem solid var(--border);
+  }
+
+  .prefs-sidebar-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--control-gap);
+    padding-block: var(--space-2);
   }
 
   .prefs-sidebar-title {
-    margin-bottom: 0.75rem;
+    margin: 0;
     padding: 0;
-    font-size: 1rem;
+  }
+
+  .prefs-sidebar-heading .prefs-close {
+    display: inline-flex;
+  }
+
+  .prefs-content-header .prefs-close {
+    display: none;
   }
 }
 
 .font-control {
   align-items: stretch;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: var(--field-gap);
+  padding-block: var(--space-4);
 }
 
 .font-input-wrap {
   display: grid;
-  gap: 0.3rem;
+  gap: var(--space-1);
   width: 100%;
 }
 
 .font-fetch-toggle {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-1-5);
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: calc(0.75 * var(--font-size));
   line-height: 1.35;
   cursor: default;
 }
@@ -510,26 +485,105 @@ body {
 }
 
 .font-fetch-toggle a:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
 }
 
 .font-error {
   margin: 0;
   color: var(--danger);
-  font-size: 0.75rem;
+  font-size: calc(0.75 * var(--font-size));
   line-height: 1.35;
 }
 
 .font-input-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 10rem;
+  grid-template-columns: minmax(0, 1fr) min(var(--settings-control-width), 42%);
   align-items: end;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
-@media (max-width: 640px) {
+/* One text rail and one control rail keep settings rows aligned. */
+.pref-control > span,
+.pref-row > span {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.pref-control strong,
+.pref-row strong {
+  font-weight: 500;
+}
+
+.pref-control small,
+.pref-row small {
+  line-height: 1.45;
+}
+
+.pref-control select {
+  flex: 0 0 auto;
+  min-height: var(--control-height);
+  padding: var(--space-0-5) var(--control-padding-inline);
+  appearance: auto;
+  background-color: var(--surface-hover);
+  font-family: var(--font);
+  font-size: calc(0.75 * var(--font-size));
+  line-height: 1.5;
+}
+
+.pref-control option {
+  background: var(--card-bg);
+  color: var(--fg);
+}
+
+.font-control .label-input,
+.font-size-control {
+  display: flex;
+  flex-direction: column;
+  gap: var(--field-gap);
+  min-width: 0;
+}
+
+.font-control .label-input .label-input__control + .label-input__label,
+.font-size-control > label {
+  position: static;
+  order: -1;
+  max-width: 100%;
+  padding: 0;
+  transform: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: calc(0.8125 * var(--font-size));
+  line-height: 1.25;
+}
+
+.font-control select {
+  width: 100%;
+  height: var(--control-height);
+  min-height: var(--control-height);
+}
+
+@media (max-width: 40em) {
   .font-input-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) calc(8.5 * var(--font-size));
+  }
+
+  .pref-control select {
+    width: 100%;
+  }
+
+  .pref-row > span {
+    min-width: 0;
+  }
+}
+
+/* Stack font fields when enlarged interface type leaves too little reading space. */
+.font-control {
+  container: font-controls / inline-size;
+}
+
+@container font-controls (width < 22em) {
+  .font-input-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

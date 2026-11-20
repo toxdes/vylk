@@ -21,6 +21,7 @@ export async function useEditorFixture(page) {
     data: {
       ...preferences,
       startView: 'split',
+      fontSize: '1rem',
       reduceMotion: 'system',
       hideSaveButton: false,
       interactivePreview: false,

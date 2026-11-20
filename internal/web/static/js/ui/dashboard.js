@@ -177,7 +177,7 @@
         onPin(pin.dataset.id);
         return;
       }
-      const note = event.target.closest('.note-item');
+      const note = event.target.closest('.note-item-row')?.querySelector('.note-item');
       if (note) onOpen(note.dataset.id);
     });
 
