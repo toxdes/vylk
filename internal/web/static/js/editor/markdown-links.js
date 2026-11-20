@@ -65,6 +65,7 @@
               labelStart: offset + 1,
               labelEnd: offset + end,
               href: token.href,
+              title: token.title,
               safeHref: safeHref(token.href),
             });
         } else if (['strong', 'em', 'del'].includes(token.type) && token.tokens?.length) {

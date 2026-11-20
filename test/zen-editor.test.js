@@ -40,6 +40,214 @@ function createEditor(value) {
   return editor;
 }
 
+test.each([
+  ['````js', '````', ''],
+  ['~~~', '~~~~', ''],
+  ['> ```', '> ```', '> '],
+  ['- ```', '  ```', '  '],
+])(
+  'fence %s keeps code Markdown literal and leaves prose formatted',
+  (opening, closing, indent) => {
+    const text = indent + '**literal** [link](/literal)';
+    const editor = createEditor([opening, text, closing, '**prose**'].join('\n'));
+    const code = editor.lines[1].element;
+    expect(code.textContent).toBe(text);
+    expect(code.querySelector('.zen-md-strong, a')).toBeNull();
+    expect(editor.lines[3].element.querySelector('.zen-md-strong')?.textContent).toBe('prose');
+    const start = opening.length + 1;
+    editor.setSelection(start + indent.length + 2);
+    editor.replaceSelection('X');
+    expect(code.textContent).toBe(indent + '**Xliteral** [link](/literal)');
+    editor.undo();
+    expect(code.textContent).toBe(text);
+  },
+);
+
+test('fences on a continuation line respect the indentation of a list item', () => {
+  const editor = createEditor('10. item\n\n    ```\n    **literal**\n    ```\n\n**prose**');
+  expect(editor.lines[3].element.querySelector('.zen-md-strong')).toBeNull();
+  expect(editor.lines[6].element.querySelector('.zen-md-strong')?.textContent).toBe('prose');
+});
+
+test('changing a fence reparses following lines until fence state converges', () => {
+  const editor = createEditor('``\n**code**\n```\n**after**\n```\nplain');
+  const untouched = editor.lines[5].element.firstChild;
+  editor.setSelection(2);
+  editor.replaceSelection('`');
+  expect(editor.lines[1].element.querySelector('.zen-md-strong')).toBeNull();
+  expect(editor.lines[3].element.querySelector('.zen-md-strong')?.textContent).toBe('after');
+  expect(editor.lines[5].element.firstChild).not.toBe(untouched);
+  editor.undo();
+  expect(editor.lines[1].element.querySelector('.zen-md-strong')?.textContent).toBe('code');
+});
+
+test.each(['insertReplacementText', 'insertFromDictation'])(
+  '%s uses its target range instead of the live caret',
+  (inputType) => {
+    const editor = createEditor('teh [Docs](/docs)');
+    const node = editor.lines[0].element.firstChild;
+    editor.setSelection(editor.length);
+    editor.onBeforeInput({
+      inputType,
+      data: 'the',
+      preventDefault() {},
+      getTargetRanges: () => [
+        {startContainer: node, startOffset: 0, endContainer: node, endOffset: 3},
+      ],
+    });
+    expect(editor.value).toBe('the [Docs](/docs)');
+    editor.undo();
+    expect(editor.value).toBe('teh [Docs](/docs)');
+  },
+);
+
+test('a non-cancelable insertion reconciles the browser edit into the note', () => {
+  const editor = createEditor('word');
+  const node = editor.lines[0].element.firstChild;
+  editor.setSelection(0);
+  editor.onBeforeInput({
+    inputType: 'insertText',
+    data: 'A',
+    cancelable: false,
+    preventDefault() {},
+  });
+  node.data = 'A' + node.data;
+  editor.element.dispatchEvent(
+    new dom.window.InputEvent('input', {inputType: 'insertText', bubbles: true}),
+  );
+  expect(editor.value).toBe('Aword');
+  expect(editor.element.textContent).toBe('Aword');
+  editor.undo();
+  expect(editor.value).toBe('word');
+});
+
+test('a non-cancelable replacement reconciles the target away from the caret', () => {
+  const editor = createEditor('teh [Docs](/docs)');
+  const node = editor.lines[0].element.firstChild;
+  editor.setSelection(editor.length);
+  editor.onBeforeInput({
+    inputType: 'insertReplacementText',
+    data: 'the',
+    cancelable: false,
+    preventDefault() {},
+    getTargetRanges: () => [
+      {startContainer: node, startOffset: 0, endContainer: node, endOffset: 3},
+    ],
+  });
+  node.data = 'the ';
+  editor.element.dispatchEvent(
+    new dom.window.InputEvent('input', {inputType: 'insertReplacementText', bubbles: true}),
+  );
+  expect(editor.value).toBe('the [Docs](/docs)');
+  editor.undo();
+  expect(editor.value).toBe('teh [Docs](/docs)');
+});
+
+test('composition keeps Tab and undo keys available to the input method', () => {
+  const editor = createEditor('word');
+  editor.element.dispatchEvent(new dom.window.CompositionEvent('compositionstart'));
+  for (const options of [{key: 'Tab'}, {key: 'z', ctrlKey: true}]) {
+    const event = new dom.window.KeyboardEvent('keydown', {
+      ...options,
+      bubbles: true,
+      cancelable: true,
+      isComposing: true,
+    });
+    editor.element.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  }
+  expect(editor.value).toBe('word');
+  editor.element.dispatchEvent(new dom.window.CompositionEvent('compositionend'));
+});
+
+test('undoing composition restores the original backward selection', () => {
+  const editor = createEditor('Hello world');
+  editor.setSelection(1, 4, 'backward');
+  editor.element.dispatchEvent(new dom.window.CompositionEvent('compositionstart'));
+  editor.lines[0].element.textContent = 'H語o world';
+  editor.element.dispatchEvent(new dom.window.CompositionEvent('compositionend', {data: '語'}));
+  expect(editor.value).toBe('H語o world');
+  editor.undo();
+  expect(editor.value).toBe('Hello world');
+  expect(editor.selection()).toEqual({start: 1, end: 4, direction: 'backward'});
+});
+
+test('dropped text uses the browser target range even when input data is null', () => {
+  const editor = createEditor('word [Docs](/docs)');
+  const node = editor.lines[0].element.firstChild;
+  editor.setSelection(editor.length);
+  editor.onBeforeInput({
+    inputType: 'insertFromDrop',
+    data: null,
+    dataTransfer: {getData: () => 'new '},
+    preventDefault() {},
+    getTargetRanges: () => [
+      {startContainer: node, startOffset: 0, endContainer: node, endOffset: 0},
+    ],
+  });
+  expect(editor.value).toBe('new word [Docs](/docs)');
+  editor.undo();
+  expect(editor.value).toBe('word [Docs](/docs)');
+});
+
+test('replacement input reads plain text from its data transfer when data is null', () => {
+  const editor = createEditor('teh [Docs](/docs)');
+  const node = editor.lines[0].element.firstChild;
+  editor.setSelection(editor.length);
+  editor.onBeforeInput({
+    inputType: 'insertReplacementText',
+    data: null,
+    dataTransfer: {getData: () => 'the'},
+    preventDefault() {},
+    getTargetRanges: () => [
+      {startContainer: node, startOffset: 0, endContainer: node, endOffset: 3},
+    ],
+  });
+  expect(editor.value).toBe('the [Docs](/docs)');
+});
+
+test('replacement input with unavailable data reconciles the browser edit', () => {
+  const editor = createEditor('teh');
+  const node = editor.lines[0].element.firstChild;
+  editor.setSelection(3);
+  editor.onBeforeInput({
+    inputType: 'insertReplacementText',
+    data: null,
+    cancelable: true,
+    preventDefault() {
+      throw new Error('native replacement must proceed');
+    },
+    getTargetRanges: () => [
+      {startContainer: node, startOffset: 0, endContainer: node, endOffset: 3},
+    ],
+  });
+  node.data = 'the';
+  editor.element.dispatchEvent(
+    new dom.window.InputEvent('input', {inputType: 'insertReplacementText', bubbles: true}),
+  );
+  expect(editor.value).toBe('the');
+  editor.undo();
+  expect(editor.value).toBe('teh');
+});
+
+test('replacement input with a target outside the editor is cancelled', () => {
+  const editor = createEditor('original');
+  const outside = dom.window.document.querySelector('button').firstChild;
+  let prevented = false;
+  editor.onBeforeInput({
+    inputType: 'insertReplacementText',
+    data: 'wrong',
+    preventDefault() {
+      prevented = true;
+    },
+    getTargetRanges: () => [
+      {startContainer: outside, startOffset: 0, endContainer: outside, endOffset: 1},
+    ],
+  });
+  expect(prevented).toBe(true);
+  expect(editor.value).toBe('original');
+});
+
 test.each(['😀', '👩🏽‍💻', 'e\u0301', 'क़'])(
   'deletes %s as one grapheme in either direction',
   (cluster) => {
@@ -277,15 +485,15 @@ test('deleting the final visible nested character removes all empty wrappers', (
   expect(editor.value).toBe('**[~~😀~~](https://example.com)**');
 });
 
-test('hidden inline boundaries unwrap or delete visible text, with one-step undo', () => {
+test('hidden inline boundaries delete adjacent visible text, with one-step undo', () => {
   const editor = createEditor('A **Hello** B');
   editor.setSelection(4);
   editor.deleteBackward(editor.selection());
-  expect(editor.value).toBe('A Hello B');
+  expect(editor.value).toBe('A**Hello** B');
   editor.undo();
   editor.setSelection(9);
   editor.deleteForward(editor.selection());
-  expect(editor.value).toBe('A Hello B');
+  expect(editor.value).toBe('A **Hello**B');
   editor.undo();
   editor.setSelection(11);
   editor.deleteBackward(editor.selection());
@@ -294,6 +502,33 @@ test('hidden inline boundaries unwrap or delete visible text, with one-step undo
   editor.setSelection(2);
   editor.deleteForward(editor.selection());
   expect(editor.value).toBe('A **ello** B');
+});
+
+test('typing a space at the end of bold text keeps the formatting valid', () => {
+  const editor = createEditor('**ab**');
+  editor.setSelection(4);
+  editor.replaceSelection(' ');
+  expect(editor.value).toBe('**ab** ');
+  editor.undo();
+  expect(editor.value).toBe('**ab**');
+});
+
+test('joining two bold lines preserves both visible styles', () => {
+  const editor = createEditor('**a**\n**b**');
+  editor.setSelection(6);
+  editor.deleteBackward(editor.selection());
+  expect(editor.element.querySelector('.zen-md-strong')?.textContent).toBe('ab');
+  editor.undo();
+  expect(editor.value).toBe('**a**\n**b**');
+});
+
+test('joining identically nested styles keeps both styles', () => {
+  const editor = createEditor('***a***\n***b***');
+  editor.setSelection(8);
+  editor.deleteBackward(editor.selection());
+  expect(editor.element.querySelector('.zen-md-em .zen-md-strong')?.textContent).toBe('ab');
+  editor.undo();
+  expect(editor.value).toBe('***a***\n***b***');
 });
 
 test('Enter inside nested formatting closes each retained fragment on its own line', () => {
@@ -354,8 +589,8 @@ test('deleting at hidden link boundaries preserves visible text and stays undoab
   const link = editor.linkAt(4);
   editor.setSelection(link.labelStart);
   editor.deleteBackward(editor.selection());
-  expect(editor.value).toBe('A label B');
-  expect(editor.selectionStart).toBe(2);
+  expect(editor.value).toBe('A[label](https://example.com) B');
+  expect(editor.selectionStart).toBe(1);
   editor.undo();
   editor.setSelection(link.labelStart, link.labelEnd);
   editor.deleteForward(editor.selection());
@@ -364,6 +599,80 @@ test('deleting at hidden link boundaries preserves visible text and stays undoab
   editor.setSelection(link.end);
   editor.deleteBackward(editor.selection());
   expect(editor.value).toBe('A [labe](https://example.com) B');
+});
+
+test('copy preserves formatting and includes a destination for a whole link label', () => {
+  const editor = createEditor('[D**oc**s](/docs "Title")');
+  const copy = () => {
+    let value;
+    editor.onCopy({
+      preventDefault() {},
+      clipboardData: {
+        setData(_type, text) {
+          value = text;
+        },
+      },
+    });
+    return value;
+  };
+  editor.setSelection(4, 6);
+  expect(copy()).toBe('**oc**');
+  const link = editor.linkAt(4);
+  editor.setSelection(link.labelStart, link.labelEnd);
+  expect(copy()).toBe('[D**oc**s](/docs "Title")');
+});
+
+test('cutting a backwards partial link selection preserves its clipboard text and undo selection', () => {
+  const editor = createEditor('[D**oc**s](/docs)');
+  editor.setSelection(4, 6, 'backward');
+  let copied;
+  editor.onCut({
+    preventDefault() {},
+    clipboardData: {
+      setData(_type, text) {
+        copied = text;
+      },
+    },
+  });
+  expect(copied).toBe('**oc**');
+  expect(editor.value).toBe('[Ds](/docs)');
+  editor.undo();
+  expect(editor.value).toBe('[D**oc**s](/docs)');
+  expect(editor.selection()).toEqual({start: 4, end: 6, direction: 'backward'});
+});
+
+test('pasting a URL over selected formatted text makes a link in one undo step', () => {
+  const editor = createEditor('**Docs** here');
+  editor.setSelection(2, 6, 'backward');
+  editor.onPaste({preventDefault() {}, clipboardData: {getData: () => 'https://example.com'}});
+  expect(editor.element.querySelector('a .zen-md-strong')?.textContent).toBe('Docs');
+  expect(editor.element.querySelector('a')?.getAttribute('href')).toBe('https://example.com');
+  editor.undo();
+  expect(editor.value).toBe('**Docs** here');
+  expect(editor.selection()).toEqual({start: 2, end: 6, direction: 'backward'});
+});
+
+test('paste as plain text replaces the selection with the URL', () => {
+  const editor = createEditor('Docs');
+  editor.setSelection(0, 4);
+  editor.onKeyDown({key: 'v', ctrlKey: true, shiftKey: true});
+  editor.onPaste({preventDefault() {}, clipboardData: {getData: () => 'https://example.com'}});
+  expect(editor.value).toBe('https://example.com');
+});
+
+test('pasting a URL into an inline code selection keeps it as code', () => {
+  const editor = createEditor('`Docs`');
+  editor.setSelection(1, 5);
+  editor.onPaste({preventDefault() {}, clipboardData: {getData: () => 'https://example.com'}});
+  expect(editor.element.querySelector('.zen-md-code')?.textContent).toBe('https://example.com');
+  expect(editor.element.querySelector('a')).toBeNull();
+});
+
+test('HTML-only clipboard data leaves the selected text intact', () => {
+  const editor = createEditor('Docs');
+  editor.setSelection(0, 4);
+  editor.onPaste({preventDefault() {}, clipboardData: {types: ['text/html'], getData: () => ''}});
+  expect(editor.value).toBe('Docs');
 });
 
 test.each(['delete', 'type', 'cut'])(

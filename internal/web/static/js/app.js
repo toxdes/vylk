@@ -306,6 +306,7 @@
   }
 
   function showLoginScreen() {
+    editorSource.resetZenSession();
     const blocked = Boolean(vaultSession.requiresSecureContext());
     $('#login-credentials').hidden = blocked;
     $('#login-secure-context-notice').hidden = !blocked;
@@ -489,6 +490,10 @@
     apiClient,
     offlineStore,
     onBootstrap: (config) => datasetSwitch.inspect(config),
+    onLock: () => {
+      zenToolbar?.hide();
+      editorSource.resetZenSession();
+    },
   });
   function assertActiveDataset() {
     if (datasetChangePaused)
@@ -1391,11 +1396,14 @@
     onExecuteCommand: (commandID) => executeShortcutCommand(commandID, {source: 'button'}),
     onPanelChanged: () => {
       zenToolbar.hide();
+      if (panelController.state() === 'zen' && panelController.zenView() === 'editor')
+        editorSource.resumeZenWriting();
       return syncInteractivePreviewMode();
     },
     renderPreview: () => requestPreviewRender({announceBusy: true}),
     scheduleCaret: scheduleEditorCaretCue,
     schedulePreviewCheck,
+    suspendZenWriting: editorSource.suspendZenWriting,
     updateZenOverlays,
     window,
   });

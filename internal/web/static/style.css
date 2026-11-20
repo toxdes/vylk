@@ -4601,6 +4601,7 @@ header h1 {
 
 .zen-selection-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.125rem;
   padding: 0.25rem;
 }
@@ -4624,6 +4625,8 @@ header h1 {
   color: var(--fg);
 }
 
+.zen-selection-toolbar button[aria-pressed='true'],
+.zen-selection-toolbar button[aria-pressed='mixed'],
 .zen-selection-toolbar button:hover,
 .zen-link-popup button:hover {
   background: var(--surface);
@@ -4643,6 +4646,7 @@ header h1 {
 
 .zen-link-popup {
   width: 20rem;
+  overflow-y: auto;
 }
 
 .zen-link-fields {

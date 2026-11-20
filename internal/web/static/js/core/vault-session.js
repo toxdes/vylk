@@ -1,7 +1,7 @@
 (function (root) {
   'use strict';
 
-  function create({apiClient, offlineStore, onBootstrap = async () => {}}) {
+  function create({apiClient, offlineStore, onBootstrap = async () => {}, onLock = () => {}}) {
     const cryptography = root.VylkVaultCrypto;
     let config = null;
     let rootKey = null;
@@ -235,6 +235,7 @@
       rootKey = null;
       keys = null;
       offlineStore.lockVaultLocal();
+      onLock();
     }
 
     async function decryptWire(note) {

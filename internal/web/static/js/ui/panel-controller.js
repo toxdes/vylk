@@ -18,6 +18,7 @@
     renderPreview,
     scheduleCaret,
     schedulePreviewCheck,
+    suspendZenWriting,
     updateZenOverlays,
     window,
   }) {
@@ -85,6 +86,7 @@
     function setState(state, {focus = false} = {}) {
       cancelDrag();
       const wasZen = panelState === 'zen';
+      if (wasZen && state === 'zen' && zenView === 'preview') suspendZenWriting();
       if (wasZen && state !== 'zen') activateZen(false);
       if (state === 'zen' && !wasZen) {
         zenReturnState = panelState === 'preview' ? 'editor' : panelState;

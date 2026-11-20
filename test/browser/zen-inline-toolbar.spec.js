@@ -107,6 +107,50 @@ test('native Select All deletes and replaces the entire document and stays undoa
   expect(await page.evaluate(() => window.__zen.value)).toBe(source);
 });
 
+test('link label boundaries delete adjacent characters and split retains the destination', async ({
+  page,
+}) => {
+  await fixture(page, 'x[Docs](/docs)y');
+  await select(page, 2);
+  await page.keyboard.press('Backspace');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('[Docs](/docs)y');
+  await page.keyboard.press('Control+z');
+  await select(page, 4);
+  await page.keyboard.press('Enter');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('x[Do](/docs)\n[cs](/docs)y');
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('x[Docs](/docs)y');
+});
+
+test('undo restores a backwards selection after bolding part of a link', async ({page}) => {
+  await fixture(page, '[Docs](/docs)');
+  await select(page, 2, 4, 'backward');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => window.__zen.selection())).toMatchObject({
+    start: 2,
+    end: 4,
+    direction: 'backward',
+  });
+  await page.keyboard.press('Control+Shift+z');
+  expect(await page.evaluate(() => window.__zen.selection())).toMatchObject({
+    start: 4,
+    end: 6,
+    direction: 'backward',
+  });
+});
+
+test('undo groups continuous typing and starts a new group after navigation', async ({page}) => {
+  await fixture(page, '');
+  await page.keyboard.type('hello');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('!');
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('hello');
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('');
+});
+
 test('real formatting shortcuts toggle mixed bold and italic uniformly', async ({page}) => {
   await fixture(page, 'foo bar');
   await select(page, 4, 7);
@@ -162,6 +206,204 @@ test('selection popup formats, undoes, edits URLs and leaves the label intact', 
   await page.getByRole('textbox', {name: 'Link URL'}).fill('');
   await page.getByRole('button', {name: 'Apply link', exact: true}).click();
   expect(await page.evaluate(() => window.__zen.value)).toBe('Hello world');
+});
+
+test('empty links remain visible while complete links render', async ({page}) => {
+  for (const source of ['[]()', '[Docs]()', '[](/docs)', '[ ](/docs)', '[Docs](/docs']) {
+    await fixture(page, source);
+    await expect(page.locator('.zen-md-link')).toHaveCount(0);
+    await expect(page.locator('#zen-source-editor')).toHaveText(source);
+    expect(await page.evaluate(() => window.__zen.value)).toBe(source);
+  }
+});
+
+for (const [marker, content, kind] of [
+  ['**', 'two words', 'strong'],
+  ['*', 'italic', 'em'],
+  ['~~', 'strike', 'strike'],
+  ['`', '[x](/url)', 'code'],
+]) {
+  test(`typing within pretyped ${kind} delimiters keeps the caret inside until exit`, async ({
+    page,
+  }) => {
+    const source = 'Say ' + marker.repeat(2);
+    await fixture(page, source);
+    await select(page, source.length);
+    for (let index = 0; index < marker.length; index++) await page.keyboard.press('ArrowLeft');
+    await page.keyboard.type(content);
+    const editor = page.locator('#zen-source-editor');
+    expect(await editor.innerText()).toBe('Say ' + marker + content + marker);
+    for (let index = 0; index < marker.length; index++) await page.keyboard.press('ArrowRight');
+    await expect(editor.locator('.zen-md-' + kind)).toHaveText(content);
+    await page.keyboard.type('!');
+    expect(await page.evaluate(() => window.__zen.value)).toBe(
+      'Say ' + marker + content + marker + '!',
+    );
+  });
+}
+
+test('keyboard toolbar announces mixed styles and restores a backward selection', async ({
+  page,
+}) => {
+  await fixture(page, '**bold** plain');
+  await select(page, 2, 13, 'backward');
+  const toolbar = page.getByRole('toolbar', {name: 'Format selected text'});
+  await expect(toolbar.getByRole('button', {name: 'Bold', exact: true})).toHaveAttribute(
+    'aria-pressed',
+    'mixed',
+  );
+  await page.keyboard.press('Alt+F10');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#zen-source-editor')).toBeFocused();
+  expect(await page.evaluate(() => window.__zen.selection())).toMatchObject({
+    start: 2,
+    end: 13,
+    direction: 'backward',
+  });
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('#zen-source-editor')).not.toBeFocused();
+});
+
+test('nested formatting stays visible until the caret exits the outer pair', async ({page}) => {
+  await fixture(page, 'Say ****');
+  await select(page, 8);
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('one __');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('two');
+  const editor = page.locator('#zen-source-editor');
+  expect(await editor.innerText()).toBe('Say **one _two_**');
+  for (let index = 0; index < 3; index++) await page.keyboard.press('ArrowRight');
+  await expect(editor.locator('.zen-md-strong .zen-md-em')).toHaveText('two');
+  await page.keyboard.type('!');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('Say **one _two_**!');
+});
+
+test('touch toolbar applies bold to a partial link label', async ({browser}) => {
+  const page = await browser.newPage({
+    hasTouch: true,
+    isMobile: true,
+    viewport: {width: 390, height: 650},
+  });
+  try {
+    await fixture(page, '[Docs](/docs)');
+    await select(page, 2, 4, 'backward');
+    await page.getByRole('button', {name: 'Bold', exact: true}).tap();
+    await expect(page.locator('.zen-md-link .zen-md-strong')).toHaveText('oc');
+    await page.getByRole('button', {name: 'Edit link', exact: true}).tap();
+    await expect(page.getByRole('textbox', {name: 'Link URL'})).toBeFocused();
+    await page.setViewportSize({width: 390, height: 340});
+    const popup = page.getByRole('dialog', {name: 'Edit link'});
+    const bounds = await popup.boundingBox();
+    expect(bounds.y + bounds.height).toBeLessThan(340);
+    await page.locator('#zen-source-editor').tap({position: {x: 25, y: 100}});
+    await expect(popup).toBeHidden();
+    expect(await page.evaluate(() => window.__zen.value)).toBe('[D**oc**s](/docs)');
+  } finally {
+    await page.close();
+  }
+});
+
+test('bold at a caret applies to typed text until toggled off', async ({page}) => {
+  await fixture(page, 'Hello ');
+  await select(page, 6);
+  await page.keyboard.press('Control+b');
+  await expect(page.getByRole('button', {name: 'Bold', exact: true})).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.keyboard.type('world');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('!');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('Hello **world**!');
+});
+
+test('pending bold can be toggled inside a link', async ({page}) => {
+  await fixture(page, '[Docs](/docs)');
+  await select(page, 3);
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('X');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('Y');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('[Do**X**Ycs](/docs)');
+});
+
+test('pending bold handles spaces between words', async ({page}) => {
+  await fixture(page, '');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('hello world');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('**hello world**');
+});
+
+test('pending bold remains enabled after a leading space', async ({page}) => {
+  await fixture(page, '');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type(' hello');
+  expect(await page.evaluate(() => window.__zen.value)).toBe(' **hello**');
+});
+
+test('bold and italic at a caret combine and toggle independently', async ({page}) => {
+  await fixture(page, '');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.press('Control+i');
+  await page.keyboard.type('word');
+  const marks = await page.locator('.zen-md-strong .zen-md-em, .zen-md-em .zen-md-strong').count();
+  expect(marks).toBe(1);
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('x');
+  await expect(page.locator('.zen-md-em')).toContainText('x');
+});
+
+test('pending bold includes punctuation', async ({page}) => {
+  await fixture(page, '');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('Hi!');
+  await expect(page.locator('.zen-md-strong')).toHaveText('Hi!');
+});
+
+test('pending bold applies when typing punctuation first', async ({page}) => {
+  await fixture(page, '');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('!hello');
+  await expect(page.locator('.zen-md-strong')).toHaveText('!hello');
+});
+
+test('pending bold preserves literal asterisks while typing', async ({page}) => {
+  await fixture(page, '');
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('a*b');
+  await expect(page.locator('.zen-md-strong')).toHaveText('a*b');
+  await page.evaluate(() => window.__zen.setValue(''));
+  await select(page, 0);
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('*a');
+  await expect(page.locator('.zen-md-strong')).toHaveText('*a');
+});
+
+test('unsupported punctuation at a bold boundary preserves typing order', async ({page}) => {
+  await fixture(page, 'x**a**y');
+  await select(page, 4);
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('*b');
+  expect(await page.locator('#zen-source-editor').innerText()).toBe('xa*by');
+  await expect(
+    page.getByText('Formatting ended here. The typed text was preserved.'),
+  ).toBeVisible();
+});
+
+test('caret movement clears pending formatting and undo restores the prior text', async ({
+  page,
+}) => {
+  await fixture(page, 'ab');
+  await select(page, 2);
+  await page.keyboard.press('Control+b');
+  await page.keyboard.type('x');
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('ab');
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.type('y');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('ayb');
 });
 
 test('typing a complete link renders it, and editing adjacent text keeps offsets correct', async ({
@@ -261,6 +503,94 @@ test('native IME replacement across hidden formatting retains the unselected pre
     expect(await page.locator('#zen-source-editor').innerText()).toBe('He語rld');
     await page.keyboard.press('Control+z');
     expect(await page.evaluate(() => window.__zen.value)).toBe('**Hello** world');
+  } finally {
+    await input.detach();
+  }
+});
+
+test('dragging selected text past a link moves it once and remains undoable', async ({page}) => {
+  await fixture(page, 'word [Docs](/docs) tail');
+  await select(page, 0, 5);
+  const positions = await page.evaluate(() => {
+    const line = window.__zen.lines[0].element;
+    const first = line.firstChild;
+    const last = line.lastChild;
+    const range = document.createRange();
+    range.setStart(first, 1);
+    range.setEnd(first, 3);
+    const from = range.getBoundingClientRect();
+    range.setStart(last, last.length);
+    range.collapse(true);
+    const to = range.getBoundingClientRect();
+    return {
+      from: {x: from.x + from.width / 2, y: from.y + from.height / 2},
+      to: {x: to.x, y: to.y + to.height / 2},
+    };
+  });
+  await page.mouse.move(positions.from.x, positions.from.y);
+  await page.mouse.down();
+  await page.mouse.move(positions.to.x, positions.to.y, {steps: 12});
+  await page.mouse.up();
+  expect(await page.evaluate(() => window.__zen.value)).toBe('[Docs](/docs) tailword ');
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('word [Docs](/docs) tail');
+  await page.keyboard.press('Control+Shift+z');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('[Docs](/docs) tailword ');
+});
+
+test('dragging bold text keeps its formatting and surrounding link', async ({page}) => {
+  await fixture(page, '**word** [Docs](/docs) tail');
+  await select(page, 2, 6);
+  const positions = await page.evaluate(() => {
+    const line = window.__zen.lines[0].element;
+    const source = line.querySelector('.zen-md-strong').firstChild;
+    const target = line.lastChild;
+    const range = document.createRange();
+    range.setStart(source, 1);
+    range.setEnd(source, 3);
+    const from = range.getBoundingClientRect();
+    range.setStart(target, target.length);
+    range.collapse(true);
+    const to = range.getBoundingClientRect();
+    return {
+      from: {x: from.x + from.width / 2, y: from.y + from.height / 2},
+      to: {x: to.x, y: to.y + to.height / 2},
+    };
+  });
+  await page.mouse.move(positions.from.x, positions.from.y);
+  await page.mouse.down();
+  await page.mouse.move(positions.to.x, positions.to.y, {steps: 12});
+  await page.mouse.up();
+  expect(await page.evaluate(() => window.__zen.value)).toBe(' [Docs](/docs) tail**word**');
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('**word** [Docs](/docs) tail');
+});
+
+test('IME input inherits pending bold formatting', async ({page}) => {
+  await fixture(page, 'a');
+  await select(page, 1);
+  await page.keyboard.press('Control+b');
+  const input = await page.context().newCDPSession(page);
+  try {
+    await input.send('Input.imeSetComposition', {text: '語', selectionStart: 1, selectionEnd: 1});
+    await input.send('Input.insertText', {text: '語'});
+    expect(await page.evaluate(() => window.__zen.value)).toBe('a**語**');
+    await page.keyboard.press('Control+z');
+    expect(await page.evaluate(() => window.__zen.value)).toBe('a');
+  } finally {
+    await input.detach();
+  }
+});
+
+test('IME input inherits pending bold on an empty line', async ({page}) => {
+  await fixture(page, '');
+  await select(page, 0);
+  await page.keyboard.press('Control+b');
+  const input = await page.context().newCDPSession(page);
+  try {
+    await input.send('Input.imeSetComposition', {text: '語', selectionStart: 1, selectionEnd: 1});
+    await input.send('Input.insertText', {text: '語'});
+    expect(await page.evaluate(() => window.__zen.value)).toBe('**語**');
   } finally {
     await input.detach();
   }

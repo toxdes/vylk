@@ -296,6 +296,7 @@ globalThis.__vylkTestHooks = {
   },
   markDirty,
   showNoteInEditor,
+  lockVault: () => vaultSession.lock(),
   updatePreview,
   setPanelState,
   executeShortcutCommand,

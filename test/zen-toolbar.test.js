@@ -414,6 +414,39 @@ test('link popup preserves selection, validates URLs, supports editing and remov
   expect(editor.value).toBe('[Hello](/relative) world');
 });
 
+test('editing a link preserves its title and its formatted label', () => {
+  const {editor, window, document} = setup('[**Docs**](/docs "Title")');
+  editor.setSelection(5);
+  toolbar.format('link');
+  document.querySelector('#zen-link-url').value = '/updated';
+  document
+    .querySelector('#zen-link-popup')
+    .dispatchEvent(new window.Event('submit', {cancelable: true, bubbles: true}));
+  expect(editor.value).toBe('[**Docs**](/updated "Title")');
+});
+
+test('undo and redo restore the direction and text of a formatted link selection', () => {
+  const {editor, window} = setup('[Docs](/docs)');
+  selectVisible(editor, window, 1, 3, 'backward');
+  toolbar.format('bold');
+  expect(editor.value).toBe('[D**oc**s](/docs)');
+  editor.undo();
+  expect(editor.value).toBe('[Docs](/docs)');
+  expect(editor.selection()).toEqual({start: 2, end: 4, direction: 'backward'});
+  editor.redo();
+  expect(editor.value).toBe('[D**oc**s](/docs)');
+  expect(editor.selection()).toEqual({start: 4, end: 6, direction: 'backward'});
+});
+
+test('inline code toggles inside a bold link without changing its destination', () => {
+  const {editor, window} = setup('[**Docs**](/docs)');
+  selectVisible(editor, window, 2, 4);
+  toolbar.format('code');
+  expect(editor.value).toBe('[**Do`cs`**](/docs)');
+  toolbar.format('code');
+  expect(editor.value).toBe('[**Docs**](/docs)');
+});
+
 test('link popup has one icon action, blank creation is a no-op, and click-away cancels', () => {
   const {editor, window, document} = setup();
   toolbar.format('link');
@@ -525,6 +558,20 @@ test('Escape cancels the popup before the app handler and restores backward sele
   expect(document.activeElement).toBe(editor.element);
   expect(editor.selection()).toMatchObject({start: 0, end: 5, direction: 'backward'});
   expect(editor.value).toBe('Hello world');
+});
+
+test('Escape during composition does not dismiss the link popup', () => {
+  const {window, document} = setup();
+  toolbar.format('link');
+  const event = new window.KeyboardEvent('keydown', {
+    key: 'Escape',
+    bubbles: true,
+    cancelable: true,
+    isComposing: true,
+  });
+  document.querySelector('input').dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(false);
+  expect(document.querySelector('#zen-link-popup').hidden).toBe(false);
 });
 
 test('a stale URL popup cannot edit a replaced note', () => {

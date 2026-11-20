@@ -21,6 +21,7 @@
     for (const [action, label, icon] of actions) {
       const button = document.createElement('button');
       button.type = 'button';
+      button.tabIndex = -1;
       button.dataset.zenFormat = action;
       button.setAttribute('aria-label', label);
       button.title = label;
@@ -52,6 +53,7 @@
     let anchor = null;
     let frame = null;
     let dismissed = null;
+    let toolbarSelection = null;
 
     function available() {
       const editor = getEditor();
@@ -67,6 +69,7 @@
     function hide() {
       toolbar.hidden = popup.hidden = true;
       saved = anchor = null;
+      toolbarSelection = null;
       if (frame !== null) window.cancelAnimationFrame(frame);
       frame = null;
     }
@@ -78,6 +81,8 @@
       const width = viewport?.width || window.innerWidth;
       const height = viewport?.height || window.innerHeight;
       const gutter = 8;
+      element.style.maxWidth = `${Math.max(0, width - gutter * 2)}px`;
+      element.style.maxHeight = `${Math.max(0, height - gutter * 2)}px`;
       element.style.left = `${Math.max(left + gutter, Math.min(rect.left + rect.width / 2 - element.offsetWidth / 2, left + width - element.offsetWidth - gutter))}px`;
       let y = rect.top - element.offsetHeight - gutter;
       if (y < top + gutter) y = rect.bottom + gutter;
@@ -102,6 +107,11 @@
         return hide();
       const offsets = editor.selection();
       if (
+        editor.pendingFormats &&
+        (offsets.start !== offsets.end || offsets.start !== editor.pendingFormats.offset)
+      )
+        editor.pendingFormats = null;
+      if (
         dismissed?.editor === editor &&
         dismissed.revision === editor.documentRevision &&
         dismissed.start === offsets.start &&
@@ -110,7 +120,7 @@
         return;
       dismissed = null;
       const link = selectedLink(editor, offsets);
-      if (selection.isCollapsed && !link) return hide();
+      if (selection.isCollapsed && !link && !editor.pendingFormats) return hide();
       const range = selection.getRangeAt(0);
       const rects = range.getClientRects();
       const rect = offsets.direction === 'backward' ? rects[0] : rects[rects.length - 1];
@@ -124,8 +134,12 @@
       )
         return hide();
       toolbar.hidden = false;
+      const states = editor.inlineFormatStates(offsets.start, offsets.end);
       for (const button of toolbar.querySelectorAll('button')) {
-        button.disabled = selection.isCollapsed && button.dataset.zenFormat !== 'link';
+        const kind = kinds[button.dataset.zenFormat];
+        button.disabled = selection.isCollapsed && !kind && button.dataset.zenFormat !== 'link';
+        const stateKind = button.dataset.zenFormat === 'code' ? 'codespan' : kind;
+        if (stateKind) button.setAttribute('aria-pressed', String(states[stateKind] ?? false));
         if (button.dataset.zenFormat === 'link') {
           button.disabled = !editor.canLinkSelection(offsets.start, offsets.end);
           button.setAttribute('aria-label', link ? 'Edit link' : 'Link');
@@ -176,12 +190,24 @@
     }
 
     function format(type) {
+      const focused = toolbarSelection;
+      if (focused && document.activeElement?.closest('.zen-selection-toolbar')) {
+        if (available() !== focused.editor || focused.editor.documentRevision !== focused.revision)
+          return hide();
+        restore(focused.editor, focused.selection);
+      }
       if (type === 'link') return openLink();
       const editor = available();
       const kind = kinds[type];
       if (!editor || (!kind && type !== 'code')) return;
       const {start, end, direction} = editor.selection();
-      if (start === end) return;
+      if (start === end) {
+        if (kind) {
+          editor.togglePendingFormat(kind);
+          schedule();
+        }
+        return;
+      }
       const change =
         type === 'code'
           ? codeChange(editor, start, end)
@@ -198,6 +224,7 @@
         inputType: 'insertReplacementText',
       });
       restore(editor, {...change.selection, direction});
+      if (editor.history.length) editor.history.at(-1).selectionAfter = editor.selection();
       schedule();
     }
 
@@ -285,6 +312,7 @@
         return hide();
       const unlink = !input.value.trim();
       const href = global.VylkMarkdownLinks.inputHref(input.value);
+      if (state.link && input.value === state.link.href) return closeLink();
       if (!unlink && !href) {
         error.textContent = 'Enter a valid web, email, phone, or relative URL.';
         error.hidden = false;
@@ -298,13 +326,25 @@
       const start = link?.start ?? selection.start;
       const end = link?.end ?? selection.end;
       const label = link ? value.slice(link.labelStart, link.labelEnd) : value.slice(start, end);
+      const title = link
+        ? value
+            .slice(link.labelEnd, link.end)
+            .match(/\s+(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\((?:\\.|[^)\\])*\))\s*\)$/s)?.[0]
+            .slice(0, -1) || ''
+        : '';
+      if (!unlink && link?.title && !title) {
+        onUnsupported('Edit this link in the Markdown editor to preserve its title.');
+        return;
+      }
       const insertion = unlink
         ? label
-        : `[${label}](${global.VylkMarkdownLinks.destination(href)})`;
+        : `[${label}](${global.VylkMarkdownLinks.destination(href)}${title})`;
       hide();
       if (insertion !== value.slice(start, end))
         editor.replaceRange(start, end, insertion, {inputType: 'insertReplacementText'});
       restore(editor, {start: start + insertion.length, end: start + insertion.length});
+      if (insertion !== value.slice(start, end) && editor.history.length)
+        editor.history.at(-1).selectionAfter = editor.selection();
     }
 
     toolbar.addEventListener('pointerdown', (event) => event.preventDefault(), {signal});
@@ -361,6 +401,16 @@
     );
     document.addEventListener('selectionchange', schedule, {signal});
     document.addEventListener(
+      'zenformatunsupported',
+      () => onUnsupported('Formatting ended here. The typed text was preserved.'),
+      {signal},
+    );
+    document.addEventListener(
+      'zendropunsupported',
+      () => onUnsupported('This selection cannot be moved to that position.'),
+      {signal},
+    );
+    document.addEventListener(
       'pointerdown',
       (event) => {
         if (!toolbar.contains(event.target) && !popup.contains(event.target)) {
@@ -375,7 +425,15 @@
     document.addEventListener(
       'keydown',
       (event) => {
+        if (event.isComposing || event.keyCode === 229 || getEditor()?.composing) return;
         if (!toolbar.hidden && event.altKey && event.key === 'F10') {
+          const editor = available();
+          if (!editor) return;
+          toolbarSelection = {
+            editor,
+            revision: editor.documentRevision,
+            selection: editor.selection(),
+          };
           event.preventDefault();
           event.stopImmediatePropagation();
           toolbar.querySelector('button:not(:disabled)')?.focus();
@@ -385,10 +443,13 @@
           if (!popup.hidden) closeLink();
           else {
             const editor = available();
-            if (editor)
-              dismissed = {...editor.selection(), editor, revision: editor.documentRevision};
+            const selection =
+              toolbarSelection?.editor === editor
+                ? toolbarSelection.selection
+                : editor?.selection();
+            if (editor) dismissed = {...selection, editor, revision: editor.documentRevision};
             hide();
-            editor?.focus();
+            if (editor) restore(editor, selection);
           }
         } else if (!popup.hidden && popup.contains(event.target) && event.key !== 'Tab') {
           event.stopPropagation();
