@@ -118,7 +118,7 @@
 
     $('#prefs-btn').addEventListener('click', open);
     $('#editor-prefs-btn').addEventListener('click', open);
-    $('#prefs-close').addEventListener('click', close);
+    $$('.prefs-close').forEach((button) => button.addEventListener('click', close));
     $('#prefs-modal .modal-backdrop').addEventListener('click', close);
     $('#prefs-restore-defaults').addEventListener('click', () =>
       openModal($('#restore-defaults-modal')),
@@ -166,9 +166,13 @@
     });
     appearance.bindFontControls((key, value) => void save(key, value));
 
+    const sectionScrollPositions = new WeakMap();
     $$('.prefs-nav').forEach((button) =>
       button.addEventListener('click', () => {
         const section = button.dataset.prefSection;
+        const content = $('.prefs-content');
+        const previous = $('.prefs-section.active');
+        if (previous) sectionScrollPositions.set(previous, content.scrollTop);
         $$('.prefs-nav').forEach((item) => {
           const active = item === button;
           item.classList.toggle('active', active);
@@ -179,9 +183,10 @@
           const active = panel.dataset.prefPanel === section;
           panel.classList.toggle('active', active);
           panel.hidden = !active;
-          if (active && section === 'encryption') panel.scrollTop = 0;
         });
         $('#prefs-title').textContent = button.textContent;
+        const current = $('.prefs-section.active');
+        content.scrollTop = section === 'encryption' ? 0 : sectionScrollPositions.get(current) || 0;
         if (!suppressSectionRoute) closeEncryptionDetail();
         if (!suppressSectionRoute) setRoute({section, detail: null, replace: true});
         button.scrollIntoView?.({block: 'nearest', inline: 'center'});

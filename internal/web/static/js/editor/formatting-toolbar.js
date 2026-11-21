@@ -66,8 +66,13 @@
 
     function placePopup(popup, trigger) {
       const rect = trigger.getBoundingClientRect();
-      const gutter = 8;
-      popup.style.left = `${Math.max(gutter, Math.min(rect.left, window.innerWidth - popup.offsetWidth - gutter))}px`;
+      const gutter = parseFloat(window.getComputedStyle(popup).paddingLeft) || 0;
+      const origin = document.body.getBoundingClientRect().left;
+      const left = Math.max(
+        origin + gutter,
+        Math.min(rect.left, window.innerWidth - origin - popup.offsetWidth - gutter),
+      );
+      popup.style.left = `${left - origin}px`;
       popup.style.top = `${Math.max(gutter, Math.min(rect.bottom + gutter, window.innerHeight - popup.offsetHeight - gutter))}px`;
     }
 

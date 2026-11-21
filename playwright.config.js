@@ -1,11 +1,12 @@
 import {existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {defineConfig} from '@playwright/test';
+import {chromium, defineConfig} from '@playwright/test';
 
 const port = 18080;
-const chromePath = process.env.CHROME_PATH || '/usr/bin/google-chrome';
-if (!existsSync(chromePath)) throw new Error(`Chrome was not found at ${chromePath}`);
+const chromePath = process.env.CHROME_PATH || chromium.executablePath();
+if (!existsSync(chromePath))
+  throw new Error(`Chrome was not found at ${chromePath}. Run "bunx playwright install chromium".`);
 
 const dataRoot = path.join(tmpdir(), `vylk-browser-${process.pid}`);
 

@@ -44,9 +44,10 @@ describe('dashboard view', () => {
     view.dashboard.render([{id: 'a', title: 'Alpha'}], new Set());
 
     view.document.querySelector('.note-item').click();
+    view.document.querySelector('.note-item-row').click();
     view.document.querySelector('.note-pin').click();
 
-    expect(view.opened).toEqual(['a']);
+    expect(view.opened).toEqual(['a', 'a']);
     expect(view.pinned).toEqual(['a']);
   });
 

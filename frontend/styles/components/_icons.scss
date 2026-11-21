@@ -1,0 +1,32 @@
+/* Icon geometry is owned here; component rules may only choose a size role. */
+.icon {
+  display: block;
+  width: var(--icon-size, var(--icon-size-md));
+  height: var(--icon-size, var(--icon-size-md));
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: var(--icon-stroke-width);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+
+.label-input__toggle,
+.label-input__action,
+.shortcut-clear,
+.fmt-bar,
+.view-control,
+#save-btn,
+.zen-selection-toolbar,
+.zen-link-popup,
+.preview-edit-button,
+.preview-drag-handle,
+.login-recovery-chip-remove,
+.meta-toggle,
+.vault-option {
+  --icon-size: var(--icon-size-sm);
+}
+
+.vault-status-icon {
+  --icon-size: var(--icon-size-lg);
+}

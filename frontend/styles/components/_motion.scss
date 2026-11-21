@@ -1,17 +1,10 @@
 /* One policy covers every CSS effect, including native popup and form surfaces.
    Until preferences load, System honors the browser's accessibility setting. */
-// State colors change immediately; only compositable properties interpolate.
-*,
-*::before,
-*::after {
-  transition-property: transform, opacity !important;
-}
-
 // Dialogs and anchored pickers share a restrained arrival and its reverse.
 @keyframes overlay-content-in {
   from {
     opacity: var(--overlay-start-opacity, 0);
-    transform: var(--overlay-start-transform, translateY(6px));
+    transform: var(--overlay-start-transform, translateY(0.375rem));
   }
 
   to {
@@ -28,7 +21,7 @@
 
   to {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(0.375rem);
   }
 }
 

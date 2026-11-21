@@ -18,10 +18,10 @@ async function enableInteractivePreview(page) {
   await page.locator('#prefs-tab-editor').click();
   const preference = page.locator('#pref-interactive-preview');
   if (!(await preference.isChecked())) await preference.check();
-  await page.locator('#prefs-close').click();
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
 }
 
-test('desktop split controls stay on the preview edge and follow mobile layout changes', async ({
+test('view controls keep one toolbar owner across modes and viewport changes', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({width: 1440, height: 900});
@@ -35,9 +35,9 @@ test('desktop split controls stay on the preview edge and follow mobile layout c
   await expect(page.locator('#preview')).toContainText('A steady toolbar');
   const controls = page.locator('#view-controls');
   const save = page.locator('#save-btn');
-  await expect(page.locator('#preview-panel #view-controls')).toBeVisible();
-  await expect(page.locator('#preview-save-slot #save-btn')).toBeEnabled();
-  await expect(page.locator('#editor-panel .panel-header-actions')).toBeHidden();
+  await expect(page.locator('.editor-toolbar #view-controls')).toBeVisible();
+  await expect(page.locator('#panel-save-slot #save-btn')).toBeEnabled();
+  await expect(page.locator('.editor-panels .panel-header')).toHaveCount(0);
   const splitBounds = await controls.boundingBox();
   if (process.env.VYLK_CAPTURE_STYLE) {
     await page.screenshot({path: testInfo.outputPath('desktop-split-controls.png')});
@@ -51,22 +51,45 @@ test('desktop split controls stay on the preview edge and follow mobile layout c
   await expect(save).toBeEnabled();
 
   await page.setViewportSize({width: 390, height: 844});
-  await expect(page.locator('#editor-panel #view-controls')).toBeVisible();
+  await expect(page.locator('.editor-toolbar #view-controls')).toBeVisible();
   await expect(page.locator('#panel-save-slot #save-btn')).toBeEnabled();
   if (process.env.VYLK_CAPTURE_STYLE) {
     await page.screenshot({path: testInfo.outputPath('mobile-split-controls.png')});
   }
   await controls.locator('[data-panel="preview"]').click();
-  await expect(page.locator('#preview-panel #view-controls')).toBeVisible();
+  await expect(page.locator('.editor-toolbar #view-controls')).toBeVisible();
   await expect(save).toBeDisabled();
   await controls.locator('[data-panel="both"]').click();
   await page.setViewportSize({width: 1440, height: 900});
-  await expect(page.locator('#preview-panel #view-controls')).toBeVisible();
+  await expect(page.locator('.editor-toolbar #view-controls')).toBeVisible();
   await controls.locator('[data-panel="editor"]').click();
-  await expect(page.locator('#editor-panel #view-controls')).toBeVisible();
+  await expect(page.locator('.editor-toolbar #view-controls')).toBeVisible();
   await controls.locator('[data-panel="both"]').click();
   await save.click();
   await expect(page).toHaveURL(/\/[A-Za-z0-9_-]+$/);
+});
+
+test('Preferences preserves each section scroll position with a shared sticky heading', async ({
+  page,
+}) => {
+  await page.setViewportSize({width: 390, height: 650});
+  await signIn(page);
+  await page.locator('#prefs-btn').click();
+  const content = page.locator('.prefs-content');
+  const header = page.locator('.prefs-content-header');
+  const initialTop = (await header.boundingBox()).y;
+  await content.evaluate((element) => {
+    element.scrollTop = 150;
+  });
+  const saved = await content.evaluate((element) => element.scrollTop);
+  expect(saved).toBeGreaterThan(0);
+  expect(Math.abs((await header.boundingBox()).y - initialTop)).toBeLessThanOrEqual(1);
+  await page.locator('#prefs-tab-editor').click();
+  expect(await content.evaluate((element) => element.scrollTop)).toBe(0);
+  await page.locator('#prefs-tab-appearance').click();
+  expect(await content.evaluate((element) => element.scrollTop)).toBe(saved);
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
+  await expect(page.locator('#prefs-modal')).toBeHidden();
 });
 
 test('heading toolbar uses one compact picker for levels one through five', async ({page}) => {
@@ -98,7 +121,7 @@ test('heading toolbar uses one compact picker for levels one through five', asyn
   expect(popup.x + popup.width).toBeLessThanOrEqual(390);
 });
 
-test('dialogs and editor popups share the overlay surface across themes and viewports', async ({
+test('dialogs and editor popups share surfaces with Mira radius roles across themes and viewports', async ({
   page,
 }, testInfo) => {
   if (process.env.VYLK_CAPTURE_STYLE) test.setTimeout(90_000);
@@ -126,6 +149,7 @@ test('dialogs and editor popups share the overlay surface across themes and view
             const style = getComputedStyle(element);
             return {
               id: element.id || element.parentElement.id || element.className,
+              popup: element.matches('.table-picker, .heading-picker'),
               background: style.backgroundColor,
               radius: style.borderRadius,
               border: style.borderWidth,
@@ -134,10 +158,12 @@ test('dialogs and editor popups share the overlay surface across themes and view
           },
         );
       }, theme);
-      const {id: firstID, ...expected} = surfaces[0];
-      expect(expected.radius).toBe('12px');
+      const {id: firstID, popup: firstPopup, radius: firstRadius, ...expected} = surfaces[0];
+      expect(firstPopup).toBe(false);
+      expect(parseFloat(firstRadius)).toBeCloseTo(12, 1);
       expect(expected.border).toBe('0px');
-      for (const {id, ...surface} of surfaces) {
+      for (const {id, popup, radius, ...surface} of surfaces) {
+        expect(parseFloat(radius), id).toBeCloseTo(popup ? 8 : 12, 1);
         expect(surface, `${id} should match ${firstID}`).toEqual(expected);
       }
       if (process.env.VYLK_CAPTURE_STYLE) {
@@ -157,7 +183,7 @@ test('dialogs and editor popups share the overlay surface across themes and view
         await capture('dialog');
         await page.locator('#restore-defaults-cancel').click();
         await expect(page.locator('#restore-defaults-modal')).toBeHidden();
-        await page.locator('#prefs-close').click();
+        await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
         await expect(page.locator('#prefs-modal')).toBeHidden();
         await page.locator('#new-note-btn').click();
         await waitForEditorEntrance(page);
@@ -214,7 +240,7 @@ test('modal body and backdrop share entry and exit timing and release focus on c
       });
     });
   });
-  await page.locator('#prefs-close').click();
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
   await expect.poll(() => page.evaluate(() => window.modalExits.length)).toBe(2);
   const exits = await page.evaluate(() => window.modalExits);
   expect(exits).toEqual([
@@ -263,7 +289,9 @@ test('Preferences reverses interrupted entry and exit without jumping or hiding 
         });
         observer.observe(modal, {attributes: true, attributeFilter: ['class']});
       });
-      document.querySelector('#prefs-close').click();
+      [...modal.querySelectorAll('.prefs-close')]
+        .find((button) => button.getClientRects().length)
+        .click();
       await closing;
       seek(0);
       const afterClose = sample();
@@ -292,7 +320,7 @@ test('Preferences reverses interrupted entry and exit without jumping or hiding 
     });
     await expect(page.locator('#prefs-modal')).toBeVisible();
     await expect(page).toHaveURL(/\/preferences$/);
-    await page.locator('#prefs-close').click();
+    await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
     await expect(page.locator('#prefs-modal')).toBeHidden();
     await expect(page.locator('#prefs-btn')).toBeFocused();
   }
@@ -379,6 +407,7 @@ test('note cards stay stationary on hover', async ({page}) => {
   const card = page.locator('.note-item').filter({hasText: 'Stationary hover'});
   await card.hover();
   await expect(card).toHaveCSS('transform', 'none');
+  await expect(card).toHaveCSS('box-shadow', 'none');
 });
 
 test('preferences headers align and Account owns the restore confirmation', async ({page}) => {
@@ -481,7 +510,7 @@ test('dashboard and editor share page gutters while Preferences fits the viewpor
 
     const dashboardHeader = await contentEdges('#dashboard .header-inner');
     const dashboardCard = await page
-      .locator('.note-item')
+      .locator('.note-item-row')
       .filter({hasText: 'Aligned page rails'})
       .boundingBox();
     expect(dashboardCard).not.toBeNull();
@@ -509,7 +538,9 @@ test('dashboard and editor share page gutters while Preferences fits the viewpor
       await Promise.all(element.getAnimations().map((animation) => animation.finished));
     });
     const prefsHeadingBox = await page.locator('.prefs-content-header h2').boundingBox();
-    const prefsCloseBox = await page.locator('#prefs-close').boundingBox();
+    const prefsCloseBox = await page
+      .getByRole('button', {name: 'Close preferences', exact: true})
+      .boundingBox();
     const prefsControlBox = await page
       .locator('.prefs-section.active .pref-control')
       .first()
@@ -518,9 +549,17 @@ test('dashboard and editor share page gutters while Preferences fits the viewpor
     expect(prefsCloseBox).not.toBeNull();
     expect(prefsControlBox).not.toBeNull();
     expect(Math.abs(prefsControlBox.x - prefsHeadingBox.x)).toBeLessThanOrEqual(1);
-    expect(
-      Math.abs(prefsControlBox.x + prefsControlBox.width - prefsCloseBox.x - prefsCloseBox.width),
-    ).toBeLessThanOrEqual(1);
+    if (viewport.width <= 640) {
+      const titleRow = await page.locator('.prefs-sidebar-heading').boundingBox();
+      expect(prefsCloseBox.y).toBeLessThan(prefsHeadingBox.y);
+      expect(
+        Math.abs(titleRow.x + titleRow.width - prefsCloseBox.x - prefsCloseBox.width),
+      ).toBeLessThanOrEqual(1);
+    } else {
+      expect(
+        Math.abs(prefsControlBox.x + prefsControlBox.width - prefsCloseBox.x - prefsCloseBox.width),
+      ).toBeLessThanOrEqual(1);
+    }
     const prefsShell = await page.locator('#prefs-modal .prefs-modal-body').boundingBox();
     expect(prefsShell).not.toBeNull();
     expect(prefsShell.x).toBeGreaterThanOrEqual(0);
@@ -533,7 +572,7 @@ test('dashboard and editor share page gutters while Preferences fits the viewpor
       expect(prefsRail.x).toBeGreaterThanOrEqual(prefsShell.x);
       expect(prefsRail.x + prefsRail.width).toBeLessThanOrEqual(prefsShell.x + prefsShell.width);
     }
-    await page.locator('#prefs-close').click();
+    await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
   }
 });
 
@@ -576,12 +615,12 @@ test('label inputs float their labels and toggle password visibility', async ({p
   await expect(badge).toHaveCSS('font-size', '12px');
   await expect(badge).toHaveCSS('font-weight', '500');
   await expect(badge).toHaveCSS('line-height', '12px');
-  await expect(badge).toHaveCSS('padding', '4px 6px');
+  await expect(badge).toHaveCSS('padding', '4px');
   await expect(badge).toHaveCSS('gap', '4px');
 
   const dot = page.locator('#sync-status .sync-indicator-dot');
-  await expect(dot).toHaveCSS('width', '6px');
-  await expect(dot).toHaveCSS('height', '6px');
+  await expect(dot).toHaveCSS('width', '4.79688px');
+  await expect(dot).toHaveCSS('height', '4.79688px');
   await expect(dot).toHaveCSS('border-radius', '50%');
   await expect(dot).toHaveCSS('box-shadow', 'none');
   await expect(badge).toHaveCSS('margin', '0px');
@@ -590,7 +629,10 @@ test('label inputs float their labels and toggle password visibility', async ({p
     document.documentElement.dataset.statusDisplay = 'compact';
   });
   await expect(badge).toHaveCSS('padding', '4px');
-  await expect(badge).toHaveCSS('width', '14px');
+  expect(await badge.evaluate((element) => element.getBoundingClientRect().width)).toBeCloseTo(
+    12.8,
+    0,
+  );
 });
 
 test('encryption inputs use one focus ring', async ({page}) => {
@@ -711,23 +753,25 @@ test('scrollbars reserve their own space and stay below mobile preference tabs',
   const metrics = await page.evaluate(() => {
     const rail = document.querySelector('.prefs-tabs-scroll');
     const tabs = document.querySelector('.prefs-tabs');
-    const section = document.querySelector('.prefs-section.active');
+    const section = document.querySelector('.prefs-content');
     const railBox = rail.getBoundingClientRect();
     const tabsBox = tabs.getBoundingClientRect();
     return {
       bodyGutter: getComputedStyle(document.documentElement).scrollbarGutter,
       sectionGutter: getComputedStyle(section).scrollbarGutter,
-      sectionPaddingRight: getComputedStyle(section).paddingRight,
+      sectionLeftGutter: section.clientLeft,
       railOverflow: getComputedStyle(rail).overflowX,
       tabRailGap: railBox.bottom - tabsBox.bottom,
+      tabRailMargin: parseFloat(getComputedStyle(rail).marginBlockEnd),
     };
   });
 
-  expect(metrics.bodyGutter).toBe('stable');
-  expect(metrics.sectionGutter).toBe('stable');
-  expect(Number.parseFloat(metrics.sectionPaddingRight)).toBeGreaterThanOrEqual(8);
+  expect(metrics.bodyGutter).toBe('stable both-edges');
+  expect(metrics.sectionGutter).toBe('stable both-edges');
+  expect(metrics.sectionLeftGutter).toBeGreaterThanOrEqual(8);
   expect(metrics.railOverflow).toBe('auto');
-  expect(metrics.tabRailGap).toBeGreaterThanOrEqual(9.5);
+  expect(metrics.tabRailGap).toBeGreaterThanOrEqual(0);
+  expect(metrics.tabRailMargin).toBeGreaterThan(0);
 });
 
 test('preference sections switch immediately in both directions without animation', async ({
@@ -806,11 +850,13 @@ test('clipped editor controls keep their focus rings inside and clear the scroll
   await expect(page.locator('.meta-toggle')).toHaveCSS('outline-offset', '-3px');
 
   const toolbar = page.locator('#editor .fmt-bar');
-  await expect(toolbar).toHaveCSS('scrollbar-gutter', 'stable');
+  await expect(toolbar).toHaveCSS('overflow-x', 'auto');
   const bottomPadding = await toolbar.evaluate((element) =>
     Number.parseFloat(getComputedStyle(element).paddingBottom),
   );
-  expect(bottomPadding).toBeGreaterThanOrEqual(8);
+  expect(bottomPadding).toBe(
+    await toolbar.evaluate((element) => parseFloat(getComputedStyle(element).paddingTop)),
+  );
   const firstFormattingButton = toolbar.locator('button').first();
   await firstFormattingButton.focus();
   await expect(firstFormattingButton).toHaveCSS('outline-offset', '-2px');
@@ -856,41 +902,14 @@ test('editor and preview content stay aligned while the splitter remains unobtru
   await signIn(page);
   await page.locator('#new-note-btn').click();
 
-  await expect(page.locator('#editor-panel .panel-label')).toBeHidden();
+  await expect(page.locator('.panel-label')).toBeHidden();
   await expect(page.locator('#view-controls')).toBeVisible();
   await expect(page.locator('#save-btn')).toBeVisible();
 
-  const desktopControlSurface = await page
-    .locator('#preview-panel .panel-header-actions')
-    .evaluate((element) => {
-      const style = getComputedStyle(element);
-      const panel = element.closest('.panel').getBoundingClientRect();
-      const actions = element.getBoundingClientRect();
-      return {
-        borderTop: style.borderTopWidth,
-        borderRight: style.borderRightWidth,
-        borderBottom: style.borderBottomWidth,
-        borderLeft: style.borderLeftWidth,
-        bottomLeftRadius: style.borderBottomLeftRadius,
-        topRightRadius: style.borderTopRightRadius,
-        rightEdgeAligned: Math.abs(actions.right - panel.right) <= 1,
-      };
-    });
-  expect(desktopControlSurface).toEqual({
-    borderTop: '0px',
-    borderRight: '0px',
-    borderBottom: '1px',
-    borderLeft: '1px',
-    bottomLeftRadius: '8px',
-    topRightRadius: '0px',
-    rightEdgeAligned: true,
-  });
-
-  const desktopToolbar = await page.locator('#editor-panel .fmt-bar').boundingBox();
-  const desktopControls = await page.locator('#editor-panel .panel-header').boundingBox();
-  expect(desktopToolbar).not.toBeNull();
-  expect(desktopControls).not.toBeNull();
-  expect(desktopControls.y + desktopControls.height).toBeLessThanOrEqual(desktopToolbar.y);
+  const toolbar = await page.locator('.editor-toolbar').boundingBox();
+  const panes = await page.locator('.editor-panels').boundingBox();
+  expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(panes.y);
+  await expect(page.locator('.editor-toolbar .fmt-bar')).toBeVisible();
 
   const resizer = page.locator('#panel-resizer');
   await expect(resizer).toBeVisible();
@@ -942,7 +961,7 @@ test('editor and preview content stay aligned while the splitter remains unobtru
   await expect(page.locator('.editor-current-line')).toHaveCSS('border-top-left-radius', '0px');
   const cueAndControls = await page.evaluate(() => {
     const cue = document.querySelector('.editor-current-line');
-    const controls = document.querySelector('#editor-panel .panel-header');
+    const controls = document.querySelector('.editor-toolbar');
     return {
       cueTop: cue.getBoundingClientRect().top,
       controlsBottom: controls.getBoundingClientRect().bottom,
@@ -972,7 +991,7 @@ test('editor and preview content stay aligned while the splitter remains unobtru
     const previewRect = preview.getBoundingClientRect();
     return {
       renderedContent: content.getBoundingClientRect().left - previewRect.left,
-      previewGutter: Number.parseFloat(getComputedStyle(preview).paddingLeft),
+      previewGutter: preview.clientLeft + Number.parseFloat(getComputedStyle(preview).paddingLeft),
     };
   });
   expect(
@@ -997,7 +1016,7 @@ test('preview-only mode fills the shared content width in plain and interactive 
     ]) {
       await page.locator('#editor-prefs-btn').click();
       await page.locator('#pref-content-width').selectOption(width);
-      await page.locator('#prefs-close').click();
+      await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
       await expect(page.locator('#prefs-modal')).toBeHidden();
       await page.locator('#view-controls [data-panel="editor"]').click();
       const source = await page.locator('#note-content').evaluate((element) => ({
@@ -1053,61 +1072,21 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
 
   const [toolbar, controls] = await Promise.all([
     page.locator('.fmt-bar').boundingBox(),
-    page.locator('#editor-panel .panel-header').boundingBox(),
+    page.locator('.editor-toolbar-actions').boundingBox(),
   ]);
-  expect(toolbar).not.toBeNull();
-  expect(controls).not.toBeNull();
   expect(controls.y + controls.height).toBeLessThanOrEqual(toolbar.y);
-  expect(controls.height).toBeCloseTo(29, 0);
-
-  const topRightButtons = page.locator('#editor-panel .panel-header-actions button');
-  await expect(topRightButtons).toHaveCount(5);
-  for (const button of await topRightButtons.all()) {
-    const bounds = await button.boundingBox();
-    expect(bounds.width).toBeCloseTo(24, 0);
-    expect(bounds.height).toBeCloseTo(24, 0);
-  }
-
-  const controlSurface = await page
-    .locator('#editor-panel .panel-header-actions')
-    .evaluate((element) => {
-      const style = getComputedStyle(element);
-      const panel = element.closest('.panel').getBoundingClientRect();
-      const actions = element.getBoundingClientRect();
-      return {
-        borderTop: style.borderTopWidth,
-        padding: style.paddingTop,
-        borderRight: style.borderRightWidth,
-        borderBottom: style.borderBottomWidth,
-        borderLeft: style.borderLeftWidth,
-        bottomLeftRadius: style.borderBottomLeftRadius,
-        topRightRadius: style.borderTopRightRadius,
-        rightEdgeAligned: Math.abs(actions.right - panel.right) <= 1,
-      };
-    });
-  expect(controlSurface).toEqual({
-    borderTop: '0px',
-    padding: '2px',
-    borderRight: '0px',
-    borderBottom: '1px',
-    borderLeft: '1px',
-    bottomLeftRadius: '8px',
-    topRightRadius: '0px',
-    rightEdgeAligned: true,
-  });
-  await expect(page.locator('#editor-panel .fmt-bar')).toHaveCSS('padding-right', '6.4px');
-  const formattingButton = page.locator('#editor-panel .fmt-bar button').first();
-  const formattingButtonBox = await formattingButton.boundingBox();
-  expect(formattingButtonBox).not.toBeNull();
-  expect(formattingButtonBox.width).toBeCloseTo(24, 0);
-  expect(formattingButtonBox.height).toBeCloseTo(24, 0);
-  const iconWidths = await formattingButton.locator('.icon').evaluate((icon) => ({
-    toolbar: Number.parseFloat(getComputedStyle(icon).width),
-    corner: Number.parseFloat(
-      getComputedStyle(document.querySelector('#view-controls .icon')).width,
-    ),
-  }));
-  expect(iconWidths.toolbar).toBeCloseTo(iconWidths.corner, 1);
+  await expect(page.locator('.editor-toolbar-actions button')).toHaveCount(5);
+  const centered = await page.locator('.editor-toolbar-actions button').evaluateAll((buttons) =>
+    buttons.every((button) => {
+      const control = button.getBoundingClientRect();
+      const icon = button.querySelector('.icon').getBoundingClientRect();
+      return (
+        Math.abs((control.left + control.right - icon.left - icon.right) / 2) < 0.5 &&
+        Math.abs((control.top + control.bottom - icon.top - icon.bottom) / 2) < 0.5
+      );
+    }),
+  );
+  expect(centered).toBe(true);
 
   const contentInsets = await page.evaluate(() => {
     const source = document.querySelector('#note-content');
@@ -1133,13 +1112,13 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
         previewPanel.getBoundingClientRect().left,
     };
   });
-  expect(contentInsets.source).toBeGreaterThan(contentInsets.preview);
+  expect(Math.abs(contentInsets.source - contentInsets.preview)).toBeLessThanOrEqual(1);
   expect(Math.abs(contentInsets.sourceInset - contentInsets.previewInset)).toBeLessThanOrEqual(1);
 
   const previewSpacing = await page.locator('#preview').evaluate((preview) => {
     const style = getComputedStyle(preview);
-    const controls = document.querySelector('#editor-panel .panel-header-actions');
-    const toolbar = document.querySelector('#editor-panel .fmt-bar');
+    const controls = document.querySelector('.editor-toolbar-actions');
+    const toolbar = document.querySelector('.fmt-bar');
     return {
       paddingTop: Number.parseFloat(style.paddingTop),
       paddingLeft: Number.parseFloat(style.paddingLeft),
@@ -1150,11 +1129,162 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
     };
   });
   expect(previewSpacing.paddingTop).toBe(12);
-  expect(previewSpacing.toolbarPaddingRight).toBeCloseTo(6.4, 1);
+  expect(previewSpacing.toolbarPaddingRight).toBe(0);
   expect(previewSpacing.paddingLeft).toBe(16);
-  expect(previewSpacing.paddingBottom).toBe(64);
+  expect(previewSpacing.paddingBottom).toBe(previewSpacing.paddingTop);
 
   if (!previewSpacing.interactive) await enableInteractivePreview(page);
   await expect(page.locator('#preview')).toHaveCSS('padding-top', '12px');
   await expect(page.locator('#panel-resizer')).toBeHidden();
+});
+
+test('compact controls scale with UI type and use lander color transitions', async ({page}) => {
+  await signIn(page);
+  const button = page.locator('#new-note-btn');
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  for (const size of [0.8, 1, 1.5]) {
+    await page.evaluate((size) => {
+      document.documentElement.style.setProperty('--font-size', `${size}rem`);
+    }, size);
+    const metrics = await button.evaluate((button) => {
+      const style = getComputedStyle(button);
+      return {
+        height: parseFloat(style.minHeight),
+        radius: parseFloat(style.borderRadius),
+        shadow: style.boxShadow,
+        fontSize: parseFloat(style.fontSize),
+      };
+    });
+    expect(metrics.fontSize).toBeCloseTo(12 * size, 1);
+    expect(metrics.height).toBeCloseTo(Math.round(28 * size), 1);
+    expect(metrics.radius).toBeCloseTo(Math.round(6 * size), 1);
+    expect(metrics.shadow).toBe('none');
+    await button.hover();
+    await expect(button).toHaveCSS('box-shadow', 'none');
+  }
+  await page.emulateMedia({reducedMotion: 'no-preference'});
+  await expect(button).toHaveCSS('transition-duration', '0.2s, 0.2s, 0.2s');
+  await expect(button).toHaveCSS('transition-timing-function', 'ease, ease, ease');
+});
+
+test('font controls align and grow with the interface font', async ({page}) => {
+  await signIn(page);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await page.locator('#prefs-btn').click();
+  for (const size of [0.8, 1, 1.5]) {
+    await page.evaluate((size) => {
+      document.documentElement.style.setProperty('--font-size', `${size}rem`);
+    }, size);
+    const row = page.locator('.font-input-row').first();
+    const input = await row.locator('input[type="text"]').boundingBox();
+    const select = await row.locator('select').boundingBox();
+    expect(input).not.toBeNull();
+    expect(select).not.toBeNull();
+    expect(Math.abs(input.y - select.y)).toBeLessThanOrEqual(1);
+    expect(Math.abs(input.height - select.height)).toBeLessThanOrEqual(1);
+    expect(input.height).toBeCloseTo(Math.round(28 * size), 0);
+  }
+});
+
+test('size pickers use interface typography across every font section', async ({page}) => {
+  await signIn(page);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await page.locator('#prefs-btn').click();
+  await page.evaluate(() => document.documentElement.style.setProperty('--font', 'Georgia, serif'));
+  for (const [tab, ids] of [
+    ['appearance', ['pref-font-size']],
+    ['editor', ['pref-editor-font-size', 'pref-preview-font-size']],
+    ['zen', ['pref-zen-font-size']],
+  ]) {
+    await page.locator(`#prefs-tab-${tab}`).click();
+    for (const id of ids) {
+      const picker = page.locator(`#${id}`);
+      const metrics = await picker.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return {
+          family: style.fontFamily,
+          interfaceFamily: getComputedStyle(document.body).fontFamily,
+          radius: parseFloat(style.borderRadius),
+          height: element.getBoundingClientRect().height,
+        };
+      });
+      expect(metrics.family).toBe(metrics.interfaceFamily);
+      expect(metrics.radius).toBeCloseTo(6, 1);
+      expect(metrics.height).toBeCloseTo(28, 0);
+      await expect(page.locator(`label[for="${id}"]`)).toBeVisible();
+    }
+  }
+});
+
+test('button geometry stays crisp at fractional interface sizes', async ({page}) => {
+  await signIn(page);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  const button = page.locator('#new-note-btn');
+  for (const size of [0.8, 0.9, 1, 1.1, 1.25, 1.5]) {
+    await page.evaluate(
+      (size) => document.documentElement.style.setProperty('--font-size', `${size}rem`),
+      size,
+    );
+    const geometry = await button.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        height: element.getBoundingClientRect().height,
+        radius: parseFloat(style.borderRadius),
+      };
+    });
+    expect(geometry.height).toBeCloseTo(Math.round(28 * size), 1);
+    expect(geometry.radius).toBeCloseTo(Math.round(6 * size), 1);
+  }
+  await button.hover();
+  await page.mouse.down();
+  await expect(button).toHaveCSS('transform', 'none');
+  await page.mouse.up();
+});
+
+test('Preferences keeps one type hierarchy across sections and interface sizes', async ({page}) => {
+  await signIn(page);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await page.locator('#prefs-btn').click();
+  for (const scale of [0.8, 1, 1.5]) {
+    await page.evaluate(
+      (scale) => document.documentElement.style.setProperty('--font-size', `${scale}rem`),
+      scale,
+    );
+    for (const section of [
+      'appearance',
+      'editor',
+      'zen',
+      'shortcuts',
+      'account',
+      'encryption',
+      'about',
+    ]) {
+      await page.locator(`#prefs-tab-${section}`).click();
+      const sizes = await page.locator('.prefs-section.active').evaluate((panel) => {
+        const font = (element) => parseFloat(getComputedStyle(element).fontSize);
+        return {
+          title: font(document.querySelector('#prefs-title')),
+          headings: [...panel.querySelectorAll('.pref-subsection h3, .shortcut-group-title')].map(
+            font,
+          ),
+          labels: [
+            ...panel.querySelectorAll(
+              '.pref-control > span strong, .pref-row > span strong, .about-row strong, .shortcut-copy strong',
+            ),
+          ].map(font),
+          captions: [...panel.querySelectorAll('small')].map(font),
+          controls: [...panel.querySelectorAll('select, input[type="text"]')].map(font),
+        };
+      });
+      expect(sizes.title).toBeCloseTo(16 * scale, 1);
+      for (const size of sizes.headings) expect(size).toBeCloseTo(14 * scale, 1);
+      for (const size of [...sizes.labels, ...sizes.controls])
+        expect(size).toBeCloseTo(13 * scale, 1);
+      for (const size of sizes.captions) expect(size).toBeCloseTo(12 * scale, 1);
+    }
+  }
+  await page.locator('#prefs-tab-editor').click();
+  await expect(page.locator('#prefs-panel-editor')).not.toContainText('Start and layout');
+  await expect(page.locator('#pref-start-view')).toBeVisible();
+  await expect(page.locator('#pref-collapse')).toBeVisible();
 });

@@ -1,6 +1,6 @@
 .prefs-content-header h2 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: calc(1.2 * var(--font-size));
   font-weight: 700;
   line-height: 1.25;
 }
@@ -8,7 +8,7 @@
 /* Keep full-width borders, but align each shell to the same responsive content rail. */
 :root {
   --content-max-width: 76.25rem;
-  --page-gutter: 1.25rem;
+  --page-gutter: var(--space-4);
   --font-size: 1rem;
   --editor-font-size: 1rem;
   --preview-font-size: 1rem;
@@ -57,11 +57,11 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: var(--space-2-5);
   width: min(100%, var(--content-max-width));
-  min-height: 3.25rem;
+  min-height: calc(3.25 * var(--ui-unit));
   margin-inline: auto;
-  padding: 0.65rem var(--page-gutter);
+  padding: var(--space-2) var(--page-gutter);
 }
 
 .dashboard-body {
@@ -90,35 +90,24 @@ header {
   max-width: none;
 }
 
-.back-chevron {
-  width: 1.15rem;
-  height: 1.15rem;
-  stroke-width: 2;
-}
-
-.btn-text.icon-btn:hover {
-  background: var(--surface);
-  color: var(--fg);
-}
-
-@media (max-width: 640px) {
+@media (max-width: 40em) {
   :root {
-    --page-gutter: 0.75rem;
+    --page-gutter: var(--space-3);
   }
 }
 
 /* Keep the app header wordmark aligned with the lander brand. */
 .app-brand {
-  gap: 10px;
-  font-size: 18px;
+  gap: var(--space-2-5);
+  font-size: 1.125rem;
   font-weight: 700;
   letter-spacing: -0.04em;
 }
 
 .app-brand img {
-  width: 29px;
-  height: 29px;
-  border-radius: 8px;
+  width: calc(1.8125 * var(--ui-unit));
+  height: calc(1.8125 * var(--ui-unit));
+  border-radius: var(--radius-action);
 }
 
 .app-brand span {
@@ -128,25 +117,6 @@ header {
 
 .save-slot {
   display: contents;
-}
-
-#panel-save-slot #save-btn {
-  width: 1.5rem;
-  height: 1.5rem;
-  min-height: 1.5rem;
-  border-radius: 5px;
-}
-
-#panel-save-slot #save-btn .icon {
-  width: 1rem;
-  height: 1rem;
-}
-
-/* Radius scale follows the lander CTA proportion: roughly 10-11% of control height. */
-:root {
-  --radius-action: 6px;
-  --radius-field: 6px;
-  --radius-micro: 4px;
 }
 
 .btn-text,
@@ -162,51 +132,26 @@ header {
   border-radius: var(--radius-field);
 }
 
-#panel-save-slot #save-btn,
-.panel-layout,
-.fmt-bar button,
-.panel-switch,
-.prefs-nav,
-.offline-retry,
-.toast-action {
-  border-radius: var(--radius-micro);
-}
-
 .pref-control input[type='color'] {
   border-radius: var(--radius-action);
 }
 
 .table-grid-cell {
-  border-radius: 2px;
-}
-
-.offline-snackbar,
-.toast {
-  border-radius: var(--radius-field);
-}
-
-.preview code {
-  border-radius: var(--radius-micro);
+  border-radius: var(--radius-xs);
 }
 
 .prefs-nav {
   border-radius: var(--radius-action);
 }
 
-@media (max-width: 640px) {
-  .prefs-nav {
-    border-radius: 0;
-  }
-}
-
-/* Keep interface text tied to the configured base while structural dimensions remain stable. */
+/* Interface type and spacing follow the configured base independently of document type. */
 body {
   font-size: var(--font-size);
 }
 
 .font-control input[type='text'][aria-invalid='true'] {
   border-color: var(--danger);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent);
+  box-shadow: 0 0 0 0.1875rem color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 .font-input-wrap > .font-error {
@@ -217,7 +162,7 @@ body {
 .btn-primary,
 .btn-secondary,
 .prefs-btn {
-  font-size: 0.875em;
+  font-size: 0.75em;
 }
 
 header h1 {
@@ -245,7 +190,7 @@ header h1 {
 }
 
 .toolbar .btn-primary {
-  font-size: 0.875em;
+  font-size: 0.75em;
 }
 
 .tag {
@@ -276,16 +221,12 @@ header h1 {
   font-size: 0.75em;
 }
 
-.panel-header {
-  font-size: 0.6875em;
-}
-
 .pref-row {
-  font-size: 0.9375em;
+  font-size: 0.875em;
 }
 
 .prefs-sidebar-title {
-  font-size: 1.2em;
+  font-size: 1em;
 }
 
 .prefs-nav {
@@ -294,63 +235,25 @@ header h1 {
 
 .prefs-content-header h2,
 .prefs-content-header h3 {
-  font-size: 1.2em;
+  font-size: 1em;
 }
 
 .pref-control {
-  font-size: 0.9375em;
+  font-size: 0.875em;
 }
 
 .pref-control small,
 .pref-row small {
-  font-size: 0.875rem;
+  font-size: calc(0.75 * var(--font-size));
 }
 
 .font-fetch-toggle,
 .font-error {
-  font-size: 0.875rem;
+  font-size: calc(0.75 * var(--font-size));
 }
 
 .app-version {
   font-size: 0.875em;
-}
-
-.offline-notice,
-.offline-snackbar,
-.toast {
-  font-size: 0.8125em;
-}
-
-.font-control select {
-  width: 100%;
-  padding: 0.45rem 0.55rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-field);
-  background: var(--card-bg);
-  color: var(--fg);
-  font: inherit;
-  outline: none;
-}
-
-.font-control select:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
-}
-
-.font-control {
-  gap: 0.65rem;
-  padding: 1.1rem 0;
-}
-
-.font-input-wrap {
-  gap: 0.55rem;
-}
-
-.font-control select {
-  height: 2.5rem;
-  min-height: 2.5rem;
-  box-sizing: border-box;
-  padding: 0.55rem 0.7rem;
 }
 
 .table-picker-label {
@@ -387,5 +290,5 @@ header h1 {
 }
 
 .about-row small {
-  font-size: 0.875rem;
+  font-size: calc(0.875 * var(--font-size));
 }

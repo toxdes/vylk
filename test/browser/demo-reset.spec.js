@@ -172,7 +172,7 @@ test('demo resets stop stale sync and preserve pending edits until the original 
       await expect(page.locator('#dashboard')).not.toHaveAttribute('inert', '');
       await page.locator('#prefs-btn').click();
       await expect(page.locator('#prefs-modal')).toBeVisible();
-      await page.locator('#prefs-close').click();
+      await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
       await expect(page.locator('.note-item')).toHaveCount(0);
       await createNote(page, `After reset ${cycle}`);
     }
@@ -243,7 +243,7 @@ for (const {motion, pending} of [
       await page.locator('#pref-interactive-preview').uncheck();
       await page.locator('#prefs-tab-zen').click();
       await page.locator('#pref-zen-page-width').selectOption('compact');
-      await page.locator('#prefs-close').click();
+      await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
       await expect(page.locator('#prefs-modal')).toBeHidden();
       await expect
         .poll(async () => {
@@ -271,7 +271,7 @@ for (const {motion, pending} of [
         await page.locator('#prefs-btn').click();
         await page.locator('#prefs-tab-appearance').click();
         await page.locator('#pref-content-width').selectOption('full');
-        await page.locator('#prefs-close').click();
+        await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
         await expect(page.locator('#prefs-modal')).toBeHidden();
       }
       await expect
@@ -313,7 +313,7 @@ for (const {motion, pending} of [
       await expect(page.locator('#pref-theme')).toHaveValue('default-light');
       await expect(page.locator('#pref-content-width')).toHaveValue('standard');
       await expect(page.locator('#pref-font-size')).toHaveValue('1rem');
-      await page.locator('#prefs-close').click();
+      await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
       await expect(page.locator('#prefs-modal')).toBeHidden();
       await expect(page.locator('.toast.update')).toHaveCount(0);
       await createNote(page, 'Created after automatic update');
@@ -344,10 +344,10 @@ test('switches from an encrypted server to a fresh database without losing data 
     await page.locator('#prefs-btn').click();
     await page.locator('#prefs-tab-encryption').click();
     await page.locator('#vault-open-setup').click();
-    const master = 'Correct horse battery staple private vault!';
+    const master = 'demo-reset-password';
     await page.locator('#vault-old-password').fill('demo-reset-password');
-    await page.locator('#vault-master').fill(master);
-    await page.locator('#vault-master-confirm').fill(master);
+    await page.locator('#vault-setup-continue').click();
+    await expect(page.locator('#vault-recovery-key .vault-recovery-word')).toHaveCount(24);
     const words = await page.locator('#vault-recovery-key .vault-recovery-word').allTextContents();
     await page.locator('#vault-recovery-begin').click();
     for (const word of words) {
@@ -355,7 +355,6 @@ test('switches from an encrypted server to a fresh database without losing data 
       await page.locator('#vault-recovery-confirm').press('Enter');
     }
     await page.locator('#vault-start').click();
-    await page.locator('#vault-final-confirm-start').click();
     await expect(page.locator('#login-screen')).toBeVisible({timeout: 30000});
     await page.locator('#login-password').fill(master);
     await page.locator('#login-form button[type="submit"]').click();

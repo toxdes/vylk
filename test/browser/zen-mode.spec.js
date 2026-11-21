@@ -164,7 +164,7 @@ async function openZenMode(page) {
   await page.locator('#prefs-tab-zen').click();
   await page.locator('#pref-zen-page-width').selectOption('standard');
   await page.locator('#pref-zen-word-count').check();
-  await page.locator('#prefs-close').click();
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
   await page.locator('[data-panel="zen"]').click();
   await expect(page.locator('#editor')).toHaveClass(/zen-mode/);
   await page.locator('#zen-source-editor').press('Control+End');
@@ -243,7 +243,7 @@ test('Zen page width is independent from the app content width', async ({page}) 
   await page.locator('#pref-content-width').selectOption('full');
   await page.locator('#prefs-tab-zen').click();
   await page.locator('#pref-zen-page-width').selectOption('compact');
-  await page.locator('#prefs-close').click();
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
   await page.locator('[data-panel="zen"]').click();
 
   const layout = await page.evaluate(() => ({
@@ -624,14 +624,18 @@ test('Zen mode preserves its writing page on a narrow screen', async ({page}) =>
   expect(firstControlBox).not.toBeNull();
   expect(titleBox).not.toBeNull();
   expect(wordCountBox).not.toBeNull();
-  expect(textareaBox.x).toBeLessThanOrEqual(20);
-  // The trailing scrollbar gutter is deliberately reserved to prevent layout shift.
-  expect(390 - textareaBox.x - textareaBox.width).toBeLessThanOrEqual(textareaBox.x + 12);
+  const insets = await page.evaluate(() => ({
+    root: document.body.getBoundingClientRect().left,
+    writing: parseFloat(
+      getComputedStyle(document.querySelector('#editor .editor-source-wrap')).paddingLeft,
+    ),
+  }));
+  expect(textareaBox.x - insets.root).toBeCloseTo(insets.writing, 1);
+  expect(Math.abs(390 - textareaBox.x - textareaBox.width - textareaBox.x)).toBeLessThanOrEqual(1);
   expect(firstControlBox.width).toBeGreaterThanOrEqual(44);
   expect(controlsBox.y).toBeLessThanOrEqual(12);
-  expect(titleBox.x).toBeLessThanOrEqual(20);
-  // Root scrollbar space is intentionally reserved, including for fixed Zen overlays.
-  expect(390 - wordCountBox.x - wordCountBox.width).toBeLessThanOrEqual(32);
+  expect(titleBox.x).toBeCloseTo(textareaBox.x, 1);
+  expect(Math.abs(390 - wordCountBox.x - wordCountBox.width - titleBox.x)).toBeLessThanOrEqual(1);
   await page.screenshot({path: '/tmp/vylk-zen-mobile.png'});
 });
 

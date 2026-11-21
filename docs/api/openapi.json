@@ -695,6 +695,67 @@
         }
       }
     },
+    "/api/vault/setup/verify-password": {
+      "post": {
+        "operationId": "verifyEncryptionSetupPassword",
+        "tags": ["Migration"],
+        "summary": "Verify the current password before encryption setup",
+        "description": "Checks the existing password using the login attempt rate limit. Requires an authenticated session and enabled vault changes. Creates no vault, migration checkpoint, backup, credential, or session. Setup secrets remain in memory until Encrypt starts migration. Available before encryption and while resuming a prepared migration.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["password"],
+                "properties": {
+                  "password": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password verified.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["ok"],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request."
+          },
+          "401": {
+            "description": "A signed-in session is required."
+          },
+          "403": {
+            "description": "Incorrect password or vault changes disabled."
+          },
+          "409": {
+            "description": "Encryption is already enabled."
+          },
+          "429": {
+            "description": "Too many password verification attempts; respect Retry-After."
+          },
+          "500": {
+            "description": "Verification failed."
+          }
+        }
+      }
+    },
     "/api/vault/migration/start": {
       "post": {
         "operationId": "startEncryptionMigration",

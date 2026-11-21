@@ -40,8 +40,12 @@
             'aria-label',
             `Word ${index + 1}: ${word}. Drag or press Alt and an arrow key to reorder.`,
           );
+          const number = document.createElement('span');
+          number.className = 'vault-recovery-number';
+          number.textContent = `${index + 1}. `;
           const text = document.createElement('span');
-          text.textContent = `${index + 1}. ${word}`;
+          text.className = 'vault-recovery-word';
+          text.textContent = word;
           const remove = document.createElement('button');
           remove.type = 'button';
           remove.className = 'login-recovery-chip-remove';
@@ -52,7 +56,7 @@
             render();
             input.focus();
           });
-          chip.append(text, remove);
+          chip.append(number, text, remove);
           list.append(chip);
         });
       }
@@ -139,7 +143,7 @@
       ghost.setAttribute('aria-hidden', 'true');
       ghost.setAttribute('tabindex', '-1');
       ghost.querySelector('button')?.setAttribute('tabindex', '-1');
-      ghost.style.left = `${rect.left}px`;
+      ghost.style.left = `${rect.left - document.body.getBoundingClientRect().left}px`;
       ghost.style.top = `${rect.top}px`;
       ghost.style.width = `${rect.width}px`;
       ghost.style.height = `${rect.height}px`;

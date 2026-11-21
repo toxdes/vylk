@@ -2,29 +2,29 @@
 #login-screen {
   display: grid;
   min-height: 100dvh;
-  padding: 1.5rem;
+  padding: var(--space-5);
   place-items: center;
 }
 
 #login-form {
   width: min(100%, 24rem);
-  padding: 2.25rem;
+  padding: var(--space-8);
   background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 
 #login-form h1 {
   text-align: center;
-  font-size: 1.5rem;
+  font-size: calc(1.5 * var(--font-size));
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.2;
 }
 
 #login-form h1 {
-  margin: 0 0 1.5rem;
+  margin: 0 0 var(--space-5);
 }
 
 #login-form .app-brand {
@@ -38,15 +38,16 @@
 
 #login-credentials > button[type='submit'] {
   width: 100%;
-  padding: 0.72rem;
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-3);
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-action);
   background: var(--accent);
   color: #fff;
-  font-size: 0.9375rem;
+  font-size: calc(0.9375 * var(--font-size));
   font-weight: 600;
   line-height: 1.35;
-  transition: background 0.15s;
+  transition: background var(--control-duration) var(--control-ease);
 }
 
 #login-credentials > button[type='submit']:hover {
@@ -56,7 +57,7 @@
 #login-secure-context-notice {
   margin: 0;
   color: var(--text);
-  font-size: 0.9375rem;
+  font-size: calc(0.9375 * var(--font-size));
   line-height: 1.5;
 }
 
@@ -68,21 +69,21 @@
 }
 
 #login-secure-context-notice a:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
 }
 
 #login-form .login-forgot-password {
   display: block;
   width: fit-content;
-  min-height: 2.25rem;
-  margin: 0.5rem 0 0 auto;
-  padding: 0.25rem 0.125rem;
+  min-height: calc(2.25 * var(--ui-unit));
+  margin: var(--space-1-5) 0 0 auto;
+  padding: var(--space-1) var(--space-0-5);
   border: 0;
   background: transparent;
   color: var(--accent);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: calc(0.875 * var(--font-size));
   cursor: pointer;
 }
 
@@ -96,8 +97,8 @@
 }
 
 #login-form .login-forgot-password:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
 }
 
 body:has(
@@ -116,7 +117,7 @@ body:has(
 
 #login-recovery-form {
   display: grid;
-  gap: 0.75rem;
+  gap: var(--group-gap);
 }
 
 .login-recovery-word-row {
@@ -129,21 +130,21 @@ body:has(
 
 .login-recovery-count {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: calc(0.875 * var(--font-size));
 }
 
 .login-recovery-words {
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
-  gap: 0.5rem;
-  height: calc(4 * 2rem + 3 * 0.5rem + 1rem + 2px);
-  padding: 0.5rem;
+  gap: var(--space-1-5);
+  height: calc(10.5 * var(--ui-unit) + 0.125rem);
+  padding: var(--space-1-5);
   overflow-y: auto;
-  border: 1px solid var(--border);
+  border: 0.0625rem solid var(--border);
   border-radius: var(--radius-action);
   background: var(--surface);
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
 }
 
 .login-recovery-words[hidden] {
@@ -153,21 +154,10 @@ body:has(
 .login-recovery-words:empty::before {
   content: 'Entered words appear here';
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: calc(0.875 * var(--font-size));
 }
 
 .login-recovery-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  height: 2rem;
-  padding: 0.125rem 0.25rem 0.125rem 0.625rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--card-bg);
-  color: var(--fg);
-  font: inherit;
-  font-size: 0.875rem;
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -180,8 +170,8 @@ body:has(
 .login-recovery-placeholder {
   box-sizing: border-box;
   flex: none;
-  border: 1px dashed color-mix(in srgb, var(--accent) 58%, var(--border));
-  border-radius: 6px;
+  border: 0.0625rem dashed color-mix(in srgb, var(--accent) 58%, var(--border));
+  border-radius: var(--radius-micro);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   pointer-events: none;
 }
@@ -198,42 +188,42 @@ body:has(
 }
 
 .login-recovery-chip:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
 }
 
 .login-recovery-chip-remove {
   display: grid;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: var(--space-4);
+  height: var(--space-4);
   padding: 0;
   place-items: center;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   background: transparent;
   color: var(--muted);
-  font-size: 1rem;
+  font-size: calc(1 * var(--font-size));
   line-height: 1;
 }
 
 .login-recovery-chip-remove:hover {
-  background: var(--surface-hover);
-  color: var(--fg);
+  background: transparent;
+  color: var(--accent);
 }
 
 .recovery-signin-notice {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: var(--space-2-5);
   width: calc(100% - var(--page-gutter) - var(--page-gutter));
   max-width: calc(var(--content-max-width) - var(--page-gutter) - var(--page-gutter));
-  margin: 1rem auto 0;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  margin: var(--space-3) auto 0;
+  padding: var(--space-2-5) var(--space-3);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--radius-field);
   background: var(--card-bg);
   color: var(--fg);
-  font-size: 0.875rem;
+  font-size: calc(0.875 * var(--font-size));
   line-height: 1.4;
 }
 
@@ -243,24 +233,19 @@ body:has(
   flex: none;
 }
 
-.recovery-signin-notice .icon {
-  width: 1rem;
-  height: 1rem;
-}
-
-@media (max-width: 640px) {
+@media (max-width: 40em) {
   .recovery-signin-notice {
     align-items: flex-start;
     flex-direction: column;
-    margin-inline: 1rem;
+    margin-inline: var(--space-3);
     width: auto;
   }
 }
 
 .error {
-  min-height: 1.25rem;
-  margin: 0.5rem 0 0;
+  min-height: calc(1.25 * var(--ui-unit));
+  margin: var(--space-1-5) 0 0;
   color: var(--danger);
-  font-size: 0.875rem;
+  font-size: calc(0.875 * var(--font-size));
   text-align: center;
 }

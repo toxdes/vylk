@@ -183,7 +183,7 @@ test('editor preferences are available after Save', async ({page}) => {
 
   const editorActions = page.locator('#editor header .header-right button');
   await expect(editorActions).toHaveCount(1);
-  await expect(page.locator('#preview-panel #save-btn')).toBeVisible();
+  await expect(page.locator('#panel-save-slot #save-btn')).toBeVisible();
   await expect(page.locator('#editor-prefs-btn')).toBeVisible();
   await page.locator('#editor-prefs-btn').click();
   await expect(page.locator('#prefs-modal')).toBeVisible();
@@ -220,7 +220,7 @@ test('closing note Preferences leaves one Back step to the dashboard', async ({p
 
   await page.locator('#editor-prefs-btn').click();
   await expect(page).toHaveURL(/\/preferences$/);
-  await page.locator('#prefs-close').click();
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
   await expect(page).not.toHaveURL(/\/preferences$/);
 
   await page.locator('#back-btn').click();
@@ -235,7 +235,7 @@ test('closing Preferences from an unsaved note returns to that note', async ({pa
   await page.locator('#editor-prefs-btn').click();
   await expect(page).toHaveURL(/\/preferences$/);
   await page.locator('#prefs-tab-editor').click();
-  await page.locator('#prefs-close').click();
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
   await expect(page.locator('#prefs-modal')).toBeHidden();
   await expect(page.locator('#editor')).toBeVisible();
   await expect(page.locator('#note-content')).toHaveValue('A note in progress');

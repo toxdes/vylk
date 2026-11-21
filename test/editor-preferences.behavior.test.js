@@ -681,25 +681,6 @@ describe('font preferences', () => {
     expect(root.style.getPropertyValue('--preview-font-size')).toBe('1.5rem');
   });
 
-  test('keeps interface typography relative to the configured base size', () => {
-    expect(styleSource).toContain('.btn-text,.btn-primary,.btn-secondary,.prefs-btn{');
-    expect(styleSource).toMatch(/\.btn-text,[^}]+font-size:0?\.875em/);
-    expect(styleSource).toContain('header h1{font-size:1.125em}');
-  });
-
-  test('keeps font controls aligned and gives the settings surface room to breathe', () => {
-    expect(styleSource).toContain(
-      'grid-template-columns:minmax(0,1fr) 10rem;align-items:end;gap:0.75rem',
-    );
-    expect(styleSource).toContain('.prefs-page-body{display:flex;width:100%;height:100%');
-    expect(styleSource).toContain(
-      '.font-control select{height:2.5rem;min-height:2.5rem;box-sizing:border-box;padding:0.55rem 0.7rem}',
-    );
-    expect(styleSource).toContain(
-      '.label-input__control{display:block;width:100%;min-height:2.5rem;height:2.5rem',
-    );
-  });
-
   test('does not probe Google Fonts for local-only custom preferences', async () => {
     const app = track(await createApp());
     await app.hooks.savePref('fontFamily', 'Aptos');
@@ -868,19 +849,19 @@ describe('editor display preferences', () => {
     expect(app.window.document.querySelector('#pref-save-location')).not.toBeNull();
     expect(app.window.document.querySelector('#pref-content-width')).not.toBeNull();
     expect(app.window.document.querySelectorAll('.panel-width')).toHaveLength(0);
-    expect(app.window.document.querySelector('#preview-save-slot #save-btn')).not.toBeNull();
+    expect(app.window.document.querySelector('#panel-save-slot #save-btn')).not.toBeNull();
 
     await app.hooks.savePref('saveButtonLocation', 'header');
     expect(app.window.document.querySelector('#header-save-slot #save-btn')).not.toBeNull();
     await app.hooks.savePref('saveButtonLocation', 'panel');
-    expect(app.window.document.querySelector('#preview-save-slot #save-btn')).not.toBeNull();
+    expect(app.window.document.querySelector('#panel-save-slot #save-btn')).not.toBeNull();
 
     app.hooks.setPanelState('preview');
-    const previewSave = app.window.document.querySelector('#preview-save-slot #save-btn');
+    const previewSave = app.window.document.querySelector('#panel-save-slot #save-btn');
     expect(previewSave).not.toBeNull();
     expect(previewSave.disabled).toBe(true);
     app.hooks.setPanelState('both');
-    expect(app.window.document.querySelector('#preview-save-slot #save-btn').disabled).toBe(false);
+    expect(app.window.document.querySelector('#panel-save-slot #save-btn').disabled).toBe(false);
 
     await app.hooks.savePref('statusDisplay', 'compact');
     expect(root.dataset.statusDisplay).toBe('compact');
@@ -916,7 +897,7 @@ describe('editor display preferences', () => {
       [...app.window.document.querySelectorAll('#prefs-panel-editor .pref-subsection h3')].map(
         (heading) => heading.textContent,
       ),
-    ).toEqual(['Start and layout', 'Writing', 'Controls', 'Saving and sync']);
+    ).toEqual(['Writing', 'Controls', 'Saving and sync']);
 
     await app.hooks.savePref('autoSave', false);
     expect(app.window.document.querySelector('#pref-hidesave').disabled).toBe(true);
@@ -962,9 +943,7 @@ describe('editor display preferences', () => {
     const root = app.window.document.documentElement;
 
     expect(root.dataset.contentWidth).toBe('standard');
-    expect(styleSource).toContain(
-      ':root{--content-max-width:76.25rem;--page-gutter:1.25rem;--font-size:1rem;',
-    );
+    expect(styleSource).toContain('--content-max-width:76.25rem;');
     expect(styleSource).toContain(':root[data-content-width="compact"]{--content-max-width:54rem}');
     expect(styleSource).toContain(':root[data-content-width="wide"]{--content-max-width:90rem}');
     expect(styleSource).toContain(':root[data-content-width="full"]{--content-max-width:100%}');

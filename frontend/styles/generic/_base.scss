@@ -1,7 +1,7 @@
 html {
   font-size: 16px;
   background: var(--bg);
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
 }
 
 /* A shared, quiet scrollbar keeps every scrollable surface predictable. */
@@ -11,8 +11,8 @@ html {
 }
 
 *::-webkit-scrollbar {
-  width: 0.75rem;
-  height: 0.75rem;
+  width: calc(0.75 * var(--ui-unit));
+  height: calc(0.75 * var(--ui-unit));
 }
 
 *::-webkit-scrollbar-track {
@@ -21,7 +21,7 @@ html {
 
 *::-webkit-scrollbar-thumb {
   border: 0.2rem solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--muted) 42%, transparent);
   background-clip: padding-box;
 }
@@ -32,7 +32,7 @@ html {
 }
 
 body {
-  min-width: 320px;
+  min-width: 20rem;
   margin: 0;
   background: var(--bg);
   color: var(--fg);
@@ -51,7 +51,7 @@ textarea {
 }
 
 textarea {
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
 }
 
 button {
@@ -70,8 +70,8 @@ button:disabled {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  outline-offset: 2px;
+  outline: 0.1875rem solid color-mix(in srgb, var(--accent) 35%, transparent);
+  outline-offset: 0.125rem;
 }
 
 #app {
@@ -87,7 +87,7 @@ textarea:focus-visible {
 #boot-screen {
   display: none;
   min-height: 100dvh;
-  padding: 1.5rem;
+  padding: var(--space-5);
   place-items: center;
 }
 
@@ -100,9 +100,9 @@ textarea:focus-visible {
 }
 
 .boot-spinner {
-  width: 1.5rem;
-  height: 1.5rem;
-  border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  width: calc(1.5 * var(--ui-unit));
+  height: calc(1.5 * var(--ui-unit));
+  border: 0.125rem solid color-mix(in srgb, var(--accent) 22%, transparent);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: boot-spin 0.7s linear infinite;
@@ -116,10 +116,10 @@ textarea:focus-visible {
 
 .sr-only {
   position: absolute;
-  width: 1px;
-  height: 1px;
+  width: calc(0.0625 * var(--ui-unit));
+  height: calc(0.0625 * var(--ui-unit));
   padding: 0;
-  margin: -1px;
+  margin: -0.0625rem;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
@@ -186,16 +186,4 @@ textarea:focus-visible {
   width: 0;
   height: 0;
   overflow: hidden;
-}
-
-.icon {
-  display: block;
-  width: 1.1em;
-  height: 1.1em;
-  fill: none;
-  stroke: currentcolor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  flex: none;
 }

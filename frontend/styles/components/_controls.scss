@@ -1,27 +1,41 @@
+/* Small controls share the lander color timing; reduced motion overrides it. */
+button,
+select,
+input,
+textarea,
+.prefs-nav,
+.about-row {
+  transition:
+    background-color var(--control-duration) var(--control-ease),
+    border-color var(--control-duration) var(--control-ease),
+    color var(--control-duration) var(--control-ease);
+}
+
 /* Shared controls */
 .btn-text,
 .btn-primary,
 .btn-secondary,
-.prefs-btn {
+.prefs-btn,
+.icon-btn,
+.modal-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.25rem;
-  gap: 0.45rem;
-  border-radius: 7px;
-  font-size: 0.875rem;
+  min-height: var(--control-height);
+  gap: var(--control-gap);
+  padding: var(--space-1) var(--control-padding-inline);
+  border: 0.0625rem solid transparent;
+  border-radius: var(--radius-action);
+  font-size: calc(0.75 * var(--font-size));
   font-weight: 600;
   line-height: 1.25;
   transition:
-    background 0.15s,
-    border-color 0.15s,
-    box-shadow 0.15s,
-    color 0.15s,
-    transform 0.15s;
+    background var(--control-duration) var(--control-ease),
+    border-color var(--control-duration) var(--control-ease),
+    color var(--control-duration) var(--control-ease);
 }
 
 .btn-text {
-  padding: 0.45rem 0.7rem;
   background: transparent;
   color: var(--muted);
 }
@@ -41,28 +55,24 @@
 }
 
 .btn-primary {
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--accent);
+  border-color: var(--accent);
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 2px 5px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .btn-primary:hover {
   border-color: var(--accent-hover);
   background: var(--accent-hover);
-  box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .btn-primary:active {
-  box-shadow: none;
-  transform: translateY(1px);
+  border-color: color-mix(in srgb, var(--accent) 72%, #000);
+  background: color-mix(in srgb, var(--accent) 72%, #000);
 }
 
 .btn-primary.danger {
   border-color: var(--danger);
   background: var(--danger);
-  box-shadow: 0 2px 5px color-mix(in srgb, var(--danger) 28%, transparent);
 }
 
 .btn-primary.danger:hover {
@@ -71,8 +81,7 @@
 }
 
 .btn-secondary {
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--border-strong);
+  border-color: var(--border-strong);
   background: var(--card-bg);
   color: var(--fg);
 }
@@ -93,50 +102,23 @@
   color: var(--danger-hover);
 }
 
-.prefs-btn {
-  width: 2.25rem;
-  height: 2.25rem;
-  padding: 0;
+.prefs-btn,
+.modal-close {
+  flex: none;
   background: transparent;
   color: var(--muted);
 }
 
-.prefs-btn:hover {
-  background: var(--surface-hover);
-  color: var(--fg);
-}
-
-.prefs-btn .icon {
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
 .icon-btn {
-  display: inline-grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  min-height: 2.25rem;
-  padding: 0;
-  place-items: center;
   gap: 0;
   line-height: 1;
-}
-
-.icon-btn .icon {
-  width: 1.2rem;
-  height: 1.2rem;
 }
 
 .btn-text.icon-btn {
   color: var(--muted);
 }
 
-.btn-text.icon-btn:hover {
-  color: var(--fg);
-}
-
-.back-chevron {
-  width: 1.15rem;
-  height: 1.15rem;
-  stroke-width: 2;
+:is(.prefs-btn, .modal-close, .btn-text.icon-btn):enabled:hover {
+  background: transparent;
+  color: var(--accent);
 }

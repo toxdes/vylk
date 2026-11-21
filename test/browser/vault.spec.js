@@ -53,6 +53,143 @@ async function confirmRecoveryWords(page, inputSelector, key) {
   }
 }
 
+test('setup is disposable at every step and verification never starts encryption', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/');
+  await page.locator('#login-password').fill('browser-test-password');
+  await page.locator('#login-form button[type="submit"]').click();
+  await expect(page.locator('#dashboard')).toBeVisible();
+  await useEditorFixture(page);
+  const before = await (await page.request.get('/api/notes')).json();
+  const writes = [];
+  page.on('request', (request) => {
+    if (
+      request.method() === 'POST' &&
+      /\/api\/vault\/(migration|reset|credentials)/.test(request.url())
+    )
+      writes.push(request.url());
+  });
+  await page.locator('#prefs-btn').click();
+  await page.locator('#prefs-tab-encryption').click();
+  for (const exit of ['password', 'recovery', 'confirmation']) {
+    await page.locator('#vault-open-setup').click();
+    await expect(page.locator('#vault-old-password')).toHaveValue('');
+    await expect(page.locator('#vault-master')).toBeHidden();
+    await expect(page.locator('#vault-setup-recovery')).toBeHidden();
+    await expect(page.locator('#vault-start')).toBeHidden();
+    if (exit !== 'password') {
+      await page.locator('#vault-old-password').fill('incorrect');
+      await page.locator('#vault-setup-continue').click();
+      await expect(page.locator('#vault-error')).toContainText('Wrong password');
+      await expect(page.locator('#vault-setup-recovery')).toBeHidden();
+      expect((await page.request.get('/api/check')).status()).toBe(200);
+      await page.locator('#vault-old-password').fill('browser-test-password');
+      await page.locator('#vault-setup-continue').click();
+      await expect(page.locator('#vault-recovery-key .vault-recovery-word')).toHaveCount(24);
+      await expect(page.locator('#vault-old-password')).toBeHidden();
+    }
+    if (exit === 'confirmation') {
+      for (const width of [390, 1440]) {
+        for (const size of [1, 1.5]) {
+          await page.setViewportSize({width, height: 900});
+          await page.evaluate(
+            (size) => document.documentElement.style.setProperty('--font-size', `${size}rem`),
+            size,
+          );
+          await page.screenshot({
+            path: testInfo.outputPath(`recovery-display-${width}-${size}.png`),
+          });
+        }
+      }
+      await page.evaluate(() => document.documentElement.style.removeProperty('--font-size'));
+      await page.setViewportSize({width: 1280, height: 720});
+      const words = await displayedRecoveryKey(page, '#vault-recovery-key');
+      const warning = page.locator('#vault-setup-recovery .vault-recovery-warning');
+      await expect(warning).toBeVisible();
+      await page.locator('#vault-recovery-begin').click();
+      await expect(warning).toBeHidden();
+      await expect(page.locator('#vault-recovery-entry-step .vault-recovery-hint')).toHaveText(
+        'Enter your 24 recovery words in order.',
+      );
+      await expect(page.locator('#vault-start')).toBeDisabled();
+      const originalWords = words.split(' ');
+      const wrongWords = [...originalWords];
+      wrongWords[23] = wrongWords[23] === 'apple' ? 'banana' : 'apple';
+      await confirmRecoveryWords(page, '#vault-recovery-confirm', wrongWords.join(' '));
+      await page.locator('#vault-start').click();
+      await expect(page.locator('#vault-error')).toHaveText(
+        'The words you entered don’t match the recovery key.',
+      );
+      await page.locator('#vault-recovery-entered .login-recovery-chip-remove').last().click();
+      await confirmRecoveryWords(page, '#vault-recovery-confirm', originalWords[23]);
+      await expect(page.locator('#vault-start')).toBeEnabled();
+      const chips = await page.evaluate(() => {
+        const entered = getComputedStyle(document.querySelector('.login-recovery-chip'));
+        const saved = getComputedStyle(document.querySelector('.vault-recovery-words li'));
+        return [
+          'paddingTop',
+          'paddingBottom',
+          'paddingLeft',
+          'paddingRight',
+          'gap',
+          'borderRadius',
+          'fontSize',
+          'minHeight',
+        ].every((property) => entered[property] === saved[property]);
+      });
+      expect(chips).toBe(true);
+      for (const width of [390, 1440]) {
+        for (const size of [1, 1.5]) {
+          await page.setViewportSize({width, height: 900});
+          await page.evaluate(
+            (size) => document.documentElement.style.setProperty('--font-size', `${size}rem`),
+            size,
+          );
+          await page.screenshot({
+            path: testInfo.outputPath(`recovery-confirm-${width}-${size}.png`),
+          });
+        }
+      }
+      await page.evaluate(() => document.documentElement.style.removeProperty('--font-size'));
+      await page.setViewportSize({width: 1280, height: 720});
+    }
+    await page.locator('#vault-setup-close').click();
+    await expect(page.locator('#vault-setup-modal')).toBeHidden();
+    expect((await (await page.request.get('/api/vault/bootstrap')).json()).mode).toBe('legacy');
+    expect(await (await page.request.get('/api/notes')).json()).toEqual(before);
+    await expect(page.locator('#vault-recovery-key .vault-recovery-word')).toHaveCount(0);
+    expect(writes).toEqual([]);
+  }
+  // A verification response arriving after dismissal cannot reopen recovery UI.
+  let arrived;
+  let release;
+  const responseReady = new Promise((resolve) => {
+    arrived = resolve;
+  });
+  const released = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/vault/setup/verify-password', async (route) => {
+    const response = await route.fetch();
+    arrived();
+    await released;
+    await route.fulfill({response});
+  });
+  await page.locator('#vault-open-setup').click();
+  await page.locator('#vault-old-password').fill('browser-test-password');
+  await page.locator('#vault-setup-continue').click();
+  await responseReady;
+  await page.locator('#vault-setup-close').click();
+  await page.locator('#vault-open-setup').click();
+  await expect(page.locator('#vault-setup-continue')).toBeEnabled();
+  release();
+  await expect(page.locator('#vault-recovery-key .vault-recovery-word')).toHaveCount(0);
+  await expect(page.locator('#vault-old-password')).toHaveValue('');
+  await expect(page.locator('#vault-setup-recovery')).toBeHidden();
+  await page.locator('#vault-setup-cancel').click();
+});
+
 test('encrypts an existing note and syncs ciphertext between independent devices', async ({
   page,
   browser,
@@ -134,12 +271,10 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await expect(page.locator('#vault-setup-modal')).toBeVisible();
   await expect(page.locator('#vault-setup-form')).toBeVisible();
   await expect(page.locator('#vault-master')).toHaveValue('');
-  await expectCredentialModalToFit(page, 'vault-setup-modal', 'vault-master');
-  await page.locator('#vault-master').fill('password');
-  await expect(page.locator('#vault-weak-confirm-row')).toBeVisible();
-  await page.locator('#vault-master').fill('correct horse battery staple!');
-  await expect(page.locator('#vault-weak-confirm-row')).toBeHidden();
-  await expect.poll(() => bip39Requests.length).toBe(1);
+  await expectCredentialModalToFit(page, 'vault-setup-modal', 'vault-old-password');
+  await expect(page.locator('#vault-master')).toBeHidden();
+  await expect(page.locator('#vault-setup-recovery')).toBeHidden();
+  expect(bip39Requests).toEqual([]);
   const accessibility = await new AxeBuilder({page})
     .include('#prefs-modal')
     .include('#vault-setup-modal')
@@ -154,7 +289,9 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await expect(page.locator('#prefs-panel-encryption')).toBeVisible();
   await page.locator('#prefs-tab-encryption').click();
   await page.locator('#vault-open-setup').click();
-  await expectCredentialModalToFit(page, 'vault-setup-modal', 'vault-master');
+  await expectCredentialModalToFit(page, 'vault-setup-modal', 'vault-old-password');
+  await page.locator('#vault-old-password').fill('browser-test-password');
+  await page.locator('#vault-setup-continue').click();
   await expect(page.locator('#vault-recovery-key .vault-recovery-word')).toHaveCount(24);
   await page.locator('#vault-recovery-begin').click();
   await expectCredentialModalToFit(page, 'vault-setup-modal', 'vault-recovery-confirm');
@@ -175,8 +312,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await page.locator('#prefs-tab-encryption').click();
   await page.setViewportSize({width: 1280, height: 720});
   await page.locator('#vault-open-setup').click();
-  await page.locator('#vault-master').fill('password');
-  await expect(page.locator('#vault-weak-confirm-row')).toBeVisible();
+  await expect(page.locator('#vault-master')).toBeHidden();
   await page.locator('#vault-setup-cancel').click();
   await page.locator('#prefs-panel-encryption').evaluate((panel) => {
     panel.scrollTop = 200;
@@ -187,19 +323,17 @@ test('encrypts an existing note and syncs ciphertext between independent devices
     .poll(() => page.locator('#prefs-panel-encryption').evaluate((panel) => panel.scrollTop))
     .toBe(0);
   await page.locator('#vault-open-setup').click();
-  await page.locator('#vault-master').fill('password');
-  await expect(page.locator('#vault-weak-confirm-row')).toBeVisible();
+  await expect(page.locator('#vault-master')).toBeHidden();
+  await page.locator('#vault-old-password').fill('browser-test-password');
+  await page.locator('#vault-setup-continue').click();
   await expect(page.locator('#vault-recovery-key .vault-recovery-word')).toHaveCount(24);
-  const master = await page.locator('#vault-master').inputValue();
+  const master = 'browser-test-password';
   const recovery = await displayedRecoveryKey(page, '#vault-recovery-key');
   expect(recovery.trim().split(/\s+/)).toHaveLength(24);
   const downloadPromise = page.waitForEvent('download');
   await page.locator('#vault-download-recovery').click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^vylk-recovery-key-\d{12}\.txt$/);
-  await page.locator('#vault-old-password').fill('browser-test-password');
-  await page.locator('#vault-weak-confirm').check();
-  await page.locator('#vault-master-confirm').fill(master);
   await page.locator('#vault-recovery-begin').click();
   await expect(page.locator('#vault-recovery-key')).toBeHidden();
   await expect(page.locator('#vault-recovery-confirm-label')).toHaveText('Enter word 1 (1/24)');
@@ -228,25 +362,10 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await page.locator('#vault-recovery-confirm').fill(recoveryWords[23]);
   await page.locator('#vault-recovery-confirm').press('Enter');
   await expect(page.locator('#vault-recovery-entry-step .login-recovery-word-row')).toBeHidden();
-  await page.locator('#vault-start').click();
-  await expect(page.locator('#vault-final-confirm-modal')).toBeVisible();
-  const finalAccessibility = await new AxeBuilder({page})
-    .include('#vault-final-confirm-modal')
-    .analyze();
-  expect(
-    finalAccessibility.violations.filter((violation) =>
-      ['critical', 'serious'].includes(violation.impact),
-    ),
-  ).toEqual([]);
   expect(
     await page.evaluate(async () => (await (await fetch('/api/vault/bootstrap')).json()).mode),
   ).toBe('legacy');
-  await page.locator('#vault-final-confirm-back').click();
-  await expect(page.locator('#vault-final-confirm-modal')).toBeHidden();
   await page.locator('#vault-start').click();
-  await expect(page.locator('#vault-final-confirm-modal')).toBeVisible();
-  await expect(page.locator('#login-screen')).toBeHidden();
-  await page.locator('#vault-final-confirm-start').click();
   await expect(page.locator('#login-screen')).toBeVisible({timeout: 10000});
   await page.locator('#login-password').fill(master);
   await page.locator('#login-form button[type="submit"]').click();
@@ -279,7 +398,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await page.locator('#prefs-tab-encryption').click();
   await expect(page.locator('#vault-status-icon')).toBeVisible();
   await expect(page.locator('#vault-status-copy')).toHaveText('End-to-end encryption is on');
-  await page.locator('#prefs-close').click();
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
 
   const oldClientResponse = await page.request.get('/api/notes');
   expect(oldClientResponse.status()).toBe(426);
@@ -297,7 +416,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
     await phone.reload();
     await expect(phone.locator('#login-forgot-password')).toBeVisible();
     await expect(phone.locator('#login-ask-each-time')).toHaveCount(0);
-    await expect(phone.locator('label[for="login-password"]')).toHaveText('Passphrase');
+    await expect(phone.locator('label[for="login-password"]')).toHaveText('Password');
     await phone.locator('#login-password').fill(master);
     await phone.locator('#login-form button[type="submit"]').click();
     await expect(phone.locator('#dashboard')).toBeVisible({timeout: 30000});
@@ -398,7 +517,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await expect(page.locator('#vault-master-fields')).toBeHidden();
   await page.locator('[data-vault-master-method="password"]').click();
   await expect(page.locator('#vault-master-fields')).toBeVisible();
-  await expect(page.locator('#vault-master-current-label')).toHaveText('Passphrase');
+  await expect(page.locator('#vault-master-current-label')).toHaveText('Password');
   await expect(page.locator('#vault-master-new-fields')).toBeHidden();
   await expect(page.locator('#vault-master-submit')).toBeHidden();
   await expect(page.locator('#vault-master-verify')).toHaveText('Continue');
@@ -438,7 +557,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await expect(page.locator('#vault-new-weak-confirm-row')).toBeVisible();
   await page.locator('#vault-new-master').fill('another strong encryption password phrase');
   await expect(page.locator('#vault-new-weak-confirm-row')).toBeHidden();
-  await expect(page.locator('#vault-new-master-strength')).toHaveText('Strong passphrase');
+  await expect(page.locator('#vault-new-master-strength')).toHaveText('Strong password');
   const newMaster = await page.locator('#vault-new-master').inputValue();
   await page.locator('#vault-new-master-confirm').fill(newMaster);
   const staleDevice = await browser.newContext();
@@ -463,7 +582,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   } finally {
     await staleDevice.close();
   }
-  await page.locator('#prefs-close').click();
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
   await expect(page.locator('#editor')).toBeVisible();
 
   await page.locator('#editor-prefs-btn').click();
@@ -499,7 +618,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await page.setViewportSize({width: 390, height: 844});
   await expect(page.locator('#vault-new-recovery-step')).toBeHidden();
   await expect(page.locator('#vault-recovery-submit')).toBeHidden();
-  await expect(page.locator('#vault-recovery-current-label')).toHaveText('Passphrase');
+  await expect(page.locator('#vault-recovery-current-label')).toHaveText('Password');
   await expect(page.locator('#vault-recovery-current-secret')).toHaveAttribute(
     'autocomplete',
     'current-password',
@@ -507,7 +626,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await page.locator('#vault-recovery-current-secret').fill('incorrect passphrase');
   await page.locator('#vault-recovery-verify').click();
   await expect(page.locator('#vault-recovery-error')).toHaveText(
-    'That passphrase or recovery key is incorrect.',
+    'That password or recovery key is incorrect.',
   );
   await expect(page.locator('#vault-new-recovery-step')).toBeHidden();
   await page.locator('#vault-recovery-current-secret').fill(newMaster);
@@ -558,7 +677,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
     await recoveryPage.goto('/');
     await recoveryPage.locator('#login-password').fill(master);
     await recoveryPage.locator('#login-form button[type="submit"]').click();
-    await expect(recoveryPage.locator('#login-error')).toHaveText('Wrong passphrase');
+    await expect(recoveryPage.locator('#login-error')).toHaveText('Wrong password');
     await enterRecoveryKey(recoveryPage, recovery);
     await recoveryPage.locator('#login-recovery-submit').click();
     await expect(recoveryPage.locator('#login-recovery-error')).toHaveText(

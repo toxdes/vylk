@@ -430,7 +430,7 @@ SOFTWARE.
           </div>
           <div id="login-recovery-lost" class="login-recovery-lost">
             <p class="modal-copy">
-              Without your passphrase or recovery key, your existing notes cannot be recovered.
+              Without your password or recovery key, your existing notes cannot be recovered.
             </p>
             <p class="modal-copy">
               Contact the server owner to reset the vault and start empty. Restarting the server
@@ -477,12 +477,12 @@ SOFTWARE.
         </header>
         <div id="recovery-signin-notice" class="recovery-signin-notice" role="status" hidden>
           <span
-            >You signed in with a recovery key. Change your passphrase so you can sign in without it
+            >You signed in with a recovery key. Change your password so you can sign in without it
             next time.</span
           >
           <div>
             <button id="recovery-change-passphrase" class="btn-text" type="button">
-              Change passphrase
+              Change password
             </button>
             <button
               id="recovery-dismiss-notice"
@@ -523,12 +523,21 @@ SOFTWARE.
           class="modal-body prefs-modal-body"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="prefs-title"
+          aria-labelledby="prefs-dialog-title"
           tabindex="-1"
         >
           <div class="prefs-page-body">
             <aside class="prefs-sidebar">
-              <div class="prefs-sidebar-title">Preferences</div>
+              <div class="prefs-sidebar-heading">
+                <div id="prefs-dialog-title" class="prefs-sidebar-title">Preferences</div>
+                <button
+                  class="modal-close prefs-close"
+                  type="button"
+                  aria-label="Close preferences"
+                >
+                  <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+                </button>
+              </div>
               <div class="prefs-tabs-scroll">
                 <nav class="prefs-tabs" role="tablist" aria-label="Preference sections">
                   <button
@@ -623,7 +632,7 @@ SOFTWARE.
                 <h2 id="prefs-title" tabindex="-1">Appearance</h2>
                 <button
                   id="prefs-close"
-                  class="modal-close"
+                  class="modal-close prefs-close"
                   type="button"
                   aria-label="Close preferences"
                 >
@@ -700,7 +709,10 @@ SOFTWARE.
                         />
                         <label class="label-input__label" for="pref-font">Interface font</label>
                       </div>
-                      <select id="pref-font-size" aria-label="Interface font size"></select>
+                      <div class="font-size-control">
+                        <label for="pref-font-size">Size</label
+                        ><select id="pref-font-size" aria-label="Interface font size"></select>
+                      </div>
                     </div>
                     <small id="pref-font-description" class="font-input-help"
                       >Used throughout the app.</small
@@ -734,9 +746,7 @@ SOFTWARE.
                 data-pref-panel="editor"
                 hidden
               >
-                <section class="pref-subsection" aria-labelledby="prefs-editor-start-title">
-                  <h3 id="prefs-editor-start-title">Start and layout</h3>
-                  <p>Set the view and details state used when you open a note.</p>
+                <section class="pref-subsection" aria-label="Note opening">
                   <label class="pref-control"
                     ><span
                       ><strong>Open notes in</strong
@@ -774,7 +784,13 @@ SOFTWARE.
                             >Editor font</label
                           >
                         </div>
-                        <select id="pref-editor-font-size" aria-label="Editor font size"></select>
+                        <div class="font-size-control">
+                          <label for="pref-editor-font-size">Size</label
+                          ><select
+                            id="pref-editor-font-size"
+                            aria-label="Editor font size"
+                          ></select>
+                        </div>
                       </div>
                       <small id="pref-editor-font-description" class="font-input-help"
                         >Used while writing Markdown.</small
@@ -821,7 +837,13 @@ SOFTWARE.
                             >Preview font</label
                           >
                         </div>
-                        <select id="pref-preview-font-size" aria-label="Preview font size"></select>
+                        <div class="font-size-control">
+                          <label for="pref-preview-font-size">Size</label
+                          ><select
+                            id="pref-preview-font-size"
+                            aria-label="Preview font size"
+                          ></select>
+                        </div>
                       </div>
                       <small id="pref-preview-font-description" class="font-input-help"
                         >Used for rendered note content.</small
@@ -886,7 +908,7 @@ SOFTWARE.
                       ><strong>Save button location</strong
                       ><small>Choose where the manual Save control appears.</small></span
                     ><select id="pref-save-location">
-                      <option value="panel">Panel header</option>
+                      <option value="panel">Editor toolbar</option>
                       <option value="header">App header</option>
                     </select></label
                   >
@@ -947,10 +969,13 @@ SOFTWARE.
                         />
                         <label class="label-input__label" for="pref-zen-font">Editor font</label>
                       </div>
-                      <select
-                        id="pref-zen-font-size"
-                        aria-label="Zen mode editor font size"
-                      ></select>
+                      <div class="font-size-control">
+                        <label for="pref-zen-font-size">Size</label>
+                        <select
+                          id="pref-zen-font-size"
+                          aria-label="Zen mode editor font size"
+                        ></select>
+                      </div>
                     </div>
                     <small id="pref-zen-font-description" class="font-input-help"
                       >Used while writing in Zen mode.</small
@@ -1071,31 +1096,41 @@ SOFTWARE.
                 data-pref-panel="encryption"
                 hidden
               >
-                <div class="vault-overview">
-                  <div>
-                    <div class="vault-status-line">
-                      <svg id="vault-status-icon" class="icon vault-status-icon" aria-hidden="true">
-                        <use href="#icon-shield-check"></use>
-                      </svg>
-                      <strong id="vault-status-copy">End-to-end encryption is off</strong>
-                    </div>
-                    <p id="vault-overview-copy">Protect your notes across devices.</p>
-                  </div>
-                  <details class="vault-info">
-                    <summary aria-label="About encryption" title="About encryption">
-                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <details class="vault-overview vault-info">
+                  <summary aria-label="About encryption" title="About encryption">
+                    <span class="vault-overview-label">
+                      <span class="vault-status-line">
+                        <svg
+                          id="vault-status-icon"
+                          class="icon vault-status-icon"
+                          aria-hidden="true"
+                        >
+                          <use href="#icon-shield-check"></use>
+                        </svg>
+                        <strong id="vault-status-copy">End-to-end encryption is off</strong>
+                      </span>
+                      <span id="vault-overview-copy" class="vault-overview-description">
+                        Protect your notes across devices.
+                      </span>
+                    </span>
+                    <span class="vault-info-icon" aria-hidden="true">
+                      <svg class="icon" viewBox="0 0 24 24">
                         <circle cx="12" cy="12" r="9" />
                         <path d="M12 11v5M12 8h.01" />
                       </svg>
-                    </summary>
-                    <div class="vault-info-copy">
-                      <p>
-                        Only your devices can read your note titles, tags, and content after setup.
-                      </p>
-                      <p>Keep your passphrase and recovery key safe. Vylk cannot restore them.</p>
-                    </div>
-                  </details>
-                </div>
+                    </span>
+                  </summary>
+                  <div class="vault-info-copy">
+                    <p>
+                      Once enabled, end-to-end encryption keeps the server from reading your note
+                      titles, tags, and content.
+                    </p>
+                    <p>
+                      Keep your password and recovery key safe. If you lose both, your notes can’t
+                      be recovered.
+                    </p>
+                  </div>
+                </details>
                 <p class="vault-secure-context-note" hidden>
                   <span id="vault-secure-context-copy"
                     >Open Vylk over HTTPS to set up end-to-end encryption.</span
@@ -1109,7 +1144,9 @@ SOFTWARE.
                     <button id="vault-open-setup" class="vault-option" type="button">
                       <span
                         ><strong id="vault-title">Set up encryption</strong
-                        ><small>Add a passphrase and recovery key for your notes.</small></span
+                        ><small
+                          >Protect your notes using your current password and a recovery key.</small
+                        ></span
                       >
                       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
                         <path d="m9 6 6 6-6 6" />
@@ -1119,10 +1156,8 @@ SOFTWARE.
                   <div id="vault-active" hidden>
                     <button id="vault-open-passphrase" class="vault-option" type="button">
                       <span
-                        ><strong>Change encryption passphrase</strong
-                        ><small
-                          >Your passphrase unlocks encrypted notes on your devices.</small
-                        ></span
+                        ><strong>Change password</strong
+                        ><small>Your password unlocks encrypted notes on your devices.</small></span
                       >
                       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
                         <path d="m9 6 6 6-6 6" />
@@ -1132,7 +1167,7 @@ SOFTWARE.
                       <span
                         ><strong>Change recovery key</strong
                         ><small
-                          >These 24 words can unlock notes if you forget your passphrase.</small
+                          >These 24 words can unlock notes if you forget your password.</small
                         ></span
                       >
                       <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -1208,7 +1243,7 @@ SOFTWARE.
                 required
               />
               <label class="label-input__label" for="vault-old-password"
-                ><span>Current Vylk password</span></label
+                ><span>Current password</span></label
               >
               <button
                 class="label-input__toggle"
@@ -1230,27 +1265,60 @@ SOFTWARE.
               <p>Your old notes cannot be opened or restored in Vylk.</p>
               <p>A protected copy stays on this server for 30 days, then is deleted.</p>
               <p>
-                Other devices must use the new passphrase. Their unsynced old-vault changes will be
+                Other devices must use the new password. Their unsynced old-vault changes will be
                 discarded.
               </p>
             </div>
-            <div class="vault-passphrase-field">
+            <div id="vault-reset-password-fields" class="vault-master-fields" hidden>
+              <div class="vault-passphrase-field">
+                <div class="label-input">
+                  <input
+                    class="label-input__control"
+                    id="vault-master"
+                    type="password"
+                    autocomplete="new-password"
+                    placeholder=" "
+                    required
+                  />
+                  <label class="label-input__label" for="vault-master">Password</label>
+                  <button
+                    class="label-input__toggle"
+                    type="button"
+                    data-password-toggle="vault-master"
+                    data-secret-name="password"
+                    aria-label="Show password"
+                    aria-pressed="false"
+                  >
+                    <svg class="icon" data-password-icon="hidden" aria-hidden="true">
+                      <use href="#icon-eye"></use>
+                    </svg>
+                    <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
+                      <use href="#icon-eye-off"></use>
+                    </svg>
+                  </button>
+                </div>
+                <p id="vault-strength" class="vault-hint" role="status" aria-live="polite"></p>
+                <label id="vault-weak-confirm-row" class="vault-check" hidden>
+                  <input id="vault-weak-confirm" type="checkbox" /> I understand this password is
+                  easy to guess
+                </label>
+              </div>
               <div class="label-input">
                 <input
                   class="label-input__control"
-                  id="vault-master"
+                  id="vault-master-confirm"
                   type="password"
                   autocomplete="new-password"
                   placeholder=" "
                   required
                 />
-                <label class="label-input__label" for="vault-master">Passphrase</label>
+                <label class="label-input__label" for="vault-master-confirm">Repeat password</label>
                 <button
                   class="label-input__toggle"
                   type="button"
-                  data-password-toggle="vault-master"
-                  data-secret-name="passphrase"
-                  aria-label="Show passphrase"
+                  data-password-toggle="vault-master-confirm"
+                  data-secret-name="password"
+                  aria-label="Show password"
                   aria-pressed="false"
                 >
                   <svg class="icon" data-password-icon="hidden" aria-hidden="true">
@@ -1261,45 +1329,17 @@ SOFTWARE.
                   </svg>
                 </button>
               </div>
-              <p id="vault-strength" class="vault-hint" role="status" aria-live="polite"></p>
-              <label id="vault-weak-confirm-row" class="vault-check" hidden>
-                <input id="vault-weak-confirm" type="checkbox" /> I understand this passphrase is
-                easy to guess
-              </label>
             </div>
-            <div class="label-input">
-              <input
-                class="label-input__control"
-                id="vault-master-confirm"
-                type="password"
-                autocomplete="new-password"
-                placeholder=" "
-                required
-              />
-              <label class="label-input__label" for="vault-master-confirm">Repeat passphrase</label>
-              <button
-                class="label-input__toggle"
-                type="button"
-                data-password-toggle="vault-master-confirm"
-                data-secret-name="passphrase"
-                aria-label="Show passphrase"
-                aria-pressed="false"
-              >
-                <svg class="icon" data-password-icon="hidden" aria-hidden="true">
-                  <use href="#icon-eye"></use>
-                </svg>
-                <svg class="icon" data-password-icon="visible" aria-hidden="true" hidden>
-                  <use href="#icon-eye-off"></use>
-                </svg>
-              </button>
-            </div>
-            <div class="vault-recovery">
+            <div id="vault-setup-recovery" class="vault-recovery" hidden>
               <strong id="vault-recovery-heading">Write down your recovery key</strong>
-              <p class="vault-recovery-hint">
-                These 24 words can unlock your notes if you forget your passphrase. Save them
-                somewhere private, away from this device.
-              </p>
-              <div id="vault-recovery-display">
+              <div id="vault-recovery-display" class="vault-recovery-display">
+                <p class="vault-recovery-hint">
+                  These 24 words can unlock your notes if you forget your password. Save them
+                  somewhere private, away from this device.
+                </p>
+                <p class="vault-recovery-hint vault-recovery-warning">
+                  If you forget your password and lose this key, your notes can’t be recovered.
+                </p>
                 <ol
                   id="vault-recovery-key"
                   class="vault-recovery-words"
@@ -1315,11 +1355,7 @@ SOFTWARE.
                 </div>
               </div>
               <div id="vault-recovery-entry-step" class="vault-recovery-entry-step" hidden>
-                <p class="vault-recovery-hint">
-                  Pasting is turned off to help confirm you saved this key. Enter each word from
-                  your saved copy. If you forget your passphrase and lose this key, no one can
-                  recover your notes.
-                </p>
+                <p class="vault-recovery-hint">Enter your 24 recovery words in order.</p>
                 <p
                   id="vault-recovery-count"
                   class="login-recovery-count"
@@ -1371,44 +1407,10 @@ SOFTWARE.
             <p id="vault-error" class="error" role="alert"></p>
             <div class="modal-actions vault-form-actions">
               <button id="vault-setup-cancel" class="btn-secondary" type="button">Cancel</button>
-              <button id="vault-start" type="submit" class="btn-primary">Encrypt notes</button>
+              <button id="vault-setup-continue" type="button" class="btn-primary">Continue</button>
+              <button id="vault-start" type="submit" class="btn-primary" hidden>Encrypt</button>
             </div>
           </form>
-        </div>
-      </div>
-      <div id="vault-final-confirm-modal" class="modal hidden" aria-hidden="true">
-        <div class="modal-backdrop"></div>
-        <div
-          class="modal-body"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="vault-final-confirm-title"
-          aria-describedby="vault-final-confirm-copy"
-          tabindex="-1"
-        >
-          <div class="modal-heading">
-            <h3 id="vault-final-confirm-title">Before you turn on encryption</h3>
-            <button
-              id="vault-final-confirm-close"
-              class="modal-close"
-              type="button"
-              aria-label="Close"
-            >
-              <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
-            </button>
-          </div>
-          <p id="vault-final-confirm-copy" class="modal-copy">
-            If you forget your passphrase and lose your recovery key, no one can get your notes
-            back. Make sure you have saved the key somewhere private.
-          </p>
-          <div class="modal-actions">
-            <button id="vault-final-confirm-back" class="btn-secondary" type="button">
-              Go back
-            </button>
-            <button id="vault-final-confirm-start" class="btn-primary" type="button">
-              Turn on encryption
-            </button>
-          </div>
         </div>
       </div>
       <div id="vault-master-modal" class="modal hidden vault-credential-modal" aria-hidden="true">
@@ -1421,7 +1423,7 @@ SOFTWARE.
           tabindex="-1"
         >
           <div class="modal-heading">
-            <h3 id="vault-master-modal-title">Change encryption passphrase</h3>
+            <h3 id="vault-master-modal-title">Change password</h3>
             <button id="vault-master-close" class="modal-close" type="button" aria-label="Close">
               <svg class="icon" aria-hidden="true"><use href="#icon-x"></use></svg>
             </button>
@@ -1430,7 +1432,7 @@ SOFTWARE.
             <div id="vault-master-methods" class="vault-master-methods">
               <p>How would you like to confirm it’s you?</p>
               <button class="vault-option" type="button" data-vault-master-method="password">
-                <span><strong>I know my encryption passphrase</strong></span>
+                <span><strong>I know my encryption password</strong></span>
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m9 6 6 6-6 6" />
                 </svg>
@@ -1461,14 +1463,14 @@ SOFTWARE.
                   id="vault-master-current-label"
                   class="label-input__label"
                   for="vault-master-current-secret"
-                  >Passphrase</label
+                  >Password</label
                 >
                 <button
                   class="label-input__toggle"
                   type="button"
                   data-password-toggle="vault-master-current-secret"
-                  data-secret-name="passphrase"
-                  aria-label="Show passphrase"
+                  data-secret-name="password"
+                  aria-label="Show password"
                   aria-pressed="false"
                 >
                   <svg class="icon" data-password-icon="hidden" aria-hidden="true">
@@ -1530,13 +1532,13 @@ SOFTWARE.
                       autocomplete="new-password"
                       placeholder=" "
                     />
-                    <label class="label-input__label" for="vault-new-master">New passphrase</label>
+                    <label class="label-input__label" for="vault-new-master">New password</label>
                     <button
                       class="label-input__toggle"
                       type="button"
                       data-password-toggle="vault-new-master"
-                      data-secret-name="passphrase"
-                      aria-label="Show passphrase"
+                      data-secret-name="password"
+                      aria-label="Show password"
                       aria-pressed="false"
                     >
                       <svg class="icon" data-password-icon="hidden" aria-hidden="true">
@@ -1554,8 +1556,8 @@ SOFTWARE.
                     aria-live="polite"
                   ></p>
                   <label id="vault-new-weak-confirm-row" class="vault-check" hidden>
-                    <input id="vault-new-weak-confirm" type="checkbox" /> I understand this
-                    passphrase is easy to guess
+                    <input id="vault-new-weak-confirm" type="checkbox" /> I understand this password
+                    is easy to guess
                   </label>
                 </div>
                 <div class="label-input">
@@ -1567,14 +1569,14 @@ SOFTWARE.
                     placeholder=" "
                   />
                   <label class="label-input__label" for="vault-new-master-confirm"
-                    >Repeat new passphrase</label
+                    >Repeat new password</label
                   >
                   <button
                     class="label-input__toggle"
                     type="button"
                     data-password-toggle="vault-new-master-confirm"
-                    data-secret-name="passphrase"
-                    aria-label="Show passphrase"
+                    data-secret-name="password"
+                    aria-label="Show password"
                     aria-pressed="false"
                   >
                     <svg class="icon" data-password-icon="hidden" aria-hidden="true">
@@ -1602,7 +1604,7 @@ SOFTWARE.
                 Continue
               </button>
               <button id="vault-master-submit" class="btn-primary" type="submit" hidden>
-                Save passphrase
+                Save password
               </button>
             </div>
           </form>
@@ -1627,7 +1629,7 @@ SOFTWARE.
             <div id="vault-recovery-methods" class="vault-master-methods">
               <p>How would you like to confirm it’s you?</p>
               <button class="vault-option" type="button" data-vault-recovery-method="password">
-                <span><strong>I know my encryption passphrase</strong></span>
+                <span><strong>I know my encryption password</strong></span>
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m9 6 6 6-6 6" />
                 </svg>
@@ -1659,14 +1661,14 @@ SOFTWARE.
                   id="vault-recovery-current-label"
                   class="label-input__label"
                   for="vault-recovery-current-secret"
-                  >Passphrase</label
+                  >Password</label
                 >
                 <button
                   class="label-input__toggle"
                   type="button"
                   data-password-toggle="vault-recovery-current-secret"
-                  data-secret-name="passphrase"
-                  aria-label="Show passphrase"
+                  data-secret-name="password"
+                  aria-label="Show password"
                   aria-pressed="false"
                 >
                   <svg class="icon" data-password-icon="hidden" aria-hidden="true">
@@ -1720,11 +1722,14 @@ SOFTWARE.
               </div>
               <div id="vault-new-recovery-step" class="vault-recovery" hidden>
                 <strong id="vault-new-recovery-heading">Write down your new recovery key</strong>
-                <p class="vault-recovery-hint">
-                  Use these 24 words if you forget your passphrase. Keep them private and somewhere
-                  safe.
-                </p>
-                <div id="vault-new-recovery-display">
+                <div id="vault-new-recovery-display" class="vault-recovery-display">
+                  <p class="vault-recovery-hint">
+                    Use these 24 words if you forget your password. Keep them private and somewhere
+                    safe.
+                  </p>
+                  <p class="vault-recovery-hint vault-recovery-warning">
+                    If you forget your password and lose this key, your notes can’t be recovered.
+                  </p>
                   <ol
                     id="vault-new-recovery-key"
                     class="vault-recovery-words"
@@ -1740,11 +1745,7 @@ SOFTWARE.
                   </div>
                 </div>
                 <div id="vault-new-recovery-entry-step" class="vault-recovery-entry-step" hidden>
-                  <p class="vault-recovery-hint">
-                    Pasting is turned off to help confirm you saved this key. Enter each word from
-                    your saved copy. If you forget your passphrase and lose this key, no one can
-                    recover your notes.
-                  </p>
+                  <p class="vault-recovery-hint">Enter your 24 recovery words in order.</p>
                   <p
                     id="vault-new-recovery-count"
                     class="login-recovery-count"
@@ -2199,166 +2200,150 @@ SOFTWARE.
               </div>
             </div>
           </div>
-          <div class="editor-panels" id="editor-panels">
-            <div id="editor-panel" class="panel panel-editor">
-              <div class="panel-header">
-                <span class="panel-label">Editor</span>
-                <div class="panel-header-actions">
-                  <span
-                    id="view-controls"
-                    class="view-controls"
-                    role="group"
-                    aria-label="Editor view"
-                  >
-                    <button
-                      type="button"
-                      class="view-control"
-                      data-panel="editor"
-                      title="Write view"
-                      aria-label="Write view"
-                      aria-pressed="false"
-                    >
-                      <svg class="icon" aria-hidden="true"><use href="#icon-code"></use></svg>
-                    </button>
-                    <button
-                      type="button"
-                      class="view-control"
-                      data-panel="preview"
-                      title="Preview view"
-                      aria-label="Preview view"
-                      aria-pressed="false"
-                    >
-                      <svg class="icon" aria-hidden="true"><use href="#icon-eye-bolt"></use></svg>
-                    </button>
-                    <button
-                      type="button"
-                      class="view-control"
-                      data-panel="both"
-                      title="Split view"
-                      aria-label="Split view"
-                      aria-pressed="true"
-                    >
-                      <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
-                        <path
-                          d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"
-                        />
-                        <path d="M12 4v16" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      class="view-control"
-                      data-panel="zen"
-                      title="Enter Zen mode (Escape to exit)"
-                      aria-label="Enter Zen mode"
-                      aria-pressed="false"
-                    >
-                      <svg class="icon" aria-hidden="true"><use href="#icon-maximize"></use></svg>
-                    </button>
-                  </span>
-                  <span id="panel-save-slot" class="save-slot"
-                    ><button
-                      id="save-btn"
-                      class="prefs-btn icon-btn save-note-btn"
-                      type="button"
-                      title="Save note"
-                      aria-label="Save note"
-                    >
-                      <svg class="icon" aria-hidden="true">
-                        <use href="#icon-save"></use>
-                      </svg></button
-                  ></span>
-                </div>
-              </div>
-              <div class="fmt-bar" role="toolbar" aria-label="Formatting">
-                <button type="button" data-fmt="bold" title="Bold (Ctrl+B)" aria-label="Bold">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-bold"></use></svg>
-                </button>
-                <button type="button" data-fmt="italic" title="Italic (Ctrl+I)" aria-label="Italic">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-italic"></use></svg>
-                </button>
+          <div class="editor-toolbar">
+            <div class="fmt-bar" role="toolbar" aria-label="Formatting">
+              <button type="button" data-fmt="bold" title="Bold (Ctrl+B)" aria-label="Bold">
+                <svg class="icon" aria-hidden="true"><use href="#icon-bold"></use></svg>
+              </button>
+              <button type="button" data-fmt="italic" title="Italic (Ctrl+I)" aria-label="Italic">
+                <svg class="icon" aria-hidden="true"><use href="#icon-italic"></use></svg>
+              </button>
+              <button
+                type="button"
+                data-fmt="strike"
+                title="Strikethrough"
+                aria-label="Strikethrough"
+              >
+                <svg class="icon" aria-hidden="true"><use href="#icon-strikethrough"></use></svg>
+              </button>
+              <span class="fmt-sep"></span>
+              <button type="button" data-fmt="code" title="Inline code" aria-label="Inline code">
+                <svg class="icon" aria-hidden="true"><use href="#icon-code"></use></svg>
+              </button>
+              <button type="button" data-fmt="codeblock" title="Code block" aria-label="Code block">
+                <svg class="icon" aria-hidden="true"><use href="#icon-codeblock"></use></svg>
+              </button>
+              <span class="fmt-sep"></span>
+              <button
+                type="button"
+                data-fmt="heading"
+                class="fmt-heading-trigger"
+                title="Heading level"
+                aria-label="Heading level"
+                aria-haspopup="dialog"
+                aria-expanded="false"
+              >
+                H
+              </button>
+              <span class="fmt-sep"></span>
+              <button type="button" data-fmt="link" title="Link" aria-label="Link">
+                <svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>
+              </button>
+              <button type="button" data-fmt="image" title="Image" aria-label="Image">
+                <svg class="icon" aria-hidden="true"><use href="#icon-image"></use></svg>
+              </button>
+              <span class="fmt-sep"></span>
+              <button type="button" data-fmt="ul" title="Bullet list" aria-label="Bullet list">
+                <svg class="icon" aria-hidden="true"><use href="#icon-list"></use></svg>
+              </button>
+              <button type="button" data-fmt="ol" title="Numbered list" aria-label="Numbered list">
+                <svg class="icon" aria-hidden="true"><use href="#icon-list-ordered"></use></svg>
+              </button>
+              <button type="button" data-fmt="task" title="Task list" aria-label="Task list">
+                <svg class="icon" aria-hidden="true"><use href="#icon-check-square"></use></svg>
+              </button>
+              <span class="fmt-sep"></span>
+              <button
+                type="button"
+                data-fmt="blockquote"
+                title="Blockquote"
+                aria-label="Blockquote"
+              >
+                <svg class="icon" aria-hidden="true"><use href="#icon-quote"></use></svg>
+              </button>
+              <button
+                type="button"
+                data-fmt="hr"
+                title="Horizontal rule"
+                aria-label="Horizontal rule"
+              >
+                <svg class="icon" aria-hidden="true"><use href="#icon-minus"></use></svg>
+              </button>
+              <button
+                type="button"
+                data-fmt="table"
+                title="Insert table"
+                aria-label="Insert table"
+                aria-haspopup="dialog"
+                aria-expanded="false"
+              >
+                <svg class="icon" aria-hidden="true"><use href="#icon-table"></use></svg>
+              </button>
+            </div>
+            <div class="editor-toolbar-actions">
+              <span id="view-controls" class="view-controls" role="group" aria-label="Editor view">
                 <button
                   type="button"
-                  data-fmt="strike"
-                  title="Strikethrough"
-                  aria-label="Strikethrough"
+                  class="view-control"
+                  data-panel="editor"
+                  title="Write view"
+                  aria-label="Write view"
+                  aria-pressed="false"
                 >
-                  <svg class="icon" aria-hidden="true"><use href="#icon-strikethrough"></use></svg>
-                </button>
-                <span class="fmt-sep"></span>
-                <button type="button" data-fmt="code" title="Inline code" aria-label="Inline code">
                   <svg class="icon" aria-hidden="true"><use href="#icon-code"></use></svg>
                 </button>
                 <button
                   type="button"
-                  data-fmt="codeblock"
-                  title="Code block"
-                  aria-label="Code block"
+                  class="view-control"
+                  data-panel="preview"
+                  title="Preview view"
+                  aria-label="Preview view"
+                  aria-pressed="false"
                 >
-                  <svg class="icon" aria-hidden="true"><use href="#icon-codeblock"></use></svg>
-                </button>
-                <span class="fmt-sep"></span>
-                <button
-                  type="button"
-                  data-fmt="heading"
-                  class="fmt-heading-trigger"
-                  title="Heading level"
-                  aria-label="Heading level"
-                  aria-haspopup="dialog"
-                  aria-expanded="false"
-                >
-                  H
-                </button>
-                <span class="fmt-sep"></span>
-                <button type="button" data-fmt="link" title="Link" aria-label="Link">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>
-                </button>
-                <button type="button" data-fmt="image" title="Image" aria-label="Image">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-image"></use></svg>
-                </button>
-                <span class="fmt-sep"></span>
-                <button type="button" data-fmt="ul" title="Bullet list" aria-label="Bullet list">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-list"></use></svg>
+                  <svg class="icon" aria-hidden="true"><use href="#icon-eye-bolt"></use></svg>
                 </button>
                 <button
                   type="button"
-                  data-fmt="ol"
-                  title="Numbered list"
-                  aria-label="Numbered list"
+                  class="view-control"
+                  data-panel="both"
+                  title="Split view"
+                  aria-label="Split view"
+                  aria-pressed="true"
                 >
-                  <svg class="icon" aria-hidden="true"><use href="#icon-list-ordered"></use></svg>
-                </button>
-                <button type="button" data-fmt="task" title="Task list" aria-label="Task list">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-check-square"></use></svg>
-                </button>
-                <span class="fmt-sep"></span>
-                <button
-                  type="button"
-                  data-fmt="blockquote"
-                  title="Blockquote"
-                  aria-label="Blockquote"
-                >
-                  <svg class="icon" aria-hidden="true"><use href="#icon-quote"></use></svg>
+                  <svg class="icon" aria-hidden="true" viewBox="0 0 24 24">
+                    <path
+                      d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z"
+                    />
+                    <path d="M12 4v16" />
+                  </svg>
                 </button>
                 <button
                   type="button"
-                  data-fmt="hr"
-                  title="Horizontal rule"
-                  aria-label="Horizontal rule"
+                  class="view-control"
+                  data-panel="zen"
+                  title="Enter Zen mode (Escape to exit)"
+                  aria-label="Enter Zen mode"
+                  aria-pressed="false"
                 >
-                  <svg class="icon" aria-hidden="true"><use href="#icon-minus"></use></svg>
+                  <svg class="icon" aria-hidden="true"><use href="#icon-maximize"></use></svg>
                 </button>
-                <button
+              </span>
+              <span id="panel-save-slot" class="save-slot"
+                ><button
+                  id="save-btn"
+                  class="prefs-btn icon-btn save-note-btn"
                   type="button"
-                  data-fmt="table"
-                  title="Insert table"
-                  aria-label="Insert table"
-                  aria-haspopup="dialog"
-                  aria-expanded="false"
+                  title="Save note"
+                  aria-label="Save note"
                 >
-                  <svg class="icon" aria-hidden="true"><use href="#icon-table"></use></svg>
-                </button>
-              </div>
+                  <svg class="icon" aria-hidden="true">
+                    <use href="#icon-save"></use>
+                  </svg></button
+              ></span>
+            </div>
+          </div>
+          <div class="editor-panels" id="editor-panels">
+            <div id="editor-panel" class="panel panel-editor">
               <label class="sr-only" for="note-content">Markdown note content</label>
               <div class="editor-source-wrap">
                 <div class="editor-current-line" aria-hidden="true"></div>
@@ -2382,13 +2367,6 @@ SOFTWARE.
               tabindex="0"
             ></div>
             <div id="preview-panel" class="panel panel-preview">
-              <div class="panel-header">
-                <span class="panel-label">Preview</span>
-                <div class="panel-header-actions">
-                  <span id="preview-view-controls-slot"></span>
-                  <span id="preview-save-slot" class="save-slot"></span>
-                </div>
-              </div>
               <div id="preview" class="preview" tabindex="-1"></div>
             </div>
           </div>

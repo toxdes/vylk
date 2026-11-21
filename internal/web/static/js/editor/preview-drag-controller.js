@@ -115,8 +115,6 @@
       ghost.classList.add('preview-drag-ghost');
       ghost.style.width = `${visualRect.width}px`;
       ghost.style.height = `${visualRect.height}px`;
-      ghost.style.left = `${visualRect.left}px`;
-      ghost.style.top = `${visualRect.top}px`;
       drag.sourceDisplay = drag.sourceElement.style.display;
       drag.placeholderWidth = sourceRect.width;
       drag.placeholderHeight = sourceRect.height;
@@ -132,6 +130,9 @@
       portal.append(ghost);
       drag.portal = portal;
       document.body.append(portal);
+      const portalRect = portal.getBoundingClientRect();
+      ghost.style.left = `${visualRect.left - portalRect.left}px`;
+      ghost.style.top = `${visualRect.top - portalRect.top}px`;
       drag.sourceElement.classList.add('preview-dragging');
       drag.visualElement.classList.add('preview-dragging');
       document.documentElement.classList.add('preview-drag-active');

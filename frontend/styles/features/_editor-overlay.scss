@@ -25,8 +25,8 @@
   position: absolute;
   z-index: 0;
   top: var(--editor-caret-top, 1rem);
-  right: var(--editor-content-gutter, 1.125rem);
-  left: var(--editor-content-gutter, 1.125rem);
+  right: var(--editor-content-gutter, var(--panel-padding));
+  left: var(--editor-content-gutter, var(--panel-padding));
   height: var(--editor-caret-height, 1.65rem);
   background: color-mix(in srgb, var(--accent) 6%, transparent);
   opacity: 0;
@@ -40,8 +40,8 @@
 }
 
 #note-content {
-  padding-bottom: 1rem;
-  scroll-padding-bottom: 1rem;
+  padding-bottom: var(--space-4);
+  scroll-padding-bottom: var(--space-4);
   caret-color: var(--accent);
 }
 
@@ -63,23 +63,29 @@
 .view-controls {
   display: flex;
   align-items: center;
-  gap: 0.125rem;
+  gap: var(--space-0-5);
+}
+
+.view-control,
+#panel-save-slot #save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-compact-height);
+  height: var(--control-compact-height);
+  min-height: var(--control-compact-height);
+  padding: 0;
+  border-radius: var(--radius-micro);
 }
 
 .view-control {
-  display: grid;
-  width: 1.5rem;
-  height: 1.5rem;
-  padding: 0;
-  place-items: center;
-  border-radius: var(--radius-micro);
   background: transparent;
   color: var(--muted);
 }
 
 .view-control:hover {
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  color: var(--fg);
+  background: transparent;
+  color: var(--accent);
 }
 
 .view-control[aria-pressed='true'] {
@@ -87,134 +93,22 @@
   color: var(--accent);
 }
 
-.view-control .icon {
-  width: 0.9rem;
-  height: 0.9rem;
-  stroke-width: 2;
-}
-
-/* Regular editor controls float directly over their surface. The panel labels
-   duplicated information already conveyed by the split layout and are hidden. */
 #editor:not(.zen-mode) {
-  --editor-content-gutter: 1.25rem;
-  --editor-control-size: 1.5rem;
-  --editor-action-row-height: 1.8125rem;
-  --editor-writing-inset: 0.75rem;
-  --editor-toolbar-height: 1.8125rem;
-  --editor-toolbar-writing-inset: calc(var(--editor-toolbar-height) + var(--editor-writing-inset));
-}
-
-#editor:not(.zen-mode) .panel-header {
-  position: relative;
-  z-index: 6;
-  width: 100%;
-  min-height: var(--editor-action-row-height);
-  padding: 0;
-  border: 0;
-  background: transparent;
-  pointer-events: none;
-}
-
-#editor:not(.zen-mode) .panel-label {
-  display: none;
-}
-
-#editor:not(.zen-mode) .panel-header-actions {
-  align-self: flex-start;
-  margin-left: auto;
-  padding: 0.125rem;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  border-left: 1px solid var(--border);
-  border-radius: 0 0 0 var(--radius);
-  background: var(--card-bg);
-  pointer-events: auto;
-}
-
-#editor:not(.zen-mode) .view-control,
-#editor:not(.zen-mode) .panel-header-actions #save-btn {
-  width: var(--editor-control-size);
-  height: var(--editor-control-size);
-  min-height: var(--editor-control-size);
-  border-radius: var(--radius-micro);
-}
-
-#editor:not(.zen-mode) .panel-header-actions:not(:has(.view-controls, #save-btn)) {
-  visibility: hidden;
-}
-
-#editor:not(.zen-mode) .panel-header-actions #save-btn .icon {
-  width: 1rem;
-  height: 1rem;
-}
-
-#editor:not(.zen-mode) .panel-editor .fmt-bar {
-  flex-wrap: nowrap;
-  min-height: var(--editor-toolbar-height);
-  overflow-x: auto;
-  padding-right: 0.4rem;
-  scrollbar-width: thin;
+  --editor-content-gutter: var(--space-5);
+  --editor-writing-inset: var(--space-3);
 }
 
 #editor:not(.zen-mode) .fmt-bar button:focus-visible {
-  outline-offset: -2px;
-}
-
-#editor:not(.zen-mode) .panel-editor .fmt-bar:not(.hidden) ~ .editor-source-wrap #note-content {
-  padding-top: var(--editor-writing-inset);
-}
-
-#editor:not(.zen-mode) .panel-editor .fmt-bar.hidden ~ .editor-source-wrap #note-content {
-  padding-top: var(--editor-writing-inset);
+  outline-offset: -0.125rem;
 }
 
 #editor:not(.zen-mode) .panel-preview .preview {
   padding-inline: var(--editor-content-gutter);
-  padding-top: var(--editor-writing-inset);
 }
 
-#editor:not(.zen-mode) .editor-panels:not(.panels-single) .panel-preview .preview {
-  padding-top: var(--editor-toolbar-writing-inset);
-}
-
-#editor:not(.zen-mode)
-  .editor-panels:not(.panels-single):has(.fmt-bar.hidden)
-  .panel-preview
-  .preview {
-  padding-top: var(--editor-writing-inset);
-}
-
-/* Keep a forgiving, unobtrusive resize target between the two panels. */
-#editor:not(.zen-mode) .panel-resizer {
-  flex-basis: 0.75rem;
-}
-
-@media (max-width: 640px) {
+@media (max-width: 40em) {
   #editor:not(.zen-mode) {
-    --editor-content-gutter: 1rem;
-    --editor-writing-inset: 0.75rem;
-  }
-
-  #editor:not(.zen-mode) .panel-preview .panel-header:not(:has(.view-controls, #save-btn)) {
-    display: none;
-  }
-
-  #editor:not(.zen-mode) .panel-editor .fmt-bar {
-    padding-right: 0.4rem;
-    padding-bottom: 0.5rem;
-    scrollbar-gutter: stable;
-  }
-
-  #editor:not(.zen-mode) .editor-panels:not(.panels-single) .panel-preview .preview,
-  #editor:not(.zen-mode)
-    .editor-panels:not(.panels-single):has(.fmt-bar.hidden)
-    .panel-preview
-    .preview {
-    padding-top: var(--editor-writing-inset);
-  }
-
-  #editor:not(.zen-mode) .panel-preview .preview {
-    padding-bottom: 4rem;
+    --editor-content-gutter: var(--space-4);
   }
 }
 
@@ -230,7 +124,8 @@
   --zen-writing-gutter: clamp(2.5rem, 6vw, 4rem);
   --zen-writing-top: clamp(4.5rem, 11vh, 8rem);
   --zen-writing-bottom: 4rem;
-  --zen-overlay-inline: clamp(2.5rem, 7.5vw, 3.75rem);
+  --zen-overlay-inline: var(--zen-writing-gutter);
+  --zen-control-size: var(--control-compact-height);
   --zen-overlay-block: clamp(2.5rem, 6.25vh, 3.75rem);
   background: var(--surface);
 }
@@ -239,12 +134,12 @@
   width: 100%;
   max-width: none;
   gap: 0;
-  padding: clamp(0.75rem, 2vh, 1.5rem) 0;
+  padding: clamp(var(--space-3), 2vh, var(--space-6)) 0;
   background: var(--card-bg);
 }
 
 #editor.zen-mode .meta-pane,
-#editor.zen-mode .panel-header,
+#editor.zen-mode .editor-toolbar,
 #editor.zen-mode .panel-resizer,
 #editor.zen-mode .fmt-bar {
   display: none;
@@ -257,12 +152,12 @@
   left: 50%;
   width: auto;
   max-width: min(34rem, calc(100vw - 2rem));
-  padding: 0.55rem 0.75rem 0.55rem 1rem;
+  padding: var(--space-2) var(--space-3);
   transform: translateX(-50%);
-  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
-  border-radius: 999px;
+  border: 0.0625rem solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: var(--radius-pill);
   background: var(--card-bg);
-  box-shadow: 0 8px 20px rgb(15 23 42 / 0.16);
+  box-shadow: 0 0.5rem 1.25rem rgb(15 23 42 / 0.16);
   color: var(--fg);
 }
 
@@ -311,7 +206,7 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  padding: 0 0 max(1.5rem, 50dvh);
+  padding: 0 0 max(var(--space-6), 50dvh);
   overflow: hidden auto;
   outline: 0;
   background: transparent;
@@ -323,7 +218,7 @@
   line-height: 1.65;
   overflow-wrap: anywhere;
   overscroll-behavior: contain;
-  scroll-padding-block: 0 max(1.5rem, 50dvh);
+  scroll-padding-block: 0 max(var(--space-6), 50dvh);
   scrollbar-width: none;
   tab-size: 2;
   white-space: pre-wrap;
@@ -404,7 +299,7 @@
 
 #editor.zen-mode .zen-md-quote {
   padding-inline-start: 0.8em;
-  border-inline-start: 1px solid var(--accent);
+  border-inline-start: 0.0625rem solid var(--accent);
   color: var(--muted);
 }
 
@@ -437,12 +332,12 @@
 
 #editor.zen-mode .zen-md-strike {
   text-decoration: line-through;
-  text-decoration-thickness: 1px;
+  text-decoration-thickness: 0.0625rem;
 }
 
 #editor.zen-mode .zen-md-code {
   padding: 0.12em 0.35em;
-  border-radius: 4px;
+  border-radius: var(--radius-micro);
   background: color-mix(in srgb, var(--fg) 9%, transparent);
   font-family: var(--mono);
   font-size: 0.875em;
@@ -484,14 +379,14 @@
   top: var(--zen-overlay-block);
   right: var(--zen-overlay-inline);
   display: flex;
-  gap: 0.125rem;
+  gap: var(--space-0-5);
   pointer-events: auto;
 }
 
 .zen-controls button {
   display: grid;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: var(--zen-control-size);
+  height: var(--zen-control-size);
   padding: 0;
   place-items: center;
   border-radius: var(--radius-micro);
@@ -503,8 +398,8 @@
 }
 
 .zen-controls button:hover {
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  color: var(--fg);
+  background: transparent;
+  color: var(--accent);
 }
 
 .zen-controls button[aria-pressed='true'] {
@@ -513,14 +408,8 @@
 }
 
 .zen-controls button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.zen-controls .icon {
-  width: 0.9rem;
-  height: 0.9rem;
-  stroke-width: 2;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
 }
 
 .zen-note-title,
@@ -546,13 +435,16 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 40em) {
+  #editor.zen-mode {
+    --zen-writing-gutter: max(1.25rem, calc(1.25 * var(--font-size)));
+  }
+
   #editor.zen-mode .editor-body {
     padding: 0;
   }
 
   #editor.zen-mode .editor-source-wrap {
-    --zen-writing-gutter: 1rem;
     --zen-writing-top: 4rem;
     --zen-writing-bottom: 2rem;
   }
@@ -570,13 +462,16 @@
 
   .zen-controls {
     top: max(0.5rem, env(safe-area-inset-top));
-    right: max(1rem, env(safe-area-inset-right));
+
+    --zen-control-size: var(--control-touch-size);
+
+    right: max(var(--zen-writing-gutter), env(safe-area-inset-right));
     gap: 0;
   }
 
   .zen-controls button {
-    width: 2.75rem;
-    height: 2.75rem;
+    width: var(--zen-control-size);
+    height: var(--zen-control-size);
   }
 
   .zen-note-title,
@@ -586,10 +481,15 @@
   }
 
   .zen-note-title {
-    left: max(1rem, env(safe-area-inset-left));
+    left: max(var(--zen-writing-gutter), env(safe-area-inset-left));
   }
 
   .zen-word-count {
-    right: max(1rem, env(safe-area-inset-right));
+    right: max(var(--zen-writing-gutter), env(safe-area-inset-right));
   }
+}
+
+#editor:not(.zen-mode) #note-content,
+#editor:not(.zen-mode) .panel-preview .preview {
+  padding-block: var(--editor-writing-inset);
 }

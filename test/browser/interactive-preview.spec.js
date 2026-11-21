@@ -16,7 +16,7 @@ async function enableInteractivePreview(page) {
   await page.locator('#prefs-tab-editor').click();
   const preference = page.locator('#pref-interactive-preview');
   if (!(await preference.isChecked())) await preference.check();
-  await page.locator('#prefs-close').click();
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
   await expect(page.locator('#prefs-modal')).toBeHidden();
 }
 
@@ -334,7 +334,7 @@ test.describe('mobile interactive preview', () => {
 
     const trayAlignment = await editButton.evaluate((element) => {
       const panel = element.closest('.panel-preview').getBoundingClientRect();
-      const header = element.closest('.panel-preview').querySelector('.panel-header');
+      const header = document.querySelector('.editor-toolbar');
       const button = element.getBoundingClientRect();
       const card = element.parentElement.getBoundingClientRect();
       return {
@@ -344,6 +344,18 @@ test.describe('mobile interactive preview', () => {
       };
     });
     expect(trayAlignment).toEqual({belowHeader: true, insidePanel: true, nearCard: true});
+
+    await page.evaluate(() => document.documentElement.style.setProperty('--font-size', '1.5rem'));
+    await expect(editButton).toHaveCSS('width', '66px');
+    await expect
+      .poll(() =>
+        editButton.evaluate((element) => {
+          const button = element.getBoundingClientRect();
+          const pane = element.closest('.panel-preview').getBoundingClientRect();
+          return button.left >= pane.left && button.right <= pane.right;
+        }),
+      )
+      .toBe(true);
 
     await editButton.click();
     await expect(page.locator('#editor-panel')).toBeVisible();
@@ -832,7 +844,7 @@ test('keeps the editor and preview gutters aligned when interactive preview is d
   const preference = page.locator('#pref-interactive-preview');
   await expect(preference).toBeChecked();
   await preference.uncheck();
-  await page.locator('#prefs-close').click();
+  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
   await expect(page.locator('#prefs-modal')).toBeHidden();
   await expect(page.locator('#preview')).not.toHaveClass(/interactive-preview-active/);
 

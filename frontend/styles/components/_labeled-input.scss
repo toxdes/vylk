@@ -8,22 +8,22 @@
 .label-input__control {
   display: block;
   width: 100%;
-  min-height: 2.5rem;
-  height: 2.5rem;
+  min-height: var(--control-height);
+  height: var(--control-height);
   margin: 0;
-  padding: 0 0.875rem;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  padding: 0 var(--control-padding-inline);
+  border: 0.0625rem solid var(--border-strong);
+  border-radius: var(--radius-field);
   outline: none;
   background: var(--card-bg);
   color: var(--fg);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: calc(0.75 * var(--font-size));
   font-weight: 400;
   line-height: 1;
   transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
+    border-color var(--control-duration) var(--control-ease),
+    box-shadow var(--control-duration) var(--control-ease);
 }
 
 .label-input__control::placeholder {
@@ -32,7 +32,7 @@
 
 .label-input__control:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--focus-ring);
+  box-shadow: 0 0 0 0.125rem var(--focus-ring);
 }
 
 .label-input__control:focus-visible {
@@ -40,7 +40,7 @@
 }
 
 .label-input__control:-webkit-autofill {
-  box-shadow: 0 0 0 1000px var(--card-bg) inset;
+  box-shadow: 0 0 0 62.5rem var(--card-bg) inset;
   -webkit-text-fill-color: var(--fg);
 }
 
@@ -48,16 +48,16 @@
   position: absolute;
   z-index: 1;
   top: 50%;
-  left: 0.4375rem;
+  left: calc(0.4375 * var(--ui-unit));
   max-width: calc(100% - 1rem);
-  padding: 0 0.5rem;
+  padding: 0 var(--space-1-5);
   overflow: hidden;
   transform: translateY(-50%);
   transform-origin: top left;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   background: var(--card-bg);
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: calc(0.75 * var(--font-size));
   font-weight: 400;
   line-height: 1.25;
   pointer-events: none;
@@ -68,7 +68,7 @@
 
 .label-input__control:focus + .label-input__label,
 .label-input__control:not(:placeholder-shown) + .label-input__label {
-  transform: translateY(calc(-1.25rem - 50%)) scale(0.8);
+  transform: translateY(calc(-0.5 * var(--control-height) - 50%)) scale(0.8);
 }
 
 .label-input__toggle,
@@ -77,37 +77,31 @@
   top: 0;
   right: 0;
   display: grid;
-  width: 2.25rem;
+  width: calc(2.25 * var(--ui-unit));
   height: 100%;
   padding: 0;
   place-items: center;
   border: 0;
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--radius-field) var(--radius-field) 0;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
   outline: none;
   transition:
-    color 0.15s,
-    box-shadow 0.15s;
+    color var(--control-duration) var(--control-ease),
+    box-shadow var(--control-duration) var(--control-ease);
 }
 
 .label-input__toggle:hover,
 .label-input__action:hover {
-  color: var(--fg);
+  color: var(--accent);
 }
 
 .label-input__toggle:focus-visible,
 .label-input__action:focus-visible {
   z-index: 2;
-  outline: 2px solid var(--accent);
-  outline-offset: -4px;
-}
-
-.label-input__toggle .icon,
-.label-input__action .icon {
-  width: 1rem;
-  height: 1rem;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: -0.25rem;
 }
 
 .label-input__toggle [hidden] {
@@ -115,38 +109,33 @@
 }
 
 .label-input:has(.label-input__toggle, .label-input__action) .label-input__control {
-  padding-right: 2.75rem;
+  padding-right: var(--space-8);
 }
 
 #login-form .label-input {
-  margin-bottom: 0.875rem;
+  margin-bottom: var(--space-3);
 }
 
 #login-form .label-input__control {
   margin-bottom: 0;
   padding-block: 0;
-  border-radius: 8px;
-  font-size: 0.875rem;
+  border-radius: var(--radius-field);
+  font-size: calc(0.75 * var(--font-size));
   line-height: 1;
 }
 
 .vault-setup-form .label-input .label-input__control {
-  min-height: 2.5rem;
+  min-height: var(--control-height);
   padding-block: 0;
-  font-size: 0.875rem;
-}
-
-.font-control .label-input .label-input__control {
-  font-family: var(--mono);
-  font-variant-ligatures: none;
+  font-size: calc(0.75 * var(--font-size));
 }
 
 .label-input #note-title,
 .label-input #note-tags {
   width: 100%;
   padding-block: 0;
-  border-radius: 8px;
-  font-size: 0.875rem;
+  border-radius: var(--radius-field);
+  font-size: calc(0.75 * var(--font-size));
   font-weight: 400;
   letter-spacing: normal;
   line-height: 1;
@@ -163,6 +152,6 @@
 }
 
 .vault-setup-form .label-input__label {
-  font-size: 0.875rem;
+  font-size: calc(0.75 * var(--font-size));
   font-weight: 400;
 }

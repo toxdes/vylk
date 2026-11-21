@@ -16,6 +16,7 @@ func newHandler(a *app, assets *web.Assets, artificialDelay time.Duration) http.
 	mux.HandleFunc("POST /api/vault/reset", a.vaultChange(a.handleVaultReset))
 	mux.HandleFunc("GET /api/vault/keys", a.auth(a.handleVaultKeys))
 	mux.HandleFunc("POST /api/vault/credentials", a.auth(a.vaultChange(a.handleVaultCredentialChange)))
+	mux.HandleFunc("POST /api/vault/setup/verify-password", a.auth(a.vaultChange(a.handleVaultSetupPassword)))
 	mux.HandleFunc("POST /api/vault/migration/start", a.auth(a.vaultChange(a.handleVaultMigrationStart)))
 	mux.HandleFunc("GET /api/vault/migration/status", a.auth(a.handleVaultMigrationStatus))
 	mux.HandleFunc("GET /api/vault/migration/next", a.auth(a.handleVaultMigrationNext))

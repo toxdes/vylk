@@ -18,10 +18,11 @@ test('resumes an interrupted vault conversion after a page reload', async ({page
   await page.locator('#prefs-btn').click();
   await page.locator('#prefs-tab-encryption').click();
   await page.locator('#vault-open-setup').click();
-  await page.locator('#vault-master').fill('correct horse battery staple!');
-  await expect(page.locator('#vault-strength')).toHaveText('Strong passphrase');
+  await page.locator('#vault-old-password').fill('browser-test-password');
+  await page.locator('#vault-setup-continue').click();
   await expect(page.locator('#vault-recovery-key .vault-recovery-word')).toHaveCount(24);
-  const master = await page.locator('#vault-master').inputValue();
+  // An older client could have started conversion with a different password.
+  const master = 'correct horse battery staple!';
   const recovery = (
     await page.locator('#vault-recovery-key .vault-recovery-word').allTextContents()
   ).join(' ');
@@ -67,18 +68,16 @@ test('resumes an interrupted vault conversion after a page reload', async ({page
   await expect(page.locator('#vault-title')).toHaveText('Resume encryption');
   await expect(page).toHaveURL(/\/preferences\/encryption\/setup$/);
   await page.locator('#vault-old-password').fill('browser-test-password');
+  await page.locator('#vault-setup-continue').click();
   await page.locator('#vault-master').fill(master);
-  await page.locator('#vault-master-confirm').fill(master);
   await expect(page.locator('#vault-recovery-key')).toBeHidden();
   for (const word of recovery.split(' ')) {
     await page.locator('#vault-recovery-confirm').fill(word);
     await page.locator('#vault-recovery-confirm').press('Enter');
   }
-  await page.locator('#vault-start').click();
-  await expect(page.locator('#vault-final-confirm-modal')).toBeVisible();
   // Interrupt after IndexedDB has been encrypted but before server cutover.
   await page.route('**/api/vault/migration/commit', (route) => route.abort('failed'));
-  await page.locator('#vault-final-confirm-start').click();
+  await page.locator('#vault-start').click();
   await expect(page.locator('#vault-error')).not.toHaveText('');
   expect(
     await page.evaluate(async () => {
@@ -105,18 +104,13 @@ test('resumes an interrupted vault conversion after a page reload', async ({page
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page.locator('#vault-title')).toHaveText('Resume encryption');
   await page.locator('#vault-old-password').fill('browser-test-password');
+  await page.locator('#vault-setup-continue').click();
   await page.locator('#vault-master').fill(master);
-  await page.locator('#vault-master-confirm').fill(master);
   for (const word of recovery.split(' ')) {
     await page.locator('#vault-recovery-confirm').fill(word);
     await page.locator('#vault-recovery-confirm').press('Enter');
   }
-  await page.locator('#vault-start').click();
-  await expect(page.locator('#vault-final-confirm-modal')).toBeVisible();
-  await Promise.all([
-    page.waitForEvent('load'),
-    page.locator('#vault-final-confirm-start').click(),
-  ]);
+  await Promise.all([page.waitForEvent('load'), page.locator('#vault-start').click()]);
   await expect(page.locator('#login-screen')).toBeVisible({timeout: 30000});
   await page.locator('#login-password').fill(master);
   await page.locator('#login-form button[type="submit"]').click();
