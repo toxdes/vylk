@@ -59,6 +59,9 @@ var Migrations = []Migration{
 	{Version: 18, Up: migrateInstanceMetadataSchema},
 	{Version: 19, Up: migrateVaultSchema},
 	{Version: 20, Up: migrateSessionDevices},
+	{Version: 21, Up: migrateAI},
+	{Version: 22, Up: migrateAIOutputProfile},
+	{Version: 23, Up: migrateAIPlanningLimits},
 }
 
 func migrateSessionDevices(tx *sql.Tx) error {

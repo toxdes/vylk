@@ -25,17 +25,23 @@
         });
     }
 
-    async function fetchWithTimeout(path, options = {}, {trackSync = false} = {}) {
+    async function fetchWithTimeout(path, options = {}, {trackSync = false, consume} = {}) {
       const controller = new AbortController();
+      const {timeoutMs: requestTimeout = timeoutMs, signal, ...fetchOptions} = options;
+      const abort = () => controller.abort(signal.reason);
+      if (signal?.aborted) abort();
+      else signal?.addEventListener('abort', abort, {once: true});
       const timer = setTimeout(
         () => controller.abort(new DOMException('request timed out', 'TimeoutError')),
-        timeoutMs,
+        requestTimeout,
       );
       if (trackSync) activeSyncControllers.add(controller);
       try {
-        return await fetch(path, {...options, signal: controller.signal});
+        const response = await fetch(path, {...fetchOptions, signal: controller.signal});
+        return consume ? await consume(response) : response;
       } finally {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', abort);
         activeSyncControllers.delete(controller);
       }
     }
@@ -58,11 +64,14 @@
       delete fetchOptions.throwOnError;
       if (syncRequest) onSyncRequestStart();
       try {
-        const response = await fetchWithTimeout(path, requestOptions(fetchOptions), {
+        const {response, body} = await fetchWithTimeout(path, requestOptions(fetchOptions), {
           trackSync: syncRequest,
+          consume: async (response) => ({
+            response,
+            body: response.status === 204 ? null : await http.readResponseBody(response),
+          }),
         });
         if (response.status === 204) return true;
-        const body = await http.readResponseBody(response);
         assertCurrentAuthentication(response, revision);
         if (!response.ok) {
           const error = http.errorFromPayload(body, response.status, response.statusText);

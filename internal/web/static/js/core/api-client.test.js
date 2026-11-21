@@ -29,6 +29,27 @@ function setup(fetchImpl) {
 }
 
 describe('API client', () => {
+  test('keeps caller cancellation active while reading a response body', async () => {
+    let signal;
+    const context = setup(async (_path, options) => {
+      signal = options.signal;
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            signal.addEventListener('abort', () => controller.error(signal.reason), {once: true});
+          },
+        }),
+      );
+    });
+    const controller = new AbortController();
+    const pending = context.client
+      .request('/api/ai/sessions', {signal: controller.signal, timeoutMs: 310000})
+      .catch((error) => error);
+    await Promise.resolve();
+    controller.abort(new DOMException('cancelled', 'AbortError'));
+    expect((await pending).kind).toBe('aborted');
+    expect(signal.aborted).toBe(true);
+  });
   test.each(['request', 'syncFetch'])(
     'ignores a stale 401 in %s after a newer sign-in',
     async (method) => {

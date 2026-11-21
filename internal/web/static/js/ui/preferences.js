@@ -2,6 +2,7 @@
   'use strict';
 
   const defaults = {
+    aiEnabled: false,
     revision: 1,
     reduceMotion: 'system',
     autoSave: true,
@@ -115,6 +116,7 @@
 
   function normalize(value = {}, fallback = {}) {
     const merged = {...defaults, ...fallback, ...value};
+    merged.aiEnabled = merged.aiEnabled === true;
     if (!['system', 'always', 'never'].includes(merged.reduceMotion))
       merged.reduceMotion = defaults.reduceMotion;
     merged.revision =

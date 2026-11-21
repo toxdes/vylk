@@ -10,6 +10,31 @@
   ];
   const kinds = {bold: 'strong', italic: 'em', strike: 'del'};
 
+  // Shared by the Zen toolbar and the AI selection launcher. The element's own
+  // padding is the gutter; topBoundary keeps it below sticky editor chrome.
+  function placeNearSelection(window, element, rect, topBoundary = 0) {
+    const viewport = window.visualViewport;
+    const left = viewport?.offsetLeft || 0;
+    const top = viewport?.offsetTop || 0;
+    const width = viewport?.width || window.innerWidth;
+    const height = viewport?.height || window.innerHeight;
+    const gutter = parseFloat(window.getComputedStyle(element).paddingLeft) || 0;
+    const origin = element.ownerDocument.body.getBoundingClientRect().left;
+    element.style.maxWidth = `${Math.max(0, width - origin - gutter * 2)}px`;
+    element.style.maxHeight = `${Math.max(0, height - gutter * 2)}px`;
+    const x = Math.max(
+      left + origin + gutter,
+      Math.min(
+        rect.left + rect.width / 2 - element.offsetWidth / 2,
+        left + width - origin - element.offsetWidth - gutter,
+      ),
+    );
+    element.style.left = `${x - origin}px`;
+    let y = rect.top - element.offsetHeight - gutter;
+    if (y < Math.max(top + gutter, topBoundary)) y = rect.bottom + gutter;
+    element.style.top = `${Math.max(top + gutter, Math.min(y, top + height - element.offsetHeight - gutter))}px`;
+  }
+
   function create({document, window, getEditor, isLocked, onUnsupported = () => {}}) {
     const toolbar = document.createElement('div');
     toolbar.id = 'zen-selection-toolbar';
@@ -74,29 +99,6 @@
       frame = null;
     }
 
-    function place(element, rect) {
-      const viewport = window.visualViewport;
-      const left = viewport?.offsetLeft || 0;
-      const top = viewport?.offsetTop || 0;
-      const width = viewport?.width || window.innerWidth;
-      const height = viewport?.height || window.innerHeight;
-      const gutter = parseFloat(window.getComputedStyle(element).paddingLeft) || 0;
-      const origin = document.body.getBoundingClientRect().left;
-      element.style.maxWidth = `${Math.max(0, width - origin - gutter * 2)}px`;
-      element.style.maxHeight = `${Math.max(0, height - gutter * 2)}px`;
-      const x = Math.max(
-        left + origin + gutter,
-        Math.min(
-          rect.left + rect.width / 2 - element.offsetWidth / 2,
-          left + width - origin - element.offsetWidth - gutter,
-        ),
-      );
-      element.style.left = `${x - origin}px`;
-      let y = rect.top - element.offsetHeight - gutter;
-      if (y < top + gutter) y = rect.bottom + gutter;
-      element.style.top = `${Math.max(top + gutter, Math.min(y, top + height - element.offsetHeight - gutter))}px`;
-    }
-
     function selectedLink(editor, selection) {
       return editor.linkAt?.(selection.start, selection.end) || null;
     }
@@ -158,7 +160,7 @@
               : 'Link';
         }
       }
-      place(toolbar, anchor);
+      placeNearSelection(window, toolbar, anchor);
     }
 
     function schedule() {
@@ -192,7 +194,7 @@
       error.hidden = true;
       input.removeAttribute('aria-invalid');
       input.value = link?.href || '';
-      if (anchor) place(popup, anchor);
+      if (anchor) placeNearSelection(window, popup, anchor);
       input.focus({preventScroll: true});
       input.select();
     }
@@ -326,7 +328,7 @@
         error.hidden = false;
         input.setAttribute('aria-invalid', 'true');
         input.focus();
-        if (anchor) place(popup, anchor);
+        if (anchor) placeNearSelection(window, popup, anchor);
         return;
       }
       const {editor, selection, link, value} = state;
@@ -396,7 +398,7 @@
         if (input.value.trim() && !global.VylkMarkdownLinks.inputHref(input.value)) return;
         input.removeAttribute('aria-invalid');
         error.hidden = true;
-        if (anchor) place(popup, anchor);
+        if (anchor) placeNearSelection(window, popup, anchor);
       },
       {signal},
     );
@@ -468,7 +470,7 @@
     document.addEventListener(
       'scroll',
       () => {
-        if (!popup.hidden && anchor) place(popup, anchor);
+        if (!popup.hidden && anchor) placeNearSelection(window, popup, anchor);
         else schedule();
       },
       {capture: true, passive: true, signal},
@@ -477,7 +479,7 @@
       'resize',
       () => {
         // Mobile keyboards may resize the viewport while this input is focused.
-        if (!popup.hidden && anchor) place(popup, anchor);
+        if (!popup.hidden && anchor) placeNearSelection(window, popup, anchor);
         else hide();
       },
       {signal},
@@ -485,7 +487,7 @@
     window.visualViewport?.addEventListener(
       'resize',
       () => {
-        if (!popup.hidden && anchor) place(popup, anchor);
+        if (!popup.hidden && anchor) placeNearSelection(window, popup, anchor);
         else schedule();
       },
       {signal},
@@ -503,5 +505,5 @@
     };
   }
 
-  global.VylkZenToolbar = {create};
+  global.VylkZenToolbar = {create, placeNearSelection};
 })(typeof window !== 'undefined' ? window : globalThis);

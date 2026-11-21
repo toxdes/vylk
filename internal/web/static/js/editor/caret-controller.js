@@ -13,7 +13,7 @@
     let mirrorMetricsKey = '';
     let delayTimer = null;
 
-    function measure() {
+    function measure({exact = false} = {}) {
       if (!textarea) return null;
       const textareaRect = textarea.getBoundingClientRect();
       if (!textareaRect.width || !textareaRect.height) return null;
@@ -42,7 +42,7 @@
       ].join('\u0000');
       const lineHeight =
         Number.parseFloat(computed.lineHeight) || Number.parseFloat(computed.fontSize) * 1.5 || 24;
-      if (source.length > 250_000) {
+      if (!exact && source.length > 250_000) {
         const paddingTop = Number.parseFloat(computed.paddingTop) || 0;
         const contentHeight = Math.max(
           lineHeight,
@@ -160,6 +160,37 @@
       };
     }
 
+    function measureSelection() {
+      const {selectionStart, selectionEnd, selectionDirection} = textarea;
+      if (selectionStart === selectionEnd || !measure({exact: true})) return null;
+      const bounds = textarea.getBoundingClientRect();
+      const mirrorRect = mirror.getBoundingClientRect();
+      const left = bounds.left - mirrorRect.left - textarea.scrollLeft;
+      const top = bounds.top - mirrorRect.top - textarea.scrollTop;
+      const before = marker ? mirror.firstChild : mirrorText;
+      const split = before.length;
+      const after = marker ? mirror.lastChild : before;
+      range.setStart(
+        selectionStart < split ? before : after,
+        selectionStart < split ? selectionStart : selectionStart - split,
+      );
+      range.setEnd(
+        selectionEnd <= split ? before : after,
+        selectionEnd <= split ? selectionEnd : selectionEnd - split,
+      );
+      const rects = Array.from(range.getClientRects());
+      if (selectionDirection !== 'backward') rects.reverse();
+      for (const rect of rects) {
+        if (!rect.width || rect.bottom + top <= bounds.top || rect.top + top >= bounds.bottom)
+          continue;
+        const start = Math.max(bounds.left, rect.left + left);
+        const end = Math.min(bounds.right, rect.right + left);
+        if (end > start)
+          return {left: start, width: end - start, top: rect.top + top, bottom: rect.bottom + top};
+      }
+      return null;
+    }
+
     function updateCue() {
       cueFrame = null;
       if (!textarea || !wrap || !line) return;
@@ -245,7 +276,7 @@
       zenFrame = window.requestAnimationFrame(apply);
     }
 
-    return {cancelZenCenter, center, centerZen, measure, schedule};
+    return {cancelZenCenter, center, centerZen, measure, measureSelection, schedule};
   }
 
   global.VylkCaretController = {create};

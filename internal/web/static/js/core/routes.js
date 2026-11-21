@@ -9,6 +9,7 @@
     'zen',
     'shortcuts',
     'account',
+    'ai',
     'encryption',
     'about',
   ]);

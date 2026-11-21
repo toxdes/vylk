@@ -170,6 +170,7 @@
     $$('.prefs-nav').forEach((button) =>
       button.addEventListener('click', () => {
         const section = button.dataset.prefSection;
+        document.dispatchEvent(new CustomEvent('vylk:preferences-section', {detail: section}));
         const content = $('.prefs-content');
         const previous = $('.prefs-section.active');
         if (previous) sectionScrollPositions.set(previous, content.scrollTop);

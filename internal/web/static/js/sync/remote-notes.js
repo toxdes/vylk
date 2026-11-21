@@ -9,6 +9,7 @@
     handleServerIdentity,
     handleActiveDeletion,
     isDirty,
+    onActiveChange = () => {},
     requestValue,
     updateOpenNote,
     withOfflineStore,
@@ -60,6 +61,8 @@
     }
 
     async function applyChangePage(changes, downloaded, nextSequence) {
+      const incoming = changes.find((change) => change.note_id === getCurrentNoteID());
+      if (incoming) onActiveChange(incoming.deleted ? null : downloaded.get(incoming.note_id));
       let activeNote = null;
       let activeDeleted = false;
       await withOfflineStore(['notes', 'queue', 'state'], 'readwrite', async (stores) => {
@@ -97,6 +100,8 @@
     }
 
     async function applySnapshot(remoteNotes, remoteIDs, sequence = null, instanceID = null) {
+      const current = getCurrentNoteID();
+      if (current) onActiveChange(remoteIDs.has(current) ? remoteNotes.get(current) : null);
       let activeNote = null;
       let activeDeleted = false;
       await withOfflineStore(['notes', 'queue', 'state'], 'readwrite', async (stores) => {

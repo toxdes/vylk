@@ -10,6 +10,7 @@ A lightweight, self-hosted Markdown notes app. One binary, your notes, all your 
 - Organize with tags, search, and wiki links.
 - Make it yours with themes, fonts, shortcuts, and mobile-friendly controls.
 - Optionally encrypt notes end to end, with a 24-word recovery key.
+- Optionally use your own AI provider for answers and reviewed edits in Editor mode.
 
 ## Run
 

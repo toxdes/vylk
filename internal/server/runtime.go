@@ -87,6 +87,7 @@ func Main() {
 	}
 
 	app := &app{
+		aiConcurrency:          config.AIConcurrency,
 		db:                     db,
 		instanceID:             instanceID,
 		sessions:               sessions,

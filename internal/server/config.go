@@ -23,6 +23,7 @@ type runtimeConfig struct {
 	RequireStrongPasswords bool
 	OpenBrowser            bool
 	ArtificialDelay        time.Duration
+	AIConcurrency          int
 }
 
 func validateRuntimeCredentials(config runtimeConfig, vault *store.VaultConfig) error {
@@ -61,7 +62,12 @@ func loadRuntimeConfig(args []string, getenv func(string) string, secret func(st
 	if err != nil {
 		return runtimeConfig{}, fmt.Errorf("VYLK_DISABLE_VAULT_CHANGES must be true, false, 1, or 0: %w", err)
 	}
+	aiConcurrency, err := strconv.Atoi(valueOrDefault(getenv("VYLK_AI_CONCURRENCY"), "4"))
+	if err != nil || aiConcurrency < 1 || aiConcurrency > 8 {
+		return runtimeConfig{}, fmt.Errorf("VYLK_AI_CONCURRENCY must be an integer from 1 to 8")
+	}
 	return runtimeConfig{
+		AIConcurrency:          aiConcurrency,
 		AppName:                appName,
 		Password:               password,
 		Port:                   valueOrDefault(getenv("PORT"), "8080"),

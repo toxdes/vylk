@@ -9,6 +9,7 @@
     isSyncInFlight,
     loadPreferences,
     onHeartbeat,
+    onAIChanged = () => {},
     scheduleSync,
     syncNow,
     window,
@@ -44,6 +45,10 @@
 
     async function handleChange(change = {}) {
       const type = change?.type || 'notes';
+      if (type === 'ai') {
+        onAIChanged();
+        return true;
+      }
       if (type === 'preferences') {
         const revision = Number(change.revision || 0);
         if (revision > 0 && revision <= Number(getPreferenceRevision() || 0)) return false;

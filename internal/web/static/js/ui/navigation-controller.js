@@ -3,6 +3,7 @@
 
   function create({
     api,
+    beforeLeave = () => true,
     cancelPreviewDelay,
     cancelPreviewRender,
     clearCurrentNote,
@@ -37,7 +38,10 @@
     let routeRestoreGeneration = 0;
     const pendingHistoryRestoreResolvers = [];
 
-    async function openNote(id, {route = 'push', isCurrent = () => true} = {}) {
+    async function openNote(
+      id,
+      {route = 'push', isCurrent = () => true, leaveConfirmed = false} = {},
+    ) {
       if (route !== 'none') routeRestoreGeneration++;
       noteSaver.cancelScheduled();
       cancelPreviewDelay();
@@ -51,6 +55,8 @@
       }
       const data = await getLocalNote(id);
       if (!data || !isCurrent()) return false;
+      if (isEditorVisible() && !leaveConfirmed && !(await beforeLeave())) return false;
+      if (!isCurrent()) return false;
       showNoteInEditor(data);
       if (route === 'push') routes.setNote(id);
       else if (route === 'replace') routes.setNote(id, {replace: true});
@@ -73,19 +79,20 @@
         await openNote(existing.id, {route: 'replace'});
         return;
       }
+      if (!(await beforeLeave())) return;
       startNewNote(title);
       await saveCurrentNote(false);
       showToast(`Created “${title}”.`, 'success');
       scheduleSync();
     }
 
-    async function restoreNote(noteID, fetchRemote, isCurrent) {
+    async function restoreNote(noteID, fetchRemote, isCurrent, leaveConfirmed = false) {
       if (!noteID) return 'missing';
       if (!isCurrent()) return 'stale';
       const localNote = await getLocalNote(noteID);
       if (!isCurrent()) return 'stale';
       if (localNote) {
-        const opened = await openNote(noteID, {route: 'none', isCurrent});
+        const opened = await openNote(noteID, {route: 'none', isCurrent, leaveConfirmed});
         return opened && isCurrent() ? 'loaded' : 'stale';
       }
       if (
@@ -109,7 +116,7 @@
           base_title: null,
           base_tags: null,
         });
-        const opened = await openNote(noteID, {route: 'none', isCurrent});
+        const opened = await openNote(noteID, {route: 'none', isCurrent, leaveConfirmed});
         return opened && isCurrent() ? 'loaded' : 'stale';
       } catch (error) {
         return error?.responseStatus === 404 ? 'missing' : 'failed';
@@ -180,6 +187,19 @@
       }
 
       const noteID = routes.noteID();
+      let leaveConfirmed = false;
+      if (
+        isEditorVisible() &&
+        getCurrentNoteID() &&
+        (!routes.isNote() || noteID !== getCurrentNoteID())
+      ) {
+        if (!(await beforeLeave())) {
+          if (isCurrent()) routes.setNote(getCurrentNoteID());
+          return;
+        }
+        if (!isCurrent()) return;
+        leaveConfirmed = true;
+      }
       if (leavingPreferences && routes.isNote() && getCurrentNoteID() === noteID && isDirty()) {
         const saved = await saveCurrentNote(false);
         if (!isCurrent()) return;
@@ -198,7 +218,7 @@
       if (leavingPreferences) dismissPreferences();
       if (routes.isNote() && getCurrentNoteID() === noteID && isEditorVisible()) return;
       if (!noteID && isDashboardVisible()) return;
-      const result = await restoreNote(noteID, fetchRemote, isCurrent);
+      const result = await restoreNote(noteID, fetchRemote, isCurrent, leaveConfirmed);
       if (!isCurrent() || result === 'stale') return;
       if (result === 'loaded' || result === 'failed') return;
       if (noteID) {
@@ -244,7 +264,8 @@
         .catch((error) => console.warn('could not inspect pending sync operations', error));
     }
 
-    document.querySelector('#new-note-btn').addEventListener('click', () => {
+    document.querySelector('#new-note-btn').addEventListener('click', async () => {
+      if (!(await beforeLeave())) return;
       routeRestoreGeneration++;
       startNewNote();
     });
@@ -252,9 +273,10 @@
       if (backNavigationInFlight) return;
       backNavigationInFlight = true;
       try {
+        if (!(await beforeLeave())) return;
         noteSaver.cancelScheduled();
         cancelPreviewRender();
-        await saveCurrentNote(false);
+        if ((await saveCurrentNote(false)) === false) return;
         clearCurrentNote();
         if (routes.isNote()) {
           const restored = new Promise((resolve) => pendingHistoryRestoreResolvers.push(resolve));
