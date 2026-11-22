@@ -105,7 +105,7 @@ export function create({
   function button(label, run, parent = surface, iconName = null) {
     const node = document.createElement('button');
     node.type = 'button';
-    node.className = 'btn-text';
+    node.className = iconName ? 'btn-text icon-btn' : 'btn-text';
     if (iconName) {
       node.setAttribute('aria-label', label);
       node.title = label;
@@ -140,7 +140,6 @@ export function create({
     },
   });
   const closeButton = button('Close AI', requestClose, header, 'x');
-  closeButton.className = 'panel-layout';
   const contextBar = text('div', '');
   contextBar.className = 'ai-context-bar';
   const contextChip = text('div', '', contextBar);
@@ -394,7 +393,7 @@ export function create({
   const retrySave = button('Retry save', () => operate(saveDraft), composer);
   retrySave.className = 'btn-primary';
   const selectButton = button('Select this text', null, surface, 'quote');
-  selectButton.className = 'ai-select-text panel-layout';
+  selectButton.className = 'ai-select-text';
   selectButton.hidden = true;
   const panelControls = createPanelControls({
     document,

@@ -74,7 +74,7 @@
 :root.dark {
   --bg: #0e1124;
   --fg: #cfd1fc;
-  --muted: #7c7fa8;
+  --muted: #8184ad;
   --border: #1e293b;
   --accent: #f13c66;
   --accent-hover: color-mix(in srgb, var(--accent) 82%, #000);
@@ -308,8 +308,17 @@ textarea:focus-visible {
 .preview-drag-handle,
 .login-recovery-chip-remove,
 .meta-toggle,
-.vault-option {
+.vault-option,
+.ai-launch,
+.ai-review-header,
+.ai-context-chip {
   --icon-size: var(--icon-size-sm);
+}
+
+.ai-composer .ai-send,
+.ai-query-status,
+.ai-test-result {
+  --icon-size: var(--icon-size-md);
 }
 
 .vault-status-icon {
@@ -5185,6 +5194,14 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
     scroll-behavior: auto !important;
   }
 }
+:root {
+  --ai-accent-text: var(--accent);
+}
+
+.dark {
+  --ai-accent-text: color-mix(in srgb, var(--accent) 50%, var(--fg));
+}
+
 .checkbox-label {
   display: flex;
   align-items: center;
@@ -5210,10 +5227,11 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   min-height: 0;
   width: auto;
   overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--radius-card);
   color: var(--fg);
   background: var(--card-bg);
+  box-shadow: var(--shadow);
   font-family: var(--font);
   font-size: var(--font-size);
 }
@@ -5255,9 +5273,12 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 .ai-select-text {
   position: fixed;
   z-index: 12;
-  width: 2rem;
-  height: 2rem;
-  border: 1px solid var(--border-strong);
+  display: grid;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  place-items: center;
+  border: 0.0625rem solid var(--border-strong);
   border-radius: var(--radius-action);
   color: var(--fg);
   background: var(--card-bg);
@@ -5278,23 +5299,20 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 }
 
 .ai-launch {
-  display: grid;
-  width: 1.5rem;
-  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-compact-height);
+  height: var(--control-compact-height);
+  min-height: var(--control-compact-height);
   padding: 0;
-  place-items: center;
+  border-radius: var(--radius-micro);
   background: transparent;
   color: var(--muted);
-  border-radius: var(--radius-micro);
-}
-.ai-launch .icon {
-  width: 0.9rem;
-  height: 0.9rem;
-  stroke-width: 2;
 }
 .ai-launch:hover:not(:disabled) {
-  color: var(--fg);
-  background: var(--accent-soft);
+  background: transparent;
+  color: var(--accent);
 }
 
 .ai-review-header,
@@ -5302,25 +5320,28 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--control-gap);
 }
 
 .ai-review-header {
   flex-shrink: 0;
-  min-height: var(--editor-action-row-height, 1.8125rem);
-  padding: 0.125rem 0.5rem;
-  border-bottom: 1px solid var(--border);
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-1-5) var(--space-1) var(--control-padding-inline);
+  border-bottom: 0.0625rem solid var(--border);
 }
 .ai-review-header strong {
   display: inline-flex;
   align-items: center;
   flex: 1;
-  gap: 0.375rem;
-  font-size: 0.8125rem;
+  gap: var(--space-1-5);
+  font-size: calc(0.8125 * var(--font-size));
 }
-.ai-review-header .icon {
-  width: 0.9rem;
-  height: 0.9rem;
+.ai-review-header .icon-btn {
+  width: var(--control-compact-height);
+  height: var(--control-compact-height);
+  min-height: var(--control-compact-height);
+  padding: 0;
+  border-radius: var(--radius-micro);
 }
 
 .ai-context-bar {
@@ -5331,24 +5352,19 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 .ai-context-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.125rem;
+  gap: var(--space-0-5);
   max-width: 100%;
   min-width: 0;
   border-color: var(--border);
   background: var(--surface);
   color: var(--fg);
 }
-.ai-context-chip .icon {
-  flex: none;
-  width: 1em;
-  height: 1em;
-}
 
 .ai-context-open {
   display: inline-flex;
   flex: 1;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-1-5);
   min-width: 0;
   padding: 0;
   border-radius: inherit;
@@ -5382,14 +5398,15 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   padding: 0;
   border-radius: inherit;
   background: transparent;
-  color: var(--fg);
+  color: var(--muted);
   font: inherit;
   place-items: center;
 }
 
 .ai-context-open:hover,
 .ai-context-remove:hover {
-  background: var(--surface-hover);
+  background: transparent;
+  color: var(--accent);
 }
 
 .ai-context-dialog {
@@ -5408,7 +5425,7 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.75rem;
+  gap: var(--space-1) var(--space-3);
   font: inherit;
   font-size: 0.8125em;
 }
@@ -5417,31 +5434,45 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--control-gap);
 }
 
-.ai-scope-picker {
+.ai-scope-picker,
+.ai-provider-picker {
   min-width: 0;
-  padding: 0.25rem;
   border: 0;
   border-radius: var(--radius-micro);
-  background: var(--card-bg);
   color: var(--fg);
+  background: var(--card-bg);
   font: inherit;
   text-overflow: ellipsis;
 }
+.ai-scope-picker:hover:not(:disabled),
+.ai-provider-picker:hover:not(:disabled) {
+  color: var(--accent);
+}
+.ai-scope-picker:focus-visible,
+.ai-provider-picker:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
 
-.ai-scope-picker:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+.ai-scope-picker {
+  padding: var(--space-1);
+}
+
+.ai-provider-picker {
+  max-width: 35%;
+  padding: var(--space-0-5) var(--space-1);
+  font-size: calc(0.75 * var(--font-size));
 }
 
 .zen-selection-toolbar .ai-selection-launch {
   display: inline-flex;
   width: auto;
   align-items: center;
-  gap: 0.375rem;
-  padding: 0 0.5rem;
+  gap: var(--space-1-5);
+  padding: 0 var(--control-padding-inline);
   font: inherit;
   white-space: nowrap;
 }
@@ -5450,29 +5481,12 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   color: var(--fg);
 }
 
-.ai-provider-picker {
-  min-width: 0;
-  max-width: 35%;
-  padding: 0.125rem 0.25rem;
-  border: 0;
-  border-radius: var(--radius-micro);
-  color: var(--fg);
-  background: var(--card-bg);
-  font: inherit;
-  font-size: 0.75rem;
-  text-overflow: ellipsis;
-}
-.ai-provider-picker:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .ai-query-status {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0 1rem 1rem;
+  gap: var(--space-2);
+  padding: 0 var(--panel-padding) var(--panel-padding);
   color: color-mix(in srgb, var(--fg) 80%, var(--card-bg));
   font-size: 0.875em;
   overflow-wrap: anywhere;
@@ -5481,50 +5495,41 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 .ai-query-status:empty {
   display: none;
 }
-.ai-query-status .icon {
-  flex: none;
-  width: 1rem;
-  height: 1rem;
-}
 
 .ai-offline-notice {
   margin: 0;
-  padding: 0.75rem 1rem;
+  padding: var(--space-3) var(--panel-padding);
   color: var(--fg);
   font-size: 0.875em;
 }
 
 .ai-composer .ai-send {
   flex: none;
-  width: 2rem;
-  height: 2rem;
-  min-height: 2rem;
-  padding: 0.375rem;
-}
-.ai-composer .ai-send .icon {
-  width: 1rem;
-  height: 1rem;
+  width: var(--control-height);
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0;
 }
 
 .ai-composer-input {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 0.25rem;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
+  padding: var(--space-1);
+  border: 0.0625rem solid var(--border-strong);
+  border-radius: var(--radius-card);
   background: var(--card-bg);
 }
 .ai-composer-input:has(textarea:focus-visible) {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  border-color: var(--accent);
+  outline: 0.125rem solid var(--focus-ring);
 }
 
 .ai-composer-controls {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 0.375rem;
+  gap: var(--control-gap);
   min-width: 0;
 }
 
@@ -5539,11 +5544,10 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 }
 
 .ai-note-review {
-  --muted: color-mix(in srgb, var(--fg) 80%, var(--card-bg));
   --ai-diff-removed: #b91c1c;
   --ai-diff-added: #166534;
   flex: 1;
-  padding: 1rem;
+  padding: var(--panel-padding);
   font-family: inherit;
 }
 .ai-note-review del,
@@ -5570,35 +5574,35 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 }
 
 .ai-hunk {
-  margin-block: 0.75rem;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
+  margin-block: var(--space-3);
+  border: 0.0625rem solid var(--border-strong);
+  border-radius: var(--radius-card);
   overflow: hidden;
 }
 .ai-hunk del,
 .ai-hunk ins {
-  padding: 0.5rem;
+  padding: var(--space-2);
 }
 
 .ai-composer {
   flex: 0 1 auto;
   display: grid;
-  gap: 0.375rem;
+  gap: var(--space-1-5);
   min-height: 0;
   max-height: 55%;
-  padding: 0.5rem;
+  padding: var(--space-2);
   overflow-y: auto;
-  border-top: 1px solid var(--border);
+  border-top: 0.0625rem solid var(--border);
   background: var(--card-bg);
 }
 .ai-composer textarea {
   min-width: 0;
   width: 100%;
-  min-height: 2.75rem;
-  max-height: 8rem;
+  min-height: calc(2.75 * var(--font-size));
+  max-height: calc(8 * var(--font-size));
   resize: vertical;
   font: inherit;
-  padding: 0.375rem 0.5rem;
+  padding: var(--space-1-5) var(--space-2);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -5619,43 +5623,44 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 
 .ai-empty-state {
   display: grid;
-  gap: 0.5rem;
-  padding: 1rem;
+  gap: var(--space-2);
+  padding: var(--panel-padding);
 }
 .ai-empty-state p {
-  margin: 0 0 0.25rem;
+  margin: 0 0 var(--space-1);
   font-size: 0.875em;
   font-weight: 600;
 }
 .ai-empty-state button {
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--border);
+  padding: var(--space-2) var(--space-2-5);
+  border: 0.0625rem solid var(--border-strong);
   border-radius: var(--radius-action);
-  background: transparent;
+  background: var(--card-bg);
   color: var(--fg);
   font: inherit;
   font-size: 0.875em;
   text-align: left;
 }
 .ai-empty-state button:hover:not(:disabled) {
+  border-color: var(--accent);
   background: var(--surface-hover);
 }
 .ai-empty-state button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
 }
 
 .ai-conversation {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1rem;
+  gap: var(--group-gap);
+  padding: var(--panel-padding);
 }
 .ai-conversation:empty {
   display: none;
 }
 .ai-conversation p {
-  margin: 0.25rem 0 0;
+  margin: var(--space-1) 0 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -5668,9 +5673,9 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 .ai-message--user {
   align-self: flex-end;
   max-width: 92%;
-  padding: 0.65rem 0.8rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  padding: var(--space-2-5) var(--space-3);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--radius-card);
   background: var(--surface-hover);
 }
 
@@ -5681,26 +5686,23 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 .ai-config-form,
 .ai-config-field {
   display: grid;
-  gap: 0.5rem;
+  gap: var(--field-gap);
 }
 
 .ai-config-form {
-  gap: 1.25rem;
-  margin-top: 1rem;
-  padding: 1.25rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+  gap: var(--group-gap);
+  margin-top: var(--space-4);
+  padding: var(--panel-padding);
+  border: 0.0625rem solid var(--border);
+  border-radius: var(--radius-card);
   background: var(--card-bg);
 }
-.ai-config-form .ai-profile-help {
-  color: var(--fg);
-}
 .ai-config-form h3 {
-  margin: 0 0 0.25rem;
+  margin: 0 0 var(--space-1);
   font-size: 1em;
 }
 .ai-config-form .label-input__label {
-  transform: translateY(calc(-1.25rem - 50%)) scale(0.8);
+  transform: translateY(calc(-0.5 * var(--control-height) - 50%)) scale(0.8);
 }
 .ai-config-form .label-input__control::placeholder {
   color: var(--muted);
@@ -5716,13 +5718,13 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 1rem;
+  gap: var(--group-gap);
 }
 
 .ai-config-key-row {
   display: flex;
   align-items: start;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 .ai-config-key-row > .ai-config-field {
   flex: 1;
@@ -5732,19 +5734,19 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 .ai-test-controls {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
-  min-height: 2.5rem;
+  gap: var(--space-1-5);
+  min-height: var(--control-height);
 }
 
 .ai-test-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.375rem;
-  min-width: 5.5rem;
-  width: 5.5rem;
-  min-height: 2.5rem;
-  padding-inline: 0.5rem;
+  gap: var(--control-gap);
+  min-width: calc(5.5 * var(--font-size));
+  width: calc(5.5 * var(--font-size));
+  min-height: var(--control-height);
+  padding-inline: var(--control-padding-inline);
 }
 .ai-test-button[aria-disabled='true']:not(:disabled) {
   cursor: wait;
@@ -5753,15 +5755,11 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 .ai-test-result {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  min-width: 2.5rem;
+  gap: var(--space-1);
+  min-width: var(--space-10);
   color: #15803d;
   font-size: 0.8125em;
   font-weight: 600;
-}
-.ai-test-result .icon {
-  width: 1rem;
-  height: 1rem;
 }
 
 .dark .ai-test-result {
@@ -5769,20 +5767,11 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 }
 
 #prefs-panel-ai a {
-  color: var(--accent);
+  color: var(--ai-accent-text);
   text-underline-offset: 0.125em;
 }
 
-/* Some themes have low-contrast secondary text and bright primary buttons.
-   Keep this settings surface readable without changing other preferences. */
-#prefs-panel-ai {
-  --muted: color-mix(in srgb, var(--fg) 80%, var(--card-bg));
-}
-
-.dark #prefs-panel-ai a {
-  color: color-mix(in srgb, var(--accent) 80%, var(--fg));
-}
-
+/* Bright dark-theme accents fail contrast behind white button text. */
 .dark #prefs-panel-ai .btn-primary {
   background: color-mix(in srgb, var(--accent) 75%, #000);
 }
@@ -5802,18 +5791,18 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 .ai-config-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
+  gap: var(--space-1-5);
 }
 
 .ai-add-configuration {
   display: flex;
   justify-content: center;
-  padding-block: 1.25rem;
+  padding-block: var(--space-5);
 }
 
 .ai-configuration {
-  padding-block: 1rem;
-  border-bottom: 1px solid var(--border);
+  padding-block: var(--space-4);
+  border-bottom: 0.0625rem solid var(--border);
   overflow-wrap: anywhere;
 }
 
@@ -5833,24 +5822,24 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   }
   #editor.ai-mobile-active .editor-body {
     min-height: 0;
-    padding: 0.5rem var(--page-gutter);
-    gap: 0.5rem;
+    padding: var(--space-2) var(--page-gutter);
+    gap: var(--space-2);
   }
   .ai-mobile-tabs {
     display: flex;
     flex: none;
     align-items: center;
-    gap: 0.375rem;
-    min-height: 2.75rem;
+    gap: var(--space-1-5);
+    min-height: var(--control-touch-size);
   }
   .ai-mobile-tabs [role='tablist'] {
     display: flex;
     flex: 1;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
   .ai-mobile-tabs [role='tab'] {
-    min-height: 2.5rem;
-    padding: 0.375rem 0.75rem;
+    min-height: var(--control-touch-size);
+    padding: var(--space-1-5) var(--space-3);
     border-radius: var(--radius-action);
     background: transparent;
     color: var(--fg);
@@ -5859,21 +5848,21 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   }
   .ai-mobile-tabs [aria-selected='true'] {
     background: var(--accent-soft);
-    box-shadow: inset 0 -2px var(--accent);
+    box-shadow: inset 0 -0.125rem var(--accent);
   }
   .ai-mobile-tabs button:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+    outline: 0.125rem solid var(--accent);
+    outline-offset: 0.125rem;
   }
   .ai-mobile-tabs .ai-select-text {
     position: static;
     display: inline-flex;
     flex: none;
     align-items: center;
-    gap: 0.375rem;
+    gap: var(--space-1-5);
     width: auto;
-    height: 2.5rem;
-    padding: 0.375rem;
+    height: var(--control-touch-size);
+    padding: var(--space-1-5);
     font: inherit;
     font-size: 0.8125em;
   }
@@ -5905,13 +5894,13 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
     display: none;
   }
   .ai-note-review {
-    padding: 0.75rem;
+    padding: var(--space-3);
   }
   .ai-composer {
     max-height: 75%;
   }
   .ai-actions button {
-    min-height: 2.75rem;
+    min-height: var(--control-touch-size);
   }
 }
 .ai-note-review[hidden],
@@ -5931,15 +5920,15 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 
 .ai-diff-header {
   position: sticky;
-  top: -1rem;
+  top: calc(-1 * var(--panel-padding));
   z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
-  padding-block: 0.5rem;
+  gap: var(--group-gap);
+  padding-block: var(--space-2);
   background: var(--card-bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0.0625rem solid var(--border);
   font-family: var(--font);
   font-size: var(--font-size);
   white-space: normal;
@@ -5947,7 +5936,7 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 
 .ai-note-review .ai-actions {
   justify-content: flex-end;
-  padding: 0.25rem;
+  padding: var(--space-1);
   white-space: normal;
 }
 
@@ -5958,7 +5947,7 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--ai-accent-text);
   font: inherit;
   text-decoration: underline;
   text-underline-offset: 0.15em;
@@ -5975,13 +5964,13 @@ body:has(#editor.zen-mode) #toast-region .toast.update {
 .ai-note-review del .ai-diff-word {
   background: #ffd0d0;
   color: #7f1d1d;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .ai-note-review ins .ai-diff-word {
   background: #acf2bd;
   color: #14532d;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .dark .ai-note-review del .ai-diff-word {

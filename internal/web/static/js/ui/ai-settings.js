@@ -156,7 +156,7 @@ export function create({
     );
     const testing = text('div', '', keyRow);
     testing.className = 'ai-test-controls';
-    const test = button('Test', testing, testConfiguration);
+    const test = button('Test', testing, testConfiguration, 'btn-secondary');
     test.classList.add('ai-test-button');
     const result = text('span', '', testing);
     result.className = 'ai-test-result';

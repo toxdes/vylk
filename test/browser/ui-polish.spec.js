@@ -1075,17 +1075,19 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
     page.locator('.editor-toolbar-actions').boundingBox(),
   ]);
   expect(controls.y + controls.height).toBeLessThanOrEqual(toolbar.y);
-  await expect(page.locator('.editor-toolbar-actions button')).toHaveCount(5);
-  const centered = await page.locator('.editor-toolbar-actions button').evaluateAll((buttons) =>
-    buttons.every((button) => {
-      const control = button.getBoundingClientRect();
-      const icon = button.querySelector('.icon').getBoundingClientRect();
-      return (
-        Math.abs((control.left + control.right - icon.left - icon.right) / 2) < 0.5 &&
-        Math.abs((control.top + control.bottom - icon.top - icon.bottom) / 2) < 0.5
-      );
-    }),
-  );
+  await expect(page.locator('.editor-toolbar-actions button:visible')).toHaveCount(5);
+  const centered = await page
+    .locator('.editor-toolbar-actions button:visible')
+    .evaluateAll((buttons) =>
+      buttons.every((button) => {
+        const control = button.getBoundingClientRect();
+        const icon = button.querySelector('.icon').getBoundingClientRect();
+        return (
+          Math.abs((control.left + control.right - icon.left - icon.right) / 2) < 0.5 &&
+          Math.abs((control.top + control.bottom - icon.top - icon.bottom) / 2) < 0.5
+        );
+      }),
+    );
   expect(centered).toBe(true);
 
   const contentInsets = await page.evaluate(() => {

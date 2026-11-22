@@ -550,7 +550,7 @@ test('previews shared context from a chip, follows interface typography, and kee
   await expect(selectionChip).toBeFocused();
   await expect(page.locator('.ai-review')).toHaveCount(1);
   await selectionChip.click();
-  await page.mouse.click(4, 4);
+  await page.locator('#ai-context-dialog .modal-backdrop').click({position: {x: 4, y: 4}});
   await expect(contextDialog).toBeHidden();
   await expect(selectionChip).toBeFocused();
   await page.getByRole('button', {name: 'Remove shared selection', exact: true}).click();
