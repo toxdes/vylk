@@ -120,17 +120,17 @@ are objects: `{"v":1,"nonce":"...","ciphertext":"..."}`. AES-256-GCM uses
 a fresh random 12-byte nonce for every encryption, a 128-bit authentication tag,
 and ciphertext with that 16-byte tag appended. Never reuse a nonce under a key.
 
-Derive a 32-byte root from the exact UTF-8 passphrase using libsodium-compatible
+Derive a 32-byte root from the exact UTF-8 password using libsodium-compatible
 `crypto_pwhash`, algorithm `ARGON2ID13`. Use bootstrap `iterations` as opslimit
-and `memoryKiB * 1024` as memlimit; do not normalize passphrase Unicode or
+and `memoryKiB * 1024` as memlimit; do not normalize password Unicode or
 substitute a generic library's default Argon2 parameters. New setup uses 19,456
 KiB and 2 iterations; the server accepts 19,456–262,144 KiB and 2–10 iterations.
-For compatibility with the browser client, limit passphrases to 1,024 UTF-16
+For compatibility with the browser client, limit passwords to 1,024 UTF-16
 code units; its KDF worker rejects longer strings.
 
 Derive subkeys with HKDF-SHA-256: input key material is the root, salt is the
 decoded 16-byte vault ID, info is the UTF-8 label below, output is 32 bytes.
-From the passphrase root, labels are `vylk/v1/login` (proof) and `vylk/v1/wrap`
+From the password root, labels are `vylk/v1/login` (proof) and `vylk/v1/wrap`
 (AES wrapping key). Send the original proof bytes encoded in base64url, not
 their SHA-256 hash; the server stores that hash itself.
 
@@ -143,7 +143,7 @@ entropy representation; new clients should present the numbered mnemonic.
 Generate a separate random 32-byte vault key. Both wrappers encrypt that same
 key. Their AES additional authenticated data (AAD) is compact UTF-8 JSON:
 `["vylk",1,"<vault-id>","vault-key"]`. Use the original base64url ID string.
-The recovery wrapper uses the recovery wrapping key, not the passphrase key.
+The recovery wrapper uses the recovery wrapping key, not the password key.
 
 Derive note AES keys from the vault-key root using HKDF labels `vylk/v1/summary`
 and `vylk/v1/body`. Summary plaintext is UTF-8 JSON with string `title` and
@@ -182,7 +182,7 @@ resume plaintext writes in that state. There is no migration abort endpoint.
 
 ## Credentials, reset, and security limits
 
-Changing passphrase or recovery key rewraps the existing vault key. It does not
+Changing password or recovery key rewraps the existing vault key. It does not
 rotate that key or prevent an already-unlocked offline device from reading its
 cache. `sign_out_other_devices` defaults to true; current session is always
 revoked. The next login must derive against fresh bootstrap settings.

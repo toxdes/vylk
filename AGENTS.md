@@ -27,6 +27,10 @@
 - Add focused unit tests for isolated policy and characterization tests for cross-module behavior.
 - Before handoff, run formatting, linting, generated-CSS verification, Go tests/vet/Staticcheck, frontend tests, and relevant browser tests.
 
+## Documentation
+
+- `docs/` is the only source of user, CLI, and API documentation. Update the affected page in the same change as any user-visible behavior, UI label, setting, startup message, or endpoint. Follow `docs/README.md`.
+
 ## Pre-push checks
 
 - Before every push, run the entire test suite against the final changes being pushed: `go test ./...`, `bun run test:frontend`, and `bun run test:browser`. The browser command must complete all configured suites, including the vault and vault-resume suites.
