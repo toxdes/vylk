@@ -9,7 +9,7 @@ import (
 )
 
 func TestRenderAppShellUsesSiteDocumentationURL(t *testing.T) {
-	if DocsURL != SiteBaseURL+"/docs/#end-to-end-encryption" {
+	if DocsURL != SiteBaseURL+"/docs/encryption.html" {
 		t.Fatalf("encryption help URL = %q", DocsURL)
 	}
 	shell, err := RenderAppShell(DefaultName)
