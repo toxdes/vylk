@@ -795,7 +795,9 @@ test('whole-note proofreading saves accepted hunks and leaves rejected text unch
   await expect(page.locator('#note-content')).toHaveValue(
     '# Draft\n\nHe went home yesterday.\n\nShe walk to work.\n',
   );
-  await page.getByRole('button', {name: 'Reject change', exact: true}).click();
+  const reject = page.getByRole('button', {name: 'Reject change', exact: true});
+  await expect(reject).toHaveCount(1);
+  await reject.click();
   await expect(page.locator('#note-content')).toHaveValue(
     '# Draft\n\nHe went home yesterday.\n\nShe walk to work.\n',
   );
