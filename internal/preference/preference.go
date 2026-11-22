@@ -11,6 +11,7 @@ import (
 )
 
 type Preferences struct {
+	AIEnabled                 bool                        `json:"aiEnabled"`
 	ReduceMotion              string                      `json:"reduceMotion,omitempty"`
 	Revision                  int64                       `json:"revision,omitempty"`
 	AutoSave                  bool                        `json:"autoSave"`
@@ -86,6 +87,7 @@ func Defaults() *Preferences {
 }
 
 var fieldNames = map[string]struct{}{
+	"aiEnabled":    {},
 	"reduceMotion": {},
 	"autoSave":     {}, "startView": {}, "hideToolbar": {}, "hideSaveButton": {},
 	"saveButtonLocation": {}, "collapseDetails": {}, "hideCursorHighlight": {},
@@ -185,6 +187,11 @@ func ValidateField(key string, value json.RawMessage) error {
 		return fmt.Errorf("unknown preference field %q", key)
 	}
 	switch key {
+	case "aiEnabled":
+		var v *bool
+		if err := json.Unmarshal(value, &v); err != nil || v == nil {
+			return fmt.Errorf("invalid preference value for %q", key)
+		}
 	case "reduceMotion":
 		var v string
 		if err := json.Unmarshal(value, &v); err != nil || (v != "system" && v != "always" && v != "never") {

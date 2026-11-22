@@ -49,7 +49,18 @@ export default [
     },
   },
   {
-    files: ['internal/web/static/js/core/vault-kdf-worker.js'],
+    files: [
+      'internal/web/static/js/core/vault-kdf-worker.js',
+      'internal/web/static/js/editor/ai-controller.js',
+      'internal/web/static/js/editor/ai-context-highlight.js',
+      'internal/web/static/js/editor/ai-panel-controls.js',
+      'internal/web/static/js/editor/ai-provider-picker.js',
+      'internal/web/static/js/editor/ai-mobile-tabs.js',
+      'internal/web/static/js/editor/ai-discard-guard.js',
+      'internal/web/static/js/editor/ai-word-diff.js',
+      'internal/web/static/js/editor/ai-rebase.js',
+      'internal/web/static/js/ui/ai-settings.js',
+    ],
     languageOptions: {sourceType: 'module'},
   },
   {

@@ -41,6 +41,17 @@ func newHandler(a *app, assets *web.Assets, artificialDelay time.Duration) http.
 	mux.HandleFunc("GET /api/tags", a.vaultRoute(a.handleListTags, a.handleVaultClientSearch, false))
 	mux.HandleFunc("GET /api/prefs", a.auth(a.handleGetPrefs))
 	mux.HandleFunc("PATCH /api/prefs", a.auth(a.handleSavePrefs))
+	mux.HandleFunc("GET /api/ai/capabilities", a.aiEnabled(a.handleAICapabilities))
+	mux.HandleFunc("GET /api/ai/configurations", a.aiEnabled(a.handleAIConfigurations))
+	mux.HandleFunc("POST /api/ai/configurations", a.aiEnabled(a.handleAIConfigurations))
+	mux.HandleFunc("POST /api/ai/configurations/test", a.aiEnabled(a.handleAIConfigurationTest))
+	mux.HandleFunc("PUT /api/ai/configurations/{id}", a.aiEnabled(a.handleAIConfigurations))
+	mux.HandleFunc("DELETE /api/ai/configurations/{id}", a.aiEnabled(a.handleAIConfigurationAction))
+	mux.HandleFunc("POST /api/ai/configurations/{id}/{action}", a.aiEnabled(a.handleAIConfigurationAction))
+	mux.HandleFunc("POST /api/ai/sessions", a.aiEnabled(a.handleAISessionCreate))
+	mux.HandleFunc("DELETE /api/ai/sessions/{id}", a.aiEnabled(a.handleAISession))
+	mux.HandleFunc("GET /api/ai/sessions/{id}", a.aiEnabled(a.handleAISession))
+	mux.HandleFunc("POST /api/ai/sessions/{id}/{action}", a.aiEnabled(a.handleAISession))
 	mux.Handle("GET /", assets.Handler(func(path string) bool {
 		return isPreferencesPath(path) || notepkg.ValidID(strings.TrimPrefix(path, "/"))
 	}))
@@ -57,7 +68,7 @@ func isPreferencesPath(path string) bool {
 
 	sectionPath := strings.TrimPrefix(path, "/preferences/")
 	switch sectionPath {
-	case "appearance", "editor", "zen", "shortcuts", "account", "encryption", "about":
+	case "appearance", "editor", "zen", "shortcuts", "ai", "account", "encryption", "about":
 		return true
 	case "encryption/setup", "encryption/passphrase", "encryption/recovery":
 		return true

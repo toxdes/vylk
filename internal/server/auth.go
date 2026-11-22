@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"sync"
 
+	"vylk/internal/ai"
 	"vylk/internal/auth"
 	"vylk/internal/event"
 	"vylk/internal/httpx"
@@ -17,6 +18,9 @@ import (
 )
 
 type app struct {
+	aiMu                   sync.Mutex
+	ai                     *ai.Manager
+	aiConcurrency          int
 	db                     *sql.DB
 	instanceID             string
 	noteMu                 sync.Mutex
@@ -88,6 +92,13 @@ func (a *app) handleCheck(w http.ResponseWriter, r *http.Request) {
 
 func (a *app) handleLogout(w http.ResponseWriter, r *http.Request) {
 	c, _ := r.Cookie("session")
+	if c != nil {
+		a.aiMu.Lock()
+		if a.ai != nil {
+			a.ai.CloseOwner(ai.Owner(c.Value))
+		}
+		a.aiMu.Unlock()
+	}
 	// A replacement database cannot recognize the old session, but the browser
 	// must still be able to clear its cookie. Only live sessions revoke devices.
 	if c != nil && a.sessions.Valid(c.Value) {

@@ -6,6 +6,7 @@ tool honnef.co/go/tools/cmd/staticcheck
 
 require (
 	github.com/ccojocar/zxcvbn-go v1.0.4
+	github.com/yuin/goldmark/v2 v2.1.15
 	modernc.org/sqlite v1.54.0
 )
 

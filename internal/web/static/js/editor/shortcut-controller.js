@@ -62,6 +62,7 @@
       return commands.find((command) => {
         const current = bindingFor(command);
         return (
+          command.visible?.() !== false &&
           current &&
           current.steps.length === (sequence ? 2 : 1) &&
           shortcuts.sameBinding(current, binding)
@@ -71,17 +72,20 @@
 
     function updateAffordances() {
       commands.forEach((command) => {
+        if (command.visible?.() === false) return;
         const binding = bindingFor(command);
         const aria = binding ? shortcuts.ariaBinding(binding) : '';
         const suffix = binding ? ` (${shortcuts.displayBinding(binding)})` : '';
         const selector =
           command.id === 'note.save'
             ? '#save-btn'
-            : viewPanels[command.id]
-              ? `.view-control[data-panel="${viewPanels[command.id]}"]`
-              : command.id.startsWith('format.')
-                ? `.fmt-bar [data-fmt="${command.id.slice('format.'.length)}"]`
-                : '';
+            : command.id === 'ai.open'
+              ? '#ai-launch'
+              : viewPanels[command.id]
+                ? `.view-control[data-panel="${viewPanels[command.id]}"]`
+                : command.id.startsWith('format.')
+                  ? `.fmt-bar [data-fmt="${command.id.slice('format.'.length)}"]`
+                  : '';
         if (!selector) return;
         selectAll(selector).forEach((button) => {
           button.title = `${command.label}${suffix}`;
@@ -111,6 +115,7 @@
       groups.replaceChildren();
       const byGroup = new Map();
       commands.forEach((command) => {
+        if (command.visible?.() === false) return;
         if (!byGroup.has(command.group)) byGroup.set(command.group, []);
         byGroup.get(command.group).push(command);
       });
@@ -169,7 +174,9 @@
     function conflictingCommand(commandID, binding) {
       return commands.find(
         (command) =>
-          command.id !== commandID && shortcuts.sameBinding(bindingFor(command), binding),
+          command.visible?.() !== false &&
+          command.id !== commandID &&
+          shortcuts.sameBinding(bindingFor(command), binding),
       );
     }
 
@@ -205,7 +212,10 @@
       pendingSequence = true;
       const hint = select('#shortcut-sequence-hint');
       const available = commands.filter(
-        (command) => commandCanRun(command) && bindingFor(command)?.steps.length === 2,
+        (command) =>
+          command.visible?.() !== false &&
+          commandCanRun(command) &&
+          bindingFor(command)?.steps.length === 2,
       );
       const title = document.createElement('strong');
       title.className = 'shortcut-sequence-title';

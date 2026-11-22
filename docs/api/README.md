@@ -23,3 +23,7 @@ time, generating static `/docs/api/` HTML using its existing visual system.
 Generated HTML is not committed. Preview an unreleased worktree with the
 lander's documented local-source build option. Do not publish branch docs as
 release docs or fall back to a different ref after a failed download.
+
+The [BYOK AI protocol](client-protocol.md#byok-ai) documents opt-in provider
+configuration, temporary scoped drafts, staged review, and token accounting.
+AI does not expose keys through configuration responses or persist conversations.

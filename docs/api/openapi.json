@@ -5,18 +5,380 @@
     "version": "development",
     "description": "HTTP contracts for native and browser clients. Read client-protocol.md before implementing offline sync or encryption. The release build replaces the documentation version with its selected tag; no server URL or credential is embedded."
   },
-  "servers": [{"url": "/", "description": "Your VYLK instance"}],
-  "security": [{"session": []}],
+  "servers": [
+    {
+      "url": "/",
+      "description": "Your VYLK instance"
+    }
+  ],
+  "security": [
+    {
+      "session": []
+    }
+  ],
   "tags": [
-    {"name": "Authentication"},
-    {"name": "Devices"},
-    {"name": "Notes"},
-    {"name": "Sync"},
-    {"name": "Preferences"},
-    {"name": "Encryption"},
-    {"name": "Migration"}
+    {
+      "name": "Authentication"
+    },
+    {
+      "name": "Devices"
+    },
+    {
+      "name": "Notes"
+    },
+    {
+      "name": "Sync"
+    },
+    {
+      "name": "Preferences"
+    },
+    {
+      "name": "Encryption"
+    },
+    {
+      "name": "Migration"
+    },
+    {
+      "name": "AI"
+    }
   ],
   "paths": {
+    "/api/ai/configurations/test": {
+      "post": {
+        "operationId": "testAIConfigurationDraft",
+        "tags": ["AI"],
+        "summary": "Test an unsaved AI configuration",
+        "description": "Send name (optional), url, key (optional for local providers or an existing saved key), model, and optional existing id/revision. Makes one small provider request, records usage, and returns ok plus a test_token bound to these credentials and this session for ten minutes. Pass that token when saving; no configuration is stored by Test. Refreshes optional-thinking capabilities from OpenRouter metadata and tests with thinking disabled when controllable. Returns thinking_controllable alongside the receipt; no extra generation is made. Also discovers native structured-output support; known compatible OpenRouter models receive the strict answer/changes schema with required parameter support. Unknown providers use the same prompt-only contract.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["url", "model"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "revision": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful test with a short-lived test_token, reported_context_tokens (0 when the provider reports no window) and default_context_tokens."
+          },
+          "400": {
+            "description": "Invalid configuration or failed test."
+          },
+          "403": {
+            "description": "AI disabled."
+          }
+        }
+      }
+    },
+    "/api/ai/configurations": {
+      "get": {
+        "operationId": "listAIConfigurations",
+        "tags": ["AI"],
+        "summary": "List AI configurations without saved keys",
+        "description": "Requires aiEnabled=true. See the BYOK AI section in client-protocol.md for request shapes, lifecycle, limits, and privacy requirements. Errors never include saved keys or provider response bodies.",
+        "responses": {
+          "200": {
+            "description": "Operation succeeded."
+          },
+          "400": {
+            "description": "Invalid input, stale draft/configuration, limit reached, or provider failure."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "AI disabled."
+          }
+        }
+      },
+      "post": {
+        "operationId": "createAIConfiguration",
+        "tags": ["AI"],
+        "summary": "Create an unchecked AI configuration",
+        "description": "Requires aiEnabled=true. See the BYOK AI section in client-protocol.md for request shapes, lifecycle, limits, and privacy requirements. Errors never include saved keys or provider response bodies.",
+        "responses": {
+          "200": {
+            "description": "Operation succeeded."
+          },
+          "400": {
+            "description": "Invalid input, stale draft/configuration, limit reached, or provider failure."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "AI disabled."
+          }
+        }
+      }
+    },
+    "/api/ai/configurations/{id}": {
+      "put": {
+        "operationId": "updateAIConfiguration",
+        "tags": ["AI"],
+        "summary": "Replace an AI configuration with revision protection",
+        "description": "Requires aiEnabled=true. See the BYOK AI section in client-protocol.md for request shapes, lifecycle, limits, and privacy requirements. Errors never include saved keys or provider response bodies.",
+        "responses": {
+          "200": {
+            "description": "Operation succeeded."
+          },
+          "400": {
+            "description": "Invalid input, stale draft/configuration, limit reached, or provider failure."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "AI disabled."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteAIConfiguration",
+        "tags": ["AI"],
+        "summary": "Delete an AI configuration and cancel its sessions",
+        "description": "Requires aiEnabled=true. See the BYOK AI section in client-protocol.md for request shapes, lifecycle, limits, and privacy requirements. Errors never include saved keys or provider response bodies.",
+        "responses": {
+          "204": {
+            "description": "Operation succeeded."
+          },
+          "400": {
+            "description": "Invalid input, stale draft/configuration, limit reached, or provider failure."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "AI disabled."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/ai/configurations/{id}/{action}": {
+      "post": {
+        "operationId": "checkOrDefaultAIConfiguration",
+        "tags": ["AI"],
+        "summary": "Check a configuration or select its default",
+        "description": "Requires aiEnabled=true. See the BYOK AI section in client-protocol.md for request shapes, lifecycle, limits, and privacy requirements. Errors never include saved keys or provider response bodies.",
+        "responses": {
+          "200": {
+            "description": "Operation succeeded."
+          },
+          "400": {
+            "description": "Invalid input, stale draft/configuration, limit reached, or provider failure."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "AI disabled."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/ai/sessions": {
+      "post": {
+        "operationId": "createAISession",
+        "tags": ["AI"],
+        "summary": "Create a temporary scoped AI draft",
+        "description": "Requires aiEnabled=true. See the BYOK AI section in client-protocol.md for request shapes, lifecycle, limits, and privacy requirements. Errors never include saved keys or provider response bodies. Sessions return thinking_controllable and freeze that model capability for their lifetime.",
+        "responses": {
+          "200": {
+            "description": "Operation succeeded."
+          },
+          "400": {
+            "description": "Invalid input, stale draft/configuration, limit reached, or provider failure."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "AI disabled."
+          }
+        }
+      }
+    },
+    "/api/ai/sessions/{id}": {
+      "delete": {
+        "operationId": "closeAISession",
+        "tags": ["AI"],
+        "summary": "Cancel and discard a temporary AI session",
+        "description": "Requires aiEnabled=true. See the BYOK AI section in client-protocol.md for request shapes, lifecycle, limits, and privacy requirements. Errors never include saved keys or provider response bodies.",
+        "responses": {
+          "204": {
+            "description": "Operation succeeded."
+          },
+          "400": {
+            "description": "Invalid input, stale draft/configuration, limit reached, or provider failure."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "AI disabled."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "get": {
+        "operationId": "getAISession",
+        "tags": ["AI"],
+        "summary": "Read the current temporary AI draft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "job",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["1"]
+            },
+            "description": "Return compact background-job progress instead of the note draft."
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["1"]
+            },
+            "description": "With job=1, wait up to 25 seconds for completion; returns immediately when ready."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Owner-scoped draft and version."
+          },
+          "400": {
+            "description": "Session unavailable."
+          },
+          "403": {
+            "description": "AI disabled."
+          }
+        }
+      }
+    },
+    "/api/ai/sessions/{id}/{action}": {
+      "post": {
+        "operationId": "advanceAISession",
+        "tags": ["AI"],
+        "summary": "Plan or start a snapshot job, cancel it, or review suggestions",
+        "description": "Requires aiEnabled=true. See the BYOK AI section in client-protocol.md for request shapes, lifecycle, limits, and privacy requirements. Errors never include saved keys or provider response bodies. The plan and legacy turn actions accept thinking (boolean, default false). True is rejected if the session cannot control reasoning; false explicitly disables reasoning only for controllable models. Planning freezes the setting for all section calls. Unknown and mandatory models receive no reasoning override. Provider calls send version-bound Markdown blocks and accept only changed block IDs with replacement text. The backend validates scope and computes existing review hunks locally; no frontend protocol or review semantics change. Referenced pending proposals can be revised using their @label as the provider change ID; returning original before text withdraws the pending suggestion. Other pending proposals are retained. Reference requests route only to relevant context, and note edits still require explicit acceptance. Normal generation permits up to two additional correction calls after a finished response fails JSON or local reply validation. validation_feedback contains the rejected response and reason; the original snapshot/request stays fixed. Each real call records separate usage under the same turn. Transport/provider failures and configuration checks are not automatically retried.",
+        "responses": {
+          "200": {
+            "description": "Operation succeeded."
+          },
+          "400": {
+            "description": "Invalid input, stale draft/configuration, limit reached, or provider failure."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "AI disabled."
+          },
+          "202": {
+            "description": "Background job started. Poll the session with ?job=1."
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["plan", "start", "cancel", "review", "turn", "configuration", "context"]
+            }
+          }
+        ]
+      }
+    },
     "/api/login": {
       "post": {
         "operationId": "login",
@@ -28,26 +390,50 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": {"$ref": "#/components/schemas/Login"},
-              "example": {"password": "your-server-password"}
+              "schema": {
+                "$ref": "#/components/schemas/Login"
+              },
+              "example": {
+                "password": "your-server-password"
+              }
             }
           }
         },
         "responses": {
           "200": {
             "description": "Signed in. Sets session and vylk-device cookies.",
-            "headers": {"Set-Cookie": {"$ref": "#/components/headers/Cookies"}},
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/Cookies"
+              }
+            },
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/LoginResult"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResult"
+                }
+              }
             }
           },
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
           "401": {
             "description": "invalid_credentials",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "429": {"$ref": "#/components/responses/RateLimited"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -61,9 +447,15 @@
         "responses": {
           "204": {
             "description": "Signed out; empty body. Clears session cookie.",
-            "headers": {"Set-Cookie": {"$ref": "#/components/headers/Cookies"}}
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/Cookies"
+              }
+            }
           },
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -77,11 +469,19 @@
           "200": {
             "description": "Current server identity.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/CheckResult"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -100,14 +500,23 @@
                   "type": "object",
                   "required": ["devices"],
                   "properties": {
-                    "devices": {"type": "array", "items": {"$ref": "#/components/schemas/Device"}}
+                    "devices": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Device"
+                      }
+                    }
                   }
                 }
               }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -123,15 +532,28 @@
             "in": "path",
             "required": true,
             "description": "Device ID, not a sync queue device_id.",
-            "schema": {"type": "string", "pattern": "^[a-f0-9]{32}$"}
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}$"
+            }
           }
         ],
         "responses": {
-          "204": {"description": "Sessions revoked; empty body."},
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "204": {
+            "description": "Sessions revoked; empty body."
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VaultChangesDisabled"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -142,24 +564,34 @@
         "summary": "List note summaries",
         "description": "With limit, returns a page; without limit, returns an array and ignores cursor. Newest updated_at first. Plaintext tag filtering is exact; encrypted mode rejects tag with 409 client_search_required. Encrypted responses contain envelopes instead of title/tags/filename. The page response's nextCursor may be absent or empty at the end.",
         "parameters": [
-          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "$ref": "#/components/parameters/VaultProtocol"
+          },
           {
             "name": "limit",
             "in": "query",
             "description": "Enable pagination. An empty limit is invalid in encrypted mode.",
-            "schema": {"type": "integer", "minimum": 1, "maximum": 100}
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
           },
           {
             "name": "cursor",
             "in": "query",
             "description": "Opaque nextCursor from the preceding page; do not parse or invent it.",
-            "schema": {"type": "string"}
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "tag",
             "in": "query",
             "description": "Exact tag; plaintext mode only.",
-            "schema": {"type": "string"}
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -169,19 +601,38 @@
               "application/json": {
                 "schema": {
                   "oneOf": [
-                    {"type": "array", "items": {"$ref": "#/components/schemas/NoteSummary"}},
-                    {"$ref": "#/components/schemas/NotesPage"}
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/NoteSummary"
+                      }
+                    },
+                    {
+                      "$ref": "#/components/schemas/NotesPage"
+                    }
                   ]
                 }
               }
             }
           },
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "409": {"$ref": "#/components/responses/ClientSearch"},
-          "423": {"$ref": "#/components/responses/Locked"},
-          "426": {"$ref": "#/components/responses/ProtocolRequired"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/ClientSearch"
+          },
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "426": {
+            "$ref": "#/components/responses/ProtocolRequired"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       },
       "post": {
@@ -189,15 +640,23 @@
         "tags": ["Notes"],
         "summary": "Create or replace a complete note",
         "description": "Not a patch or text delta. Plaintext limit: 4 MiB JSON; encrypted limit: 8 MiB. Plaintext id may be omitted to generate an ID; supplying an ID requires base_revision (0 for a new note). Encrypted mode requires a client-generated ID, base_revision, epoch, summary, and body. Responses omit content/body. For offline clients prefer ordered sync/push, which supports replay acknowledgements and an instance fence.",
-        "parameters": [{"$ref": "#/components/parameters/VaultProtocol"}],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VaultProtocol"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "oneOf": [
-                  {"$ref": "#/components/schemas/SaveNote"},
-                  {"$ref": "#/components/schemas/SaveEncryptedNote"}
+                  {
+                    "$ref": "#/components/schemas/SaveNote"
+                  },
+                  {
+                    "$ref": "#/components/schemas/SaveEncryptedNote"
+                  }
                 ]
               },
               "example": {
@@ -214,19 +673,41 @@
           "200": {
             "description": "Saved metadata (also for creation; not 201).",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/NoteSummary"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteSummary"
+                }
+              }
             }
           },
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "409": {
             "description": "note_revision_conflict or stale_vault_epoch. Plaintext revision conflicts include note_id and current_revision; encrypted direct conflicts may contain only error/code.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "423": {"$ref": "#/components/responses/Locked"},
-          "426": {"$ref": "#/components/responses/ProtocolRequired"},
-          "503": {"$ref": "#/components/responses/RecoveryBlocked"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "426": {
+            "$ref": "#/components/responses/ProtocolRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/RecoveryBlocked"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -236,21 +717,39 @@
         "tags": ["Notes"],
         "summary": "Read a complete note",
         "parameters": [
-          {"$ref": "#/components/parameters/NoteID"},
-          {"$ref": "#/components/parameters/VaultProtocol"}
+          {
+            "$ref": "#/components/parameters/NoteID"
+          },
+          {
+            "$ref": "#/components/parameters/VaultProtocol"
+          }
         ],
         "responses": {
           "200": {
             "description": "Metadata and Markdown content, or summary/body envelopes in encrypted mode.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/CompleteNote"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompleteNote"
+                }
+              }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "404": {"$ref": "#/components/responses/NotFound"},
-          "423": {"$ref": "#/components/responses/Locked"},
-          "426": {"$ref": "#/components/responses/ProtocolRequired"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "426": {
+            "$ref": "#/components/responses/ProtocolRequired"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       },
       "delete": {
@@ -259,29 +758,59 @@
         "summary": "Delete a note at a known revision",
         "description": "Revision-checked deletion; not an unconditional idempotent delete. A repeat request may return conflict or not-found. Offline clients should use sync/push.",
         "parameters": [
-          {"$ref": "#/components/parameters/NoteID"},
-          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "$ref": "#/components/parameters/NoteID"
+          },
+          {
+            "$ref": "#/components/parameters/VaultProtocol"
+          },
           {
             "name": "base_revision",
             "in": "query",
             "required": true,
             "description": "Last known note revision.",
-            "schema": {"type": "integer", "format": "int64", "minimum": 1}
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            }
           }
         ],
         "responses": {
-          "204": {"description": "Deleted; empty body."},
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "404": {"$ref": "#/components/responses/NotFound"},
+          "204": {
+            "description": "Deleted; empty body."
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
           "409": {
             "description": "note_revision_conflict",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "423": {"$ref": "#/components/responses/Locked"},
-          "426": {"$ref": "#/components/responses/ProtocolRequired"},
-          "503": {"$ref": "#/components/responses/RecoveryBlocked"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "426": {
+            "$ref": "#/components/responses/ProtocolRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/RecoveryBlocked"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -292,12 +821,16 @@
         "summary": "Search plaintext titles and tags",
         "description": "Title/tag prefix search, not body search. Uses at most the first eight whitespace-separated terms, combined with AND; returns up to 50 ranked summaries. An empty query returns []; no matches for a nonempty query can return null. Encrypted mode returns 409 client_search_required; decrypt and search locally.",
         "parameters": [
-          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "$ref": "#/components/parameters/VaultProtocol"
+          },
           {
             "name": "q",
             "in": "query",
             "description": "Trimmed search text, at most 256 UTF-8 bytes.",
-            "schema": {"type": "string"}
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -307,17 +840,31 @@
               "application/json": {
                 "schema": {
                   "type": ["array", "null"],
-                  "items": {"$ref": "#/components/schemas/PlainNote"}
+                  "items": {
+                    "$ref": "#/components/schemas/PlainNote"
+                  }
                 }
               }
             }
           },
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "409": {"$ref": "#/components/responses/ClientSearch"},
-          "423": {"$ref": "#/components/responses/Locked"},
-          "426": {"$ref": "#/components/responses/ProtocolRequired"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/ClientSearch"
+          },
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "426": {
+            "$ref": "#/components/responses/ProtocolRequired"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -327,19 +874,40 @@
         "tags": ["Notes"],
         "summary": "List plaintext tags",
         "description": "Encrypted mode returns 409 client_search_required. Build its tag index from decrypted summaries locally.",
-        "parameters": [{"$ref": "#/components/parameters/VaultProtocol"}],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/VaultProtocol"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Distinct tags.",
             "content": {
-              "application/json": {"schema": {"type": "array", "items": {"type": "string"}}}
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "409": {"$ref": "#/components/responses/ClientSearch"},
-          "423": {"$ref": "#/components/responses/Locked"},
-          "426": {"$ref": "#/components/responses/ProtocolRequired"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/ClientSearch"
+          },
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "426": {
+            "$ref": "#/components/responses/ProtocolRequired"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -350,30 +918,56 @@
         "summary": "Read the durable note change feed",
         "description": "since is exclusive. Store nextSequence only after committing the fetched changes locally. Follow hasMore; when false, stop fetching until a new hint/poll. resetRequired means the retained feed no longer covers the cursor: rebuild a snapshot without deleting pending edits. instance_id distinguishes replacement databases; do not infer identity from a cursor. See the protocol guide for snapshot races and reset handling.",
         "parameters": [
-          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "$ref": "#/components/parameters/VaultProtocol"
+          },
           {
             "name": "since",
             "in": "query",
-            "schema": {"type": "integer", "format": "int64", "minimum": 0, "default": 0}
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "default": 0
+            }
           },
           {
             "name": "limit",
             "in": "query",
-            "schema": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100}
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Ordered changes, tombstones, cursor and server identity.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/ChangesPage"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangesPage"
+                }
+              }
             }
           },
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "423": {"$ref": "#/components/responses/Locked"},
-          "426": {"$ref": "#/components/responses/ProtocolRequired"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "426": {
+            "$ref": "#/components/responses/ProtocolRequired"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -384,12 +978,16 @@
         "summary": "Fetch complete notes in a small batch",
         "description": "Up to 25 comma-separated IDs, counted before deduplication. Empty ids returns empty notes/missing arrays. A fetched revision may be newer than the change-feed entry; do not overwrite pending local edits.",
         "parameters": [
-          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "$ref": "#/components/parameters/VaultProtocol"
+          },
           {
             "name": "ids",
             "in": "query",
             "description": "Comma-separated note IDs; no spaces.",
-            "schema": {"type": "string"}
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -403,19 +1001,36 @@
                   "properties": {
                     "notes": {
                       "type": "array",
-                      "items": {"$ref": "#/components/schemas/CompleteNote"}
+                      "items": {
+                        "$ref": "#/components/schemas/CompleteNote"
+                      }
                     },
-                    "missing": {"type": "array", "items": {"$ref": "#/components/schemas/ID"}}
+                    "missing": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ID"
+                      }
+                    }
                   }
                 }
               }
             }
           },
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "423": {"$ref": "#/components/responses/Locked"},
-          "426": {"$ref": "#/components/responses/ProtocolRequired"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "426": {
+            "$ref": "#/components/responses/ProtocolRequired"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -426,12 +1041,16 @@
         "summary": "Apply ordered offline operations",
         "description": "At most 100 operations; 4 MiB plaintext or 8 MiB encrypted JSON. Empty operations is allowed to read expected_sequence. Full-note saves, not text deltas. Sequence starts at 1 and is contiguous per device_id; preserve it and stable op_id across retries. Conflicts consume sequence numbers. A 409 sequence gap can acknowledge an already-committed prefix. Timeouts/5xx can also follow partial commits: retry the identical operations. Do not interpret every HTTP 200 as every operation applied. See the protocol guide.",
         "parameters": [
-          {"$ref": "#/components/parameters/VaultProtocol"},
+          {
+            "$ref": "#/components/parameters/VaultProtocol"
+          },
           {
             "name": "X-Vylk-Instance-ID",
             "in": "header",
             "description": "Strongly recommended: persisted server instance_id. A mismatch returns 409 before any writes. Omission is accepted for compatibility, not safe for offline replacement-database recovery.",
-            "schema": {"type": "string"}
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -440,8 +1059,12 @@
             "application/json": {
               "schema": {
                 "anyOf": [
-                  {"$ref": "#/components/schemas/PushRequest"},
-                  {"$ref": "#/components/schemas/EncryptedPushRequest"}
+                  {
+                    "$ref": "#/components/schemas/PushRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/EncryptedPushRequest"
+                  }
                 ]
               },
               "example": {
@@ -465,30 +1088,56 @@
         "responses": {
           "200": {
             "description": "Inspect each acknowledgement status.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PushResult"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushResult"
+                }
+              }
+            }
           },
           "400": {
             "description": "invalid_sync_request, invalid_sync_operation or invalid_encrypted_operation. Plaintext invalid_sync_operation includes permanent=true, operation_index, client_sequence and op_id.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "409": {
             "description": "Sequence gap (PushResult), invalid_replayed_operation, server_instance_changed, or stale_vault_epoch (Error, possibly epoch). A changed server requires a user decision; never silently renumber/re-upload pending edits.",
             "content": {
               "application/json": {
                 "schema": {
                   "oneOf": [
-                    {"$ref": "#/components/schemas/PushResult"},
-                    {"$ref": "#/components/schemas/Error"}
+                    {
+                      "$ref": "#/components/schemas/PushResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    }
                   ]
                 }
               }
             }
           },
-          "423": {"$ref": "#/components/responses/Locked"},
-          "426": {"$ref": "#/components/responses/ProtocolRequired"},
-          "503": {"$ref": "#/components/responses/RecoveryBlocked"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "426": {
+            "$ref": "#/components/responses/ProtocolRequired"
+          },
+          "503": {
+            "$ref": "#/components/responses/RecoveryBlocked"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -502,20 +1151,40 @@
           "200": {
             "description": "A long-lived UTF-8 SSE stream.",
             "headers": {
-              "Cache-Control": {"schema": {"type": "string", "const": "no-cache"}},
-              "X-Accel-Buffering": {"schema": {"type": "string", "const": "no"}}
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              },
+              "X-Accel-Buffering": {
+                "schema": {
+                  "type": "string",
+                  "const": "no"
+                }
+              }
             },
             "content": {
               "text/event-stream": {
-                "schema": {"type": "string"},
+                "schema": {
+                  "type": "string"
+                },
                 "example": "retry: 3000\n\nevent: server\ndata: {\"version\":\"3.0.4\",\"revision\":\"asset-revision\"}\n\nevent: change\ndata: {\"type\":\"notes\",\"sequence\":1}\n\n"
               }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "500": {
             "description": "Stream setup failed.",
-            "content": {"text/plain": {"schema": {"type": "string"}}}
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       }
@@ -530,11 +1199,19 @@
           "200": {
             "description": "Current preferences with normalized defaults.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Preferences"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       },
       "patch": {
@@ -547,27 +1224,51 @@
             "name": "If-Match",
             "in": "header",
             "description": "Positive revision, plain or quoted. Missing or * permits unconditional replacement; avoid this in multi-device clients.",
-            "schema": {"type": "string"}
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Preferences"}}}
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Preferences"
+              }
+            }
+          }
         },
         "responses": {
           "200": {
             "description": "Saved preferences with new revision.",
             "content": {
-              "application/json": {"schema": {"$ref": "#/components/schemas/Preferences"}}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
             }
           },
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "409": {
             "description": "preferences_revision_conflict, with current_revision.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -581,10 +1282,25 @@
         "responses": {
           "200": {
             "description": "Current encryption mode and public KDF settings.",
-            "headers": {"Cache-Control": {"schema": {"type": "string", "const": "no-store"}}},
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Bootstrap"}}}
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bootstrap"
+                }
+              }
+            }
           },
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -602,21 +1318,40 @@
                   "type": "object",
                   "required": ["vault_id", "epoch", "wrapped_key", "wrapped_recovery_key"],
                   "properties": {
-                    "vault_id": {"$ref": "#/components/schemas/VaultID"},
-                    "epoch": {"type": "integer", "format": "int64"},
-                    "wrapped_key": {"$ref": "#/components/schemas/Envelope"},
-                    "wrapped_recovery_key": {"$ref": "#/components/schemas/Envelope"}
+                    "vault_id": {
+                      "$ref": "#/components/schemas/VaultID"
+                    },
+                    "epoch": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "wrapped_key": {
+                      "$ref": "#/components/schemas/Envelope"
+                    },
+                    "wrapped_recovery_key": {
+                      "$ref": "#/components/schemas/Envelope"
+                    }
                   }
                 }
               }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "409": {
             "description": "vault_not_encrypted",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -629,23 +1364,51 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {"schema": {"$ref": "#/components/schemas/CredentialChange"}}
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialChange"
+              }
+            }
           }
         },
         "responses": {
           "200": {
             "description": "Credentials changed; session cookie cleared.",
-            "headers": {"Set-Cookie": {"$ref": "#/components/headers/Cookies"}},
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OK"}}}
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/Cookies"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OK"
+                }
+              }
+            }
           },
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VaultChangesDisabled"
+          },
           "409": {
             "description": "vault_unavailable",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -658,40 +1421,83 @@
         "description": "Optional recovery-from-total-key-loss operation, NOT passphrase recovery or decryption. Requires configured VYLK_PASSWORD in the body, not a session/proof. Limit: 32 KiB. Archives the old database/ciphertext for 30 days, then replaces credentials, clears notes/feed/queue counters and revokes all sessions. Returns a new session. The old data still needs its old key. instance_id remains unchanged; vault_id changes and epoch increments. Confirm data-loss consequences before calling. Do not retry an ambiguous reset blindly.",
         "requestBody": {
           "required": true,
-          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VaultReset"}}}
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultReset"
+              }
+            }
+          }
         },
         "responses": {
           "200": {
             "description": "New empty vault and new session.",
-            "headers": {"Set-Cookie": {"$ref": "#/components/headers/Cookies"}},
+            "headers": {
+              "Set-Cookie": {
+                "$ref": "#/components/headers/Cookies"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "required": ["ok", "vault_id", "epoch", "archive_expires_at"],
                   "properties": {
-                    "ok": {"type": "boolean", "const": true},
-                    "vault_id": {"$ref": "#/components/schemas/VaultID"},
-                    "epoch": {"type": "integer", "format": "int64"},
-                    "archive_expires_at": {"type": "string", "format": "date-time"}
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "vault_id": {
+                      "$ref": "#/components/schemas/VaultID"
+                    },
+                    "epoch": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "archive_expires_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
                   }
                 }
               }
             }
           },
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "403": {
             "description": "vault_changes_disabled or vault_reset_unavailable (no server password).",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "409": {
             "description": "vault_reset_unavailable (not an active encrypted vault).",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "429": {"$ref": "#/components/responses/RateLimited"},
-          "503": {"$ref": "#/components/responses/RecoveryBlocked"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/RecoveryBlocked"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -765,7 +1571,11 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {"schema": {"$ref": "#/components/schemas/MigrationStart"}}
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MigrationStart"
+              }
+            }
           }
         },
         "responses": {
@@ -777,8 +1587,14 @@
                   "type": "object",
                   "required": ["ok", "epoch"],
                   "properties": {
-                    "ok": {"type": "boolean", "const": true},
-                    "epoch": {"type": "integer", "const": 1}
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "epoch": {
+                      "type": "integer",
+                      "const": 1
+                    }
                   }
                 }
               }
@@ -786,20 +1602,46 @@
           },
           "400": {
             "description": "invalid_vault_setup, including incorrect old_password.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VaultChangesDisabled"
+          },
           "409": {
             "description": "vault_setup_already_started or unexpected_note_files",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "503": {"$ref": "#/components/responses/RecoveryBlocked"},
+          "503": {
+            "$ref": "#/components/responses/RecoveryBlocked"
+          },
           "507": {
             "description": "migration_backup_failed: free storage and retry same setup.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -823,19 +1665,35 @@
                     "verified_notes"
                   ],
                   "properties": {
-                    "mode": {"$ref": "#/components/schemas/VaultMode"},
-                    "backup_ready": {"type": "boolean"},
-                    "source_notes": {"type": "integer"},
-                    "staged_notes": {"type": "integer"},
-                    "verified_notes": {"type": "integer"}
+                    "mode": {
+                      "$ref": "#/components/schemas/VaultMode"
+                    },
+                    "backup_ready": {
+                      "type": "boolean"
+                    },
+                    "source_notes": {
+                      "type": "integer"
+                    },
+                    "staged_notes": {
+                      "type": "integer"
+                    },
+                    "verified_notes": {
+                      "type": "integer"
+                    }
                   }
                 }
               }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "409": {"$ref": "#/components/responses/MigrationConflict"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/MigrationConflict"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -850,7 +1708,9 @@
             "name": "after",
             "in": "query",
             "description": "Last ID from the preceding page, exclusive. This is an ID, not a notes-page cursor.",
-            "schema": {"type": "string"}
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -864,17 +1724,28 @@
                     "type": "object",
                     "required": ["id", "revision"],
                     "properties": {
-                      "id": {"$ref": "#/components/schemas/ID"},
-                      "revision": {"type": "integer", "format": "int64"}
+                      "id": {
+                        "$ref": "#/components/schemas/ID"
+                      },
+                      "revision": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
                     }
                   }
                 }
               }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "409": {"$ref": "#/components/responses/MigrationConflict"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/MigrationConflict"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -887,20 +1758,42 @@
         "requestBody": {
           "required": true,
           "content": {
-            "application/json": {"schema": {"$ref": "#/components/schemas/StagedRequest"}}
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StagedRequest"
+              }
+            }
           }
         },
         "responses": {
-          "200": {"$ref": "#/components/responses/OK"},
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
-          "409": {"$ref": "#/components/responses/MigrationConflict"},
+          "200": {
+            "$ref": "#/components/responses/OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VaultChangesDisabled"
+          },
+          "409": {
+            "$ref": "#/components/responses/MigrationConflict"
+          },
           "507": {
             "description": "vault_stage_failed: insufficient storage.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -909,15 +1802,31 @@
         "operationId": "getStagedNote",
         "tags": ["Migration"],
         "summary": "Read a staged encrypted note",
-        "parameters": [{"$ref": "#/components/parameters/NoteID"}],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/NoteID"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Staged copy. body_hash is SHA-256 of exact stored envelope JSON bytes, not decrypted Markdown or reserialized JSON.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/StagedNote"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StagedNote"
+                }
+              }
+            }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "404": {"$ref": "#/components/responses/NotFound"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -936,7 +1845,9 @@
                 "additionalProperties": false,
                 "required": ["id", "body_hash"],
                 "properties": {
-                  "id": {"$ref": "#/components/schemas/ID"},
+                  "id": {
+                    "$ref": "#/components/schemas/ID"
+                  },
                   "body_hash": {
                     "type": "string",
                     "description": "SHA-256, lowercase hexadecimal.",
@@ -949,12 +1860,24 @@
           }
         },
         "responses": {
-          "200": {"$ref": "#/components/responses/OK"},
-          "400": {"$ref": "#/components/responses/InvalidRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
-          "409": {"$ref": "#/components/responses/MigrationConflict"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "200": {
+            "$ref": "#/components/responses/OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VaultChangesDisabled"
+          },
+          "409": {
+            "$ref": "#/components/responses/MigrationConflict"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
         }
       }
     },
@@ -973,17 +1896,63 @@
                   "type": "object",
                   "required": ["ok", "mode"],
                   "properties": {
-                    "ok": {"type": "boolean", "const": true},
-                    "mode": {"type": "string", "const": "encrypted"}
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "mode": {
+                      "type": "string",
+                      "const": "encrypted"
+                    }
                   }
                 }
               }
             }
           },
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "403": {"$ref": "#/components/responses/VaultChangesDisabled"},
-          "409": {"$ref": "#/components/responses/MigrationConflict"},
-          "default": {"$ref": "#/components/responses/ServerError"}
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/VaultChangesDisabled"
+          },
+          "409": {
+            "$ref": "#/components/responses/MigrationConflict"
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/api/ai/capabilities": {
+      "get": {
+        "operationId": "getAICapabilities",
+        "tags": ["AI"],
+        "summary": "Discover controllable thinking for the checked default configuration",
+        "description": "Returns thinking_controllable. OpenRouter model metadata is cached for 15 minutes, bounded to 64 entries. Unknown, unsupported, mandatory-thinking models and dynamic routers return false. Does not generate an AI response. Only call when opening AI.",
+        "responses": {
+          "200": {
+            "description": "Capability result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["thinking_controllable"],
+                  "properties": {
+                    "thinking_controllable": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "AI unavailable"
+          },
+          "403": {
+            "description": "AI disabled"
+          }
         }
       }
     }
@@ -1002,78 +1971,168 @@
         "name": "X-Vylk-Vault-Protocol",
         "in": "header",
         "description": "Required value 1 for this route in encrypted mode; otherwise 426. Not required for authentication, preferences, keys, migration, or SSE.",
-        "schema": {"type": "string", "const": "1"}
+        "schema": {
+          "type": "string",
+          "const": "1"
+        }
       },
       "NoteID": {
         "name": "id",
         "in": "path",
         "required": true,
         "description": "Note identifier.",
-        "schema": {"$ref": "#/components/schemas/ID"}
+        "schema": {
+          "$ref": "#/components/schemas/ID"
+        }
       }
     },
     "headers": {
       "Cookies": {
         "description": "May contain multiple Set-Cookie lines. session is HttpOnly, Path=/, SameSite=Lax, 180-day lifetime; vylk-device groups browser-profile sessions and lasts 365 days. Secure is set for HTTPS. Authenticated activity periodically renews session. Never combine Set-Cookie lines with commas.",
-        "schema": {"type": "string"}
+        "schema": {
+          "type": "string"
+        }
       }
     },
     "responses": {
       "OK": {
         "description": "Completed.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OK"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OK"
+            }
+          }
+        }
       },
       "InvalidRequest": {
         "description": "Malformed, oversized, unknown-field, or invalid request (invalid_request or a route-specific code). JSON body limits return 400, not 413.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "Unauthorized": {
         "description": "authentication_required for a missing, expired, or revoked session; credential endpoints can return invalid_credentials.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "NotFound": {
         "description": "note_not_found or staged_note_not_found.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "RateLimited": {
         "description": "login_rate_limited. Wait retry_after seconds; do not hammer credentials.",
         "headers": {
-          "Retry-After": {"schema": {"type": "string"}, "description": "Delay in seconds."}
+          "Retry-After": {
+            "schema": {
+              "type": "string"
+            },
+            "description": "Delay in seconds."
+          }
         },
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "VaultChangesDisabled": {
         "description": "vault_changes_disabled: server policy rejects vault/device mutations. Ordinary notes and preferences remain usable.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "ClientSearch": {
         "description": "client_search_required: decrypt summaries and search/filter/index tags locally.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "Locked": {
         "description": "vault_migration_in_progress (writes during preparation), vault_maintenance_in_progress (cleaning), or vault_unavailable. Pause writes; do not discard pending changes.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "ProtocolRequired": {
         "description": "encrypted_client_required: set X-Vylk-Vault-Protocol: 1 and implement the encrypted contract; never retry a plaintext body as encrypted.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "RecoveryBlocked": {
         "description": "Pending file recovery prevents writes. Retain operations and retry with backoff after recovery; code depends on route (note_file_recovery_blocked, note_recovery_pending, note_recovery_failed).",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "MigrationConflict": {
         "description": "Migration state/source mismatch: vault_migration_not_started, vault_migration_not_ready, vault_note_changed, vault_verify_mismatch, vault_migration_incomplete, or unexpected_note_files. Inspect state before retrying.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       },
       "ServerError": {
         "description": "Storage/internal failure with a route-specific code. Some writes may already have committed; reconcile rather than assuming nothing changed.",
-        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       }
     },
     "schemas": {
-      "ID": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
-      "QueueID": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
+      "ID": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+      },
+      "QueueID": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,128}$"
+      },
       "VaultID": {
         "type": "string",
         "description": "16 random bytes, unpadded strict base64url (22 characters).",
@@ -1091,9 +2150,19 @@
         "description": "AES-256-GCM envelope, an object rather than a JSON-encoded string. Nonce: 12 bytes. Ciphertext includes the final 16-byte authentication tag. Both are strict unpadded base64url. Summary envelope JSON is limited to 37,888 bytes.",
         "required": ["v", "nonce", "ciphertext"],
         "properties": {
-          "v": {"type": "integer", "const": 1},
-          "nonce": {"type": "string", "minLength": 16, "maxLength": 16},
-          "ciphertext": {"type": "string", "minLength": 22}
+          "v": {
+            "type": "integer",
+            "const": 1
+          },
+          "nonce": {
+            "type": "string",
+            "minLength": 16,
+            "maxLength": 16
+          },
+          "ciphertext": {
+            "type": "string",
+            "minLength": 22
+          }
         }
       },
       "Error": {
@@ -1104,50 +2173,102 @@
             "type": "string",
             "description": "Human-readable message; branch on code instead."
           },
-          "code": {"type": "string"},
-          "note_id": {"type": "string"},
-          "current_revision": {"type": "integer", "format": "int64"},
-          "epoch": {"type": "integer", "format": "int64"},
-          "retry_after": {"type": "integer"},
-          "permanent": {"type": "boolean"},
-          "operation_index": {"type": "integer", "minimum": 0},
-          "client_sequence": {"type": "integer", "format": "int64"},
-          "op_id": {"type": "string"}
+          "code": {
+            "type": "string"
+          },
+          "note_id": {
+            "type": "string"
+          },
+          "current_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "retry_after": {
+            "type": "integer"
+          },
+          "permanent": {
+            "type": "boolean"
+          },
+          "operation_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "client_sequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "op_id": {
+            "type": "string"
+          }
         }
       },
       "OK": {
         "type": "object",
         "required": ["ok"],
-        "properties": {"ok": {"type": "boolean", "const": true}}
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          }
+        }
       },
       "Login": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "password": {"type": "string", "description": "Server password, legacy/preparing only."},
-          "proof": {"$ref": "#/components/schemas/Proof"},
-          "recovery_proof": {"$ref": "#/components/schemas/Proof"}
+          "password": {
+            "type": "string",
+            "description": "Server password, legacy/preparing only."
+          },
+          "proof": {
+            "$ref": "#/components/schemas/Proof"
+          },
+          "recovery_proof": {
+            "$ref": "#/components/schemas/Proof"
+          }
         }
       },
       "LoginResult": {
         "type": "object",
         "required": ["ok", "version", "revision", "instance_id"],
         "properties": {
-          "ok": {"type": "boolean", "const": true},
-          "version": {"type": "string"},
-          "revision": {"type": "string", "description": "Application asset revision."},
-          "instance_id": {"type": "string", "description": "Persistent database identity."}
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "version": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string",
+            "description": "Application asset revision."
+          },
+          "instance_id": {
+            "type": "string",
+            "description": "Persistent database identity."
+          }
         }
       },
       "CheckResult": {
         "allOf": [
-          {"$ref": "#/components/schemas/LoginResult"},
+          {
+            "$ref": "#/components/schemas/LoginResult"
+          },
           {
             "type": "object",
             "required": ["vault_mode", "vault_epoch"],
             "properties": {
-              "vault_mode": {"$ref": "#/components/schemas/VaultMode"},
-              "vault_epoch": {"type": "integer", "format": "int64"}
+              "vault_mode": {
+                "$ref": "#/components/schemas/VaultMode"
+              },
+              "vault_epoch": {
+                "type": "integer",
+                "format": "int64"
+              }
             }
           }
         ]
@@ -1156,10 +2277,19 @@
         "type": "object",
         "required": ["id", "name", "last_seen_at", "current"],
         "properties": {
-          "id": {"type": "string"},
-          "name": {"type": "string"},
-          "last_seen_at": {"type": "string", "format": "date-time"},
-          "current": {"type": "boolean"}
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "current": {
+            "type": "boolean"
+          }
         }
       },
       "PlainNote": {
@@ -1175,22 +2305,41 @@
           "revision"
         ],
         "properties": {
-          "id": {"$ref": "#/components/schemas/ID"},
-          "title": {"type": "string", "description": "At most 512 UTF-8 bytes on save."},
-          "filename": {"type": "string", "description": "Storage name; not an API path."},
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "title": {
+            "type": "string",
+            "description": "At most 512 UTF-8 bytes on save."
+          },
+          "filename": {
+            "type": "string",
+            "description": "Storage name; not an API path."
+          },
           "tags": {
             "type": "string",
             "description": "Comma-separated, trimmed and deduplicated, case-sensitive; at most 4096 UTF-8 bytes in a save request."
           },
-          "pinned": {"type": "boolean"},
+          "pinned": {
+            "type": "boolean"
+          },
           "pin_order": {
             "type": "integer",
             "format": "int64",
             "description": "May be absent when zero."
           },
-          "created_at": {"type": "string", "format": "date-time"},
-          "updated_at": {"type": "string", "format": "date-time"},
-          "revision": {"type": "integer", "format": "int64"}
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
         }
       },
       "EncryptedNote": {
@@ -1206,41 +2355,79 @@
           "epoch"
         ],
         "properties": {
-          "id": {"$ref": "#/components/schemas/ID"},
-          "summary": {"$ref": "#/components/schemas/Envelope"},
-          "pinned": {"type": "boolean"},
-          "pin_order": {"type": "integer", "format": "int64"},
-          "created_at": {"type": "string", "format": "date-time"},
-          "updated_at": {"type": "string", "format": "date-time"},
-          "revision": {"type": "integer", "format": "int64"},
-          "epoch": {"type": "integer", "format": "int64"}
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "pin_order": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64"
+          }
         }
       },
       "NoteSummary": {
         "oneOf": [
-          {"$ref": "#/components/schemas/PlainNote"},
-          {"$ref": "#/components/schemas/EncryptedNote"}
+          {
+            "$ref": "#/components/schemas/PlainNote"
+          },
+          {
+            "$ref": "#/components/schemas/EncryptedNote"
+          }
         ]
       },
       "CompleteNote": {
         "oneOf": [
           {
             "allOf": [
-              {"$ref": "#/components/schemas/PlainNote"},
+              {
+                "$ref": "#/components/schemas/PlainNote"
+              },
               {
                 "type": "object",
                 "required": ["content"],
-                "properties": {"content": {"type": "string", "description": "UTF-8 Markdown."}}
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "description": "UTF-8 Markdown."
+                  }
+                }
               }
             ]
           },
           {
             "allOf": [
-              {"$ref": "#/components/schemas/EncryptedNote"},
+              {
+                "$ref": "#/components/schemas/EncryptedNote"
+              },
               {
                 "type": "object",
                 "required": ["body"],
-                "properties": {"body": {"$ref": "#/components/schemas/Envelope"}}
+                "properties": {
+                  "body": {
+                    "$ref": "#/components/schemas/Envelope"
+                  }
+                }
               }
             ]
           }
@@ -1250,18 +2437,34 @@
         "type": "object",
         "required": ["notes"],
         "properties": {
-          "notes": {"type": "array", "items": {"$ref": "#/components/schemas/NoteSummary"}},
-          "nextCursor": {"type": "string", "description": "Opaque cursor; absent/empty at end."}
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteSummary"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "description": "Opaque cursor; absent/empty at end."
+          }
         }
       },
       "SaveNote": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "id": {"$ref": "#/components/schemas/ID"},
-          "title": {"type": "string"},
-          "content": {"type": "string"},
-          "tags": {"type": "string"},
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "string"
+          },
           "base_revision": {
             "type": "integer",
             "format": "int64",
@@ -1274,33 +2477,73 @@
         "additionalProperties": false,
         "required": ["id", "summary", "body", "epoch", "base_revision"],
         "properties": {
-          "id": {"$ref": "#/components/schemas/ID"},
-          "summary": {"$ref": "#/components/schemas/Envelope"},
-          "body": {"$ref": "#/components/schemas/Envelope"},
-          "epoch": {"type": "integer", "format": "int64", "minimum": 1},
-          "base_revision": {"type": "integer", "format": "int64"}
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          "body": {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "base_revision": {
+            "type": "integer",
+            "format": "int64"
+          }
         }
       },
       "Change": {
         "type": "object",
         "required": ["sequence", "note_id", "revision", "deleted", "changed_at"],
         "properties": {
-          "sequence": {"type": "integer", "format": "int64"},
-          "note_id": {"$ref": "#/components/schemas/ID"},
-          "revision": {"type": "integer", "format": "int64"},
-          "deleted": {"type": "boolean"},
-          "changed_at": {"type": "string", "format": "date-time"}
+          "sequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "note_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "changed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "ChangesPage": {
         "type": "object",
         "required": ["changes", "nextSequence", "hasMore", "instance_id"],
         "properties": {
-          "changes": {"type": "array", "items": {"$ref": "#/components/schemas/Change"}},
-          "nextSequence": {"type": "integer", "format": "int64"},
-          "hasMore": {"type": "boolean"},
-          "resetRequired": {"type": "boolean"},
-          "instance_id": {"type": "string"}
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Change"
+            }
+          },
+          "nextSequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "resetRequired": {
+            "type": "boolean"
+          },
+          "instance_id": {
+            "type": "string"
+          }
         }
       },
       "Operation": {
@@ -1309,20 +2552,43 @@
         "required": ["client_sequence", "op_id", "type"],
         "description": "Conditional fields: save needs note_id/base_revision and complete title/tags/content; delete needs note_id/base_revision >= 1; pin needs note_id/base_revision >= 0/pinned; prefs.save needs prefs and preferably base_revision; noop only needs sequence/op_id/type. base_content is accepted but does not cause server-side text merging. Existing note pin state changes through note.pin.",
         "properties": {
-          "client_sequence": {"type": "integer", "format": "int64", "minimum": 1},
-          "op_id": {"$ref": "#/components/schemas/QueueID"},
+          "client_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "op_id": {
+            "$ref": "#/components/schemas/QueueID"
+          },
           "type": {
             "type": "string",
             "enum": ["note.save", "note.delete", "note.pin", "prefs.save", "noop"]
           },
-          "note_id": {"$ref": "#/components/schemas/ID"},
-          "base_revision": {"type": "integer", "format": "int64"},
-          "title": {"type": "string"},
-          "tags": {"type": "string"},
-          "content": {"type": "string"},
-          "base_content": {"type": "string"},
-          "pinned": {"type": "boolean"},
-          "prefs": {"$ref": "#/components/schemas/Preferences"}
+          "note_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "base_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "base_content": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "prefs": {
+            "$ref": "#/components/schemas/Preferences"
+          }
         }
       },
       "EncryptedOperation": {
@@ -1331,19 +2597,42 @@
         "required": ["client_sequence", "op_id", "type"],
         "description": "save requires note_id/base_revision/summary/body/epoch; delete and pin require note_id/base_revision/epoch (and pinned for pin). prefs.save and noop do not require epoch. Plaintext title/tags/content/base_content fields are rejected. Envelope AAD binds epoch; do not change it without re-encrypting.",
         "properties": {
-          "client_sequence": {"type": "integer", "format": "int64", "minimum": 1},
-          "op_id": {"$ref": "#/components/schemas/QueueID"},
+          "client_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "op_id": {
+            "$ref": "#/components/schemas/QueueID"
+          },
           "type": {
             "type": "string",
             "enum": ["note.save", "note.delete", "note.pin", "prefs.save", "noop"]
           },
-          "note_id": {"$ref": "#/components/schemas/ID"},
-          "base_revision": {"type": "integer", "format": "int64"},
-          "summary": {"$ref": "#/components/schemas/Envelope"},
-          "body": {"$ref": "#/components/schemas/Envelope"},
-          "epoch": {"type": "integer", "format": "int64", "minimum": 1},
-          "pinned": {"type": "boolean"},
-          "prefs": {"$ref": "#/components/schemas/Preferences"}
+          "note_id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "base_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          "body": {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "prefs": {
+            "$ref": "#/components/schemas/Preferences"
+          }
         }
       },
       "PushRequest": {
@@ -1351,11 +2640,15 @@
         "additionalProperties": false,
         "required": ["device_id", "operations"],
         "properties": {
-          "device_id": {"$ref": "#/components/schemas/QueueID"},
+          "device_id": {
+            "$ref": "#/components/schemas/QueueID"
+          },
           "operations": {
             "type": "array",
             "maxItems": 100,
-            "items": {"$ref": "#/components/schemas/Operation"}
+            "items": {
+              "$ref": "#/components/schemas/Operation"
+            }
           }
         }
       },
@@ -1364,11 +2657,15 @@
         "additionalProperties": false,
         "required": ["device_id", "operations"],
         "properties": {
-          "device_id": {"$ref": "#/components/schemas/QueueID"},
+          "device_id": {
+            "$ref": "#/components/schemas/QueueID"
+          },
           "operations": {
             "type": "array",
             "maxItems": 100,
-            "items": {"$ref": "#/components/schemas/EncryptedOperation"}
+            "items": {
+              "$ref": "#/components/schemas/EncryptedOperation"
+            }
           }
         }
       },
@@ -1376,16 +2673,30 @@
         "type": "object",
         "required": ["client_sequence", "op_id", "status"],
         "properties": {
-          "client_sequence": {"type": "integer", "format": "int64"},
-          "op_id": {"type": "string"},
+          "client_sequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "op_id": {
+            "type": "string"
+          },
           "status": {
             "type": "string",
             "enum": ["applied", "conflict", "compacted"],
             "description": "All consume sequence. compacted acknowledges an old consumed operation whose detailed result was pruned, not proof that remote content matches."
           },
-          "revision": {"type": "integer", "format": "int64"},
-          "current_revision": {"type": "integer", "format": "int64"},
-          "pin_order": {"type": "integer", "format": "int64"}
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "current_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "pin_order": {
+            "type": "integer",
+            "format": "int64"
+          }
         }
       },
       "PushResult": {
@@ -1394,9 +2705,15 @@
         "properties": {
           "acknowledged": {
             "type": "array",
-            "items": {"$ref": "#/components/schemas/Acknowledgement"}
+            "items": {
+              "$ref": "#/components/schemas/Acknowledgement"
+            }
           },
-          "expected_sequence": {"type": "integer", "format": "int64", "minimum": 1}
+          "expected_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          }
         }
       },
       "ShortcutStep": {
@@ -1405,8 +2722,17 @@
         "required": ["key", "modifiers"],
         "description": "First step modifiers are [Mod] or [Mod, Shift]; second step modifiers must be empty.",
         "properties": {
-          "key": {"type": "string", "pattern": "^[A-Za-z0-9/;]$"},
-          "modifiers": {"type": "array", "items": {"type": "string", "enum": ["Mod", "Shift"]}}
+          "key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9/;]$"
+          },
+          "modifiers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["Mod", "Shift"]
+            }
+          }
         }
       },
       "ShortcutBinding": {
@@ -1418,7 +2744,9 @@
             "type": "array",
             "minItems": 1,
             "maxItems": 2,
-            "items": {"$ref": "#/components/schemas/ShortcutStep"}
+            "items": {
+              "$ref": "#/components/schemas/ShortcutStep"
+            }
           }
         }
       },
@@ -1437,8 +2765,18 @@
         "additionalProperties": false,
         "description": "Account-wide unencrypted UI settings. For sync partial updates, supply _sync_patch (desired fields) and _sync_base (previous values of those fields) with the operation base_revision; stale changes merge only when each current field equals the base or desired value. Defaults documented here apply to a fresh account, not every omitted field in PATCH.",
         "properties": {
-          "revision": {"type": "integer", "format": "int64"},
-          "autoSave": {"type": "boolean", "default": true},
+          "aiEnabled": {
+            "type": "boolean",
+            "default": false
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "autoSave": {
+            "type": "boolean",
+            "default": true
+          },
           "reduceMotion": {
             "type": "string",
             "enum": ["system", "always", "never"],
@@ -1450,40 +2788,99 @@
             "enum": ["editor", "preview", "split", "zen"],
             "default": "editor"
           },
-          "hideToolbar": {"type": "boolean", "default": false},
-          "hideSaveButton": {"type": "boolean", "default": true},
+          "hideToolbar": {
+            "type": "boolean",
+            "default": false
+          },
+          "hideSaveButton": {
+            "type": "boolean",
+            "default": true
+          },
           "saveButtonLocation": {
             "type": "string",
             "enum": ["", "panel", "header"],
             "default": "panel"
           },
-          "collapseDetails": {"type": "boolean"},
-          "hideCursorHighlight": {"type": "boolean"},
-          "interactivePreview": {"type": "boolean", "default": true},
-          "statusDisplay": {"type": "string"},
-          "contentWidth": {"$ref": "#/components/schemas/ContentWidth"},
-          "zenPageWidth": {"$ref": "#/components/schemas/ContentWidth"},
+          "collapseDetails": {
+            "type": "boolean"
+          },
+          "hideCursorHighlight": {
+            "type": "boolean"
+          },
+          "interactivePreview": {
+            "type": "boolean",
+            "default": true
+          },
+          "statusDisplay": {
+            "type": "string"
+          },
+          "contentWidth": {
+            "$ref": "#/components/schemas/ContentWidth"
+          },
+          "zenPageWidth": {
+            "$ref": "#/components/schemas/ContentWidth"
+          },
           "theme": {
             "type": "string",
             "description": "Built-in theme name or client-defined palette string; server stores it without interpreting the palette."
           },
-          "accentColor": {"type": "string"},
-          "fontFamily": {"type": "string"},
-          "fontFamilyGoogle": {"type": "boolean"},
-          "fontSize": {"$ref": "#/components/schemas/FontSize"},
-          "editorFontFamily": {"type": "string"},
-          "editorFontFamilyGoogle": {"type": "boolean"},
-          "editorFontSize": {"$ref": "#/components/schemas/FontSize"},
-          "previewFontFamily": {"type": "string"},
-          "previewFontFamilyGoogle": {"type": "boolean"},
-          "previewFontSize": {"$ref": "#/components/schemas/FontSize"},
-          "zenFontFamily": {"type": "string", "default": "Inter"},
-          "zenFontFamilyGoogle": {"type": "boolean", "default": true},
-          "zenFontSize": {"$ref": "#/components/schemas/FontSize", "default": "1.25rem"},
-          "zenWordCount": {"type": "boolean", "default": true},
-          "zenShowTitle": {"type": "boolean", "default": true},
-          "zenShowControls": {"type": "boolean", "default": true},
-          "zenInteractivePreview": {"type": "boolean"},
+          "accentColor": {
+            "type": "string"
+          },
+          "fontFamily": {
+            "type": "string"
+          },
+          "fontFamilyGoogle": {
+            "type": "boolean"
+          },
+          "fontSize": {
+            "$ref": "#/components/schemas/FontSize"
+          },
+          "editorFontFamily": {
+            "type": "string"
+          },
+          "editorFontFamilyGoogle": {
+            "type": "boolean"
+          },
+          "editorFontSize": {
+            "$ref": "#/components/schemas/FontSize"
+          },
+          "previewFontFamily": {
+            "type": "string"
+          },
+          "previewFontFamilyGoogle": {
+            "type": "boolean"
+          },
+          "previewFontSize": {
+            "$ref": "#/components/schemas/FontSize"
+          },
+          "zenFontFamily": {
+            "type": "string",
+            "default": "Inter"
+          },
+          "zenFontFamilyGoogle": {
+            "type": "boolean",
+            "default": true
+          },
+          "zenFontSize": {
+            "$ref": "#/components/schemas/FontSize",
+            "default": "1.25rem"
+          },
+          "zenWordCount": {
+            "type": "boolean",
+            "default": true
+          },
+          "zenShowTitle": {
+            "type": "boolean",
+            "default": true
+          },
+          "zenShowControls": {
+            "type": "boolean",
+            "default": true
+          },
+          "zenInteractivePreview": {
+            "type": "boolean"
+          },
           "shortcutPrefix": {
             "$ref": "#/components/schemas/ShortcutBinding",
             "description": "Exactly one step; default Mod+E (Ctrl+E on Windows/Linux, Command+E on macOS)."
@@ -1491,22 +2888,45 @@
           "keyboardShortcuts": {
             "type": "object",
             "maxProperties": 64,
-            "propertyNames": {"pattern": "^[a-z][a-z0-9.-]{0,63}$"},
+            "propertyNames": {
+              "pattern": "^[a-z][a-z0-9.-]{0,63}$"
+            },
             "additionalProperties": {
-              "oneOf": [{"$ref": "#/components/schemas/ShortcutBinding"}, {"type": "null"}]
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ShortcutBinding"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
           "shortcutConfirmationSkips": {
             "type": "object",
             "maxProperties": 64,
-            "propertyNames": {"pattern": "^[a-z][a-z0-9.-]{0,63}$"},
-            "additionalProperties": {"type": "boolean", "const": true}
+            "propertyNames": {
+              "pattern": "^[a-z][a-z0-9.-]{0,63}$"
+            },
+            "additionalProperties": {
+              "type": "boolean",
+              "const": true
+            }
           },
-          "_sync_patch": {"type": "object", "additionalProperties": true},
-          "_sync_base": {"type": "object", "additionalProperties": true}
+          "_sync_patch": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "_sync_base": {
+            "type": "object",
+            "additionalProperties": true
+          }
         }
       },
-      "VaultMode": {"type": "string", "enum": ["legacy", "preparing", "cleaning", "encrypted"]},
+      "VaultMode": {
+        "type": "string",
+        "enum": ["legacy", "preparing", "cleaning", "encrypted"]
+      },
       "Bootstrap": {
         "type": "object",
         "required": [
@@ -1518,25 +2938,53 @@
           "instance_id"
         ],
         "properties": {
-          "mode": {"$ref": "#/components/schemas/VaultMode"},
-          "reset_available": {"type": "boolean"},
+          "mode": {
+            "$ref": "#/components/schemas/VaultMode"
+          },
+          "reset_available": {
+            "type": "boolean"
+          },
           "instance_id": {
             "type": "string",
             "description": "Persistent database identity. Compare before reading cached notes or resuming sync; a restart with the same database preserves it."
           },
-          "require_strong_passwords": {"type": "boolean"},
-          "version": {"type": "string"},
-          "revision": {"type": "string"},
-          "vault_id": {"$ref": "#/components/schemas/VaultID"},
-          "epoch": {"type": "integer", "format": "int64"},
+          "require_strong_passwords": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "vault_id": {
+            "$ref": "#/components/schemas/VaultID"
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64"
+          },
           "kdf": {
             "type": "object",
             "required": ["algorithm", "salt", "memoryKiB", "iterations"],
             "properties": {
-              "algorithm": {"type": "string", "const": "argon2id13"},
-              "salt": {"$ref": "#/components/schemas/VaultID"},
-              "memoryKiB": {"type": "integer", "minimum": 19456, "maximum": 262144},
-              "iterations": {"type": "integer", "minimum": 2, "maximum": 10}
+              "algorithm": {
+                "type": "string",
+                "const": "argon2id13"
+              },
+              "salt": {
+                "$ref": "#/components/schemas/VaultID"
+              },
+              "memoryKiB": {
+                "type": "integer",
+                "minimum": 19456,
+                "maximum": 262144
+              },
+              "iterations": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 10
+              }
             }
           }
         }
@@ -1554,30 +3002,58 @@
           "wrapped_recovery_key"
         ],
         "properties": {
-          "vault_id": {"$ref": "#/components/schemas/VaultID"},
-          "kdf_salt": {"$ref": "#/components/schemas/VaultID"},
-          "kdf_memory_kib": {"type": "integer", "minimum": 19456, "maximum": 262144},
-          "kdf_iterations": {"type": "integer", "minimum": 2, "maximum": 10},
-          "auth_proof": {"$ref": "#/components/schemas/Proof"},
-          "recovery_proof": {"$ref": "#/components/schemas/Proof"},
-          "wrapped_key": {"$ref": "#/components/schemas/Envelope"},
-          "wrapped_recovery_key": {"$ref": "#/components/schemas/Envelope"}
+          "vault_id": {
+            "$ref": "#/components/schemas/VaultID"
+          },
+          "kdf_salt": {
+            "$ref": "#/components/schemas/VaultID"
+          },
+          "kdf_memory_kib": {
+            "type": "integer",
+            "minimum": 19456,
+            "maximum": 262144
+          },
+          "kdf_iterations": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 10
+          },
+          "auth_proof": {
+            "$ref": "#/components/schemas/Proof"
+          },
+          "recovery_proof": {
+            "$ref": "#/components/schemas/Proof"
+          },
+          "wrapped_key": {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          "wrapped_recovery_key": {
+            "$ref": "#/components/schemas/Envelope"
+          }
         }
       },
       "MigrationStart": {
         "allOf": [
-          {"$ref": "#/components/schemas/VaultSetup"},
+          {
+            "$ref": "#/components/schemas/VaultSetup"
+          },
           {
             "type": "object",
             "required": ["old_password"],
-            "properties": {"old_password": {"type": "string"}}
+            "properties": {
+              "old_password": {
+                "type": "string"
+              }
+            }
           }
         ],
         "unevaluatedProperties": false
       },
       "VaultReset": {
         "allOf": [
-          {"$ref": "#/components/schemas/VaultSetup"},
+          {
+            "$ref": "#/components/schemas/VaultSetup"
+          },
           {
             "type": "object",
             "required": ["password"],
@@ -1596,11 +3072,23 @@
         "additionalProperties": false,
         "required": ["kind", "current_proof", "new_proof", "wrapped_key"],
         "properties": {
-          "kind": {"type": "string", "enum": ["master", "recovery"]},
-          "current_proof": {"$ref": "#/components/schemas/Proof"},
-          "current_recovery": {"type": "boolean", "default": false},
-          "new_proof": {"$ref": "#/components/schemas/Proof"},
-          "wrapped_key": {"$ref": "#/components/schemas/Envelope"},
+          "kind": {
+            "type": "string",
+            "enum": ["master", "recovery"]
+          },
+          "current_proof": {
+            "$ref": "#/components/schemas/Proof"
+          },
+          "current_recovery": {
+            "type": "boolean",
+            "default": false
+          },
+          "new_proof": {
+            "$ref": "#/components/schemas/Proof"
+          },
+          "wrapped_key": {
+            "$ref": "#/components/schemas/Envelope"
+          },
           "kdf_salt": {
             "$ref": "#/components/schemas/VaultID",
             "description": "Required for master changes."
@@ -1617,7 +3105,10 @@
             "maximum": 10,
             "description": "Required for master changes."
           },
-          "sign_out_other_devices": {"type": "boolean", "default": true}
+          "sign_out_other_devices": {
+            "type": "boolean",
+            "default": true
+          }
         }
       },
       "StagedRequest": {
@@ -1625,22 +3116,46 @@
         "additionalProperties": false,
         "required": ["id", "revision", "summary", "body"],
         "properties": {
-          "id": {"$ref": "#/components/schemas/ID"},
-          "revision": {"type": "integer", "format": "int64", "minimum": 1},
-          "summary": {"$ref": "#/components/schemas/Envelope"},
-          "body": {"$ref": "#/components/schemas/Envelope"}
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1
+          },
+          "summary": {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          "body": {
+            "$ref": "#/components/schemas/Envelope"
+          }
         }
       },
       "StagedNote": {
         "type": "object",
         "required": ["id", "revision", "summary", "body", "epoch", "body_hash"],
         "properties": {
-          "id": {"$ref": "#/components/schemas/ID"},
-          "revision": {"type": "integer", "format": "int64"},
-          "summary": {"$ref": "#/components/schemas/Envelope"},
-          "body": {"$ref": "#/components/schemas/Envelope"},
-          "epoch": {"type": "integer", "format": "int64"},
-          "body_hash": {"type": "string"}
+          "id": {
+            "$ref": "#/components/schemas/ID"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          "body": {
+            "$ref": "#/components/schemas/Envelope"
+          },
+          "epoch": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "body_hash": {
+            "type": "string"
+          }
         }
       }
     }

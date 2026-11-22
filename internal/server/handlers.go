@@ -403,6 +403,7 @@ func (a *app) handleSavePrefs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.publishChange("preferences")
+	a.refreshAIEnabled()
 	httpx.WriteJSON(w, saved)
 }
 

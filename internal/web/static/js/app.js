@@ -39,6 +39,13 @@
   let currentNoteId = null;
   let isDirty = false;
   let panelController = null;
+  let aiController = null;
+  let aiSettings = null;
+  let aiSettingsLoading = null;
+  let aiOpening = false;
+  let aiSelectionFrame = null;
+  let aiConfigurationGeneration = 0;
+  let aiDefault = null;
   let noteSaver = null;
   let navigationController = null;
   let savedSnapshot = {title: '', tags: '', content: ''};
@@ -179,6 +186,8 @@
   }
 
   function notifySyncCompleted() {
+    updateAIButton();
+    if (!aiDefault && prefs.aiEnabled && aiOnline()) void refreshAIUI();
     try {
       syncCoordinationChannel?.postMessage({type: 'sync-complete', sender: syncTabID});
     } catch (_) {}
@@ -266,6 +275,7 @@
   let finishScreenExit = null;
 
   function show(screen) {
+    if (screen !== screens.editor) aiController?.close();
     zenToolbar?.hide();
     finishScreenExit?.();
     const outgoing = Object.values(screens).find((el) => !el.classList.contains('hidden'));
@@ -316,6 +326,7 @@
   }
 
   function clearCurrentNote() {
+    aiController?.close();
     editorSessionGeneration++;
     currentNoteId = null;
     currentRevision = 0;
@@ -325,6 +336,7 @@
 
   let authenticationVaultCheck = null;
   function requireAuthentication() {
+    aiController?.close();
     const revision = apiClient.authenticationRevision();
     authenticationRequired = true;
     syncCoordinator?.cancelScheduled();
@@ -543,6 +555,12 @@
       setDashboardRoute({replace: true});
     },
     isDirty: () => isDirty,
+    // Content edits rebase the AI review in updateOpenNote; only a deletion
+    // leaves nothing to review.
+    onActiveChange: (note) => {
+      if (aiController && note === null && currentRevision > 0)
+        aiController.invalidate('The note was deleted on another device.');
+    },
     requestValue,
     updateOpenNote,
     withOfflineStore,
@@ -555,6 +573,8 @@
     const titleChanged = $('#note-title').value !== (note.title || '');
     const tagsChanged = $('#note-tags').value !== (note.tags || '');
     const markdownChanged = editorSourceValue() !== (note.content || '');
+    // AI never shares the title or tags, so only body edits affect its review.
+    if (!markdownChanged) aiController?.syncRevision(note.revision || 0);
     currentRevision = note.revision || 0;
     currentBaseRevision = note.base_revision ?? null;
     savedSnapshot = {title: note.title || '', tags: note.tags || '', content: note.content || ''};
@@ -562,6 +582,7 @@
     if (tagsChanged) $('#note-tags').value = savedSnapshot.tags;
     if (!markdownChanged) return;
     setEditorSourceValue(savedSnapshot.content);
+    aiController?.rebase();
     previewRenderer?.invalidate();
     requestPreviewRender({announceBusy: true});
   }
@@ -701,7 +722,7 @@
     },
     setNoteRoute,
     setUnresolvedConflict,
-    showNoteInEditor,
+    showNoteInEditor: showConflictedNote,
     showResolver: showConflictResolver,
     supersedeOperations: supersedeQueuedNoteOperations,
     unresolvedConflictKey,
@@ -778,6 +799,7 @@
     setCurrentRevision: (revision, baseRevision) => {
       currentRevision = revision;
       currentBaseRevision = baseRevision;
+      aiController?.syncRevision(revision);
     },
     showConflictResolverFor,
     showToast,
@@ -860,6 +882,7 @@
         );
       }
       setSyncStatus('offline');
+      updateAIButton();
       showOfflineNotice();
       if (firstFailure)
         showToast('Working offline. Your changes are saved on this device.', 'warning');
@@ -886,6 +909,11 @@
     getPreferenceRevision: () => prefs.revision,
     isSyncInFlight: () => syncCoordinator.inFlight(),
     loadPreferences: loadPrefs,
+    onAIChanged: () => {
+      if (aiOnline()) void aiController?.refreshProviders();
+      void refreshAIUI();
+      if (aiSettings && !$('#prefs-panel-ai').hidden) void aiSettings.refresh().catch(() => {});
+    },
     onHeartbeat: () => {
       if (!syncCoordinator.failed()) {
         if (!syncCoordinator.inFlight()) void setIdleSyncStatus();
@@ -1095,6 +1123,7 @@
 
   // --- Editor ---
   function startNewNote(title = '') {
+    aiController?.close();
     noteSaver.cancelScheduled();
     if (previewTimer) clearTimeout(previewTimer);
     const initialPanelState = startPanelState();
@@ -1122,6 +1151,7 @@
   }
 
   function showNoteInEditor(data) {
+    aiController?.close();
     setPanelState(startPanelState());
     resetInteractivePreviewSession();
     editorSessionGeneration++;
@@ -1140,6 +1170,16 @@
     show(screens.editor);
     scheduleEditorCaretCue();
     requestPreviewRender();
+  }
+
+  // A conflict on the note open in AI updates it in place, so the review
+  // rebases onto the remote text now and onto the saved resolution later.
+  // The resolver keeps the local version, including accepted AI changes.
+  function showConflictedNote(remote) {
+    if (!aiController || currentNoteId !== remote.id) return showNoteInEditor(remote);
+    isDirty = false;
+    updateOpenNote(remote);
+    setIdleSyncStatus();
   }
 
   async function openNote(id, {route = 'push'} = {}) {
@@ -1254,6 +1294,7 @@
 
   navigationController = window.VylkNavigationController.create({
     api,
+    beforeLeave: confirmAIExit,
     cancelPreviewDelay: () => {
       if (previewTimer) clearTimeout(previewTimer);
       previewTimer = null;
@@ -1395,6 +1436,8 @@
     localStorage,
     onExecuteCommand: (commandID) => executeShortcutCommand(commandID, {source: 'button'}),
     onPanelChanged: () => {
+      aiController?.close();
+      updateAIButton();
       zenToolbar.hide();
       if (panelController.state() === 'zen' && panelController.zenView() === 'editor')
         editorSource.resumeZenWriting();
@@ -1518,6 +1561,11 @@
   }
   $('#delete-btn').addEventListener('click', () => {
     if (!currentNoteId) return;
+    $('#delete-note-copy').textContent =
+      'This removes the note from this device and syncs the deletion to your other devices.' +
+      (aiController?.hasWork()
+        ? ' It also discards the AI conversation and pending suggestions.'
+        : '');
     noteToDelete = currentNoteId;
     openModal(deleteNoteModal);
   });
@@ -1992,6 +2040,7 @@
     appearance.renderOptions();
     applyContentWidth();
     applyEditorPrefs();
+    void refreshAIUI();
   }
 
   appearance.renderOptions();
@@ -2021,6 +2070,10 @@
     normalize: normalizePrefs,
     onChanged: (keys) => {
       const changed = new Set(keys);
+      if (changed.has('aiEnabled')) {
+        void refreshAIUI();
+        renderShortcutPreferences();
+      }
       if (changed.has('theme') || changed.has('accentColor') || changed.has('reduceMotion'))
         appearance.applyTheme(prefs.theme);
       if (
@@ -2082,6 +2135,10 @@
     return !screens.editor.classList.contains('hidden');
   }
 
+  function aiEditorPaneActive() {
+    return panelController?.state() === 'editor';
+  }
+
   function setDetailsExpanded(expanded) {
     $('.meta-pane').classList.toggle('collapsed', !expanded);
     $('.meta-toggle').setAttribute('aria-expanded', String(expanded));
@@ -2099,7 +2156,8 @@
     focusCurrentSourceEditor();
   }
 
-  function setWritingView(view) {
+  async function setWritingView(view) {
+    if (aiController && !(await confirmAIExit())) return;
     setPanelState(view, {focus: true});
   }
 
@@ -2122,6 +2180,11 @@
   }
 
   async function createNewNoteFromShortcut() {
+    if (aiController?.hasWork()) {
+      if (!(await confirmAIExit())) return;
+      if (await saveCurrentNote(false)) startNewNote();
+      return;
+    }
     if (!editorIsVisible()) {
       startNewNote();
       return;
@@ -2137,6 +2200,16 @@
   }
 
   function commandCanRun(command) {
+    if (command.visible?.() === false) return false;
+    if (command.id === 'ai.open')
+      return (
+        prefs.aiEnabled &&
+        Boolean(aiDefault) &&
+        panelController.state() === 'editor' &&
+        editorIsVisible() &&
+        !aiController
+      );
+    if (aiController && command.id.startsWith('format.')) return false;
     if (command.scope === 'global')
       return !screens.dashboard.classList.contains('hidden') || editorIsVisible();
     if (command.scope === 'editor') return editorIsVisible();
@@ -2144,6 +2217,7 @@
   }
 
   function hasOpenModal() {
+    if (document.querySelector('dialog[open]')) return true;
     return [...$$('.modal')].some((modal) => !modal.classList.contains('hidden'));
   }
 
@@ -2220,6 +2294,222 @@
     setWritingView,
     switchEditorPreview,
   }).forEach(registerShortcutCommand);
+
+  registerShortcutCommand({
+    id: 'ai.open',
+    group: 'Editor',
+    label: 'Open AI',
+    description: 'Ask a question or propose reviewed note edits.',
+    defaultBinding: {
+      steps: [
+        {key: '/', modifiers: ['Mod']},
+        {key: 'a', modifiers: []},
+      ],
+    },
+    scope: 'editor',
+    visible: () => prefs.aiEnabled,
+    run: openAI,
+  });
+  function updateAIButton() {
+    const button = $('#ai-launch');
+    button.hidden = !prefs.aiEnabled || panelController?.state() !== 'editor';
+    const online = aiOnline();
+    aiController?.setOnline(online);
+    button.disabled = !online || !aiDefault || Boolean(aiController) || aiOpening;
+    button.title = !online
+      ? 'AI is unavailable offline'
+      : aiDefault
+        ? `Open AI · ${aiDefault.name}`
+        : 'Check a default configuration in Preferences → AI';
+    scheduleAISelectionLaunch();
+  }
+  function scheduleAISelectionLaunch() {
+    if (aiSelectionFrame !== null) return;
+    aiSelectionFrame = window.requestAnimationFrame(() => {
+      aiSelectionFrame = null;
+      const launch = $('#ai-selection-launch');
+      const toolbar = launch.parentElement;
+      const toolbarLaunch = $('#ai-launch');
+      const source = editorSourceTextarea;
+      const anchor =
+        !toolbarLaunch.hidden &&
+        !toolbarLaunch.disabled &&
+        editorIsVisible() &&
+        (document.activeElement === source || document.activeElement === launch)
+          ? caretController.measureSelection()
+          : null;
+      toolbar.hidden = !anchor;
+      if (anchor)
+        window.VylkZenToolbar.placeNearSelection(
+          window,
+          toolbar,
+          anchor,
+          source.getBoundingClientRect().top,
+        );
+    });
+  }
+  function aiOnline() {
+    return navigator.onLine !== false && !syncCoordinator?.failed() && !authenticationRequired;
+  }
+  async function confirmAIExit() {
+    const current = aiController;
+    if (!current) return true;
+    const confirmed = await current.confirmDiscard();
+    return confirmed && (!aiController || aiController === current);
+  }
+  async function refreshAIUI() {
+    const generation = ++aiConfigurationGeneration;
+    aiSettings?.syncEnabled();
+    if (!prefs.aiEnabled) {
+      aiDefault = null;
+      aiController?.close();
+      if (aiSettings) void aiSettings.refresh().catch(() => {});
+      updateAIButton();
+      return;
+    }
+    updateAIButton();
+    if (!aiOnline()) return;
+    try {
+      const configurations = await api('/api/ai/configurations');
+      if (generation !== aiConfigurationGeneration || !prefs.aiEnabled) return;
+      aiDefault =
+        configurations.find((configuration) => configuration.is_default && configuration.checked) ||
+        null;
+    } catch (_) {
+      if (generation === aiConfigurationGeneration) aiDefault = null;
+    }
+    updateAIButton();
+  }
+  function aiSnapshot() {
+    const selection = editorSourceSelection();
+    return {
+      noteId: currentNoteId,
+      generation: editorSessionGeneration,
+      revision: currentRevision,
+      value: editorSourceValue(),
+      start: selection.start,
+      end: selection.end,
+      direction: selection.direction || 'none',
+    };
+  }
+  async function openAI() {
+    if (
+      aiOpening ||
+      !aiOnline() ||
+      aiController ||
+      !prefs.aiEnabled ||
+      !aiDefault ||
+      !aiEditorPaneActive() ||
+      !editorIsVisible()
+    )
+      return;
+    const captured = aiSnapshot();
+    aiOpening = true;
+    updateAIButton();
+    try {
+      const module = await import('/js/editor/ai-controller.js');
+      if (
+        !prefs.aiEnabled ||
+        !aiOnline() ||
+        !aiEditorPaneActive() ||
+        captured.noteId !== currentNoteId ||
+        captured.generation !== editorSessionGeneration ||
+        captured.value !== editorSourceValue()
+      )
+        return;
+      aiController = module.create({
+        document,
+        api,
+        online: aiOnline(),
+        snapshot: () => (aiController ? aiSnapshot() : captured),
+        modal: modalController,
+        measureCaret: measureEditorCaret,
+        countWords: zenOverlays.countWords,
+        showToast,
+        onClose: () => {
+          aiController = null;
+          updateAIButton();
+        },
+        apply: async (value, original, caret) => {
+          if (
+            currentNoteId !== original.noteId ||
+            editorSessionGeneration !== original.generation ||
+            editorSourceValue() !== original.value ||
+            currentRevision !== original.revision
+          )
+            return false;
+          setEditorSourceValue(value, caret, caret);
+          markDirty();
+          const saved = await saveCurrentNote(false);
+          // Review waits for the local save only; other devices get it soon
+          // after, shrinking the window for conflicting edits.
+          if (saved) scheduleSync();
+          if (
+            !saved &&
+            currentNoteId === original.noteId &&
+            editorSessionGeneration === original.generation &&
+            editorSourceValue() === value
+          )
+            setEditorSourceValue(original.value, original.start, original.end);
+          return saved;
+        },
+      });
+    } catch (error) {
+      showToast(error.message || 'Could not open AI.', 'warning');
+    } finally {
+      aiOpening = false;
+      updateAIButton();
+    }
+  }
+  $('#ai-launch').addEventListener('pointerdown', (event) => event.preventDefault());
+  $('#ai-launch').addEventListener('click', () => void openAI());
+  $('#ai-selection-launch').addEventListener('pointerdown', (event) => event.preventDefault());
+  $('#ai-selection-launch').addEventListener('click', () => {
+    if (editorSourceTextarea.selectionStart !== editorSourceTextarea.selectionEnd) void openAI();
+  });
+  for (const name of ['select', 'pointerup', 'keyup', 'scroll', 'input'])
+    editorSourceTextarea.addEventListener(name, scheduleAISelectionLaunch, {passive: true});
+  document.addEventListener('selectionchange', scheduleAISelectionLaunch);
+  document.addEventListener('focusin', scheduleAISelectionLaunch);
+  editorSourceTextarea.addEventListener('blur', scheduleAISelectionLaunch);
+  window.addEventListener('resize', scheduleAISelectionLaunch, {passive: true});
+  window.visualViewport?.addEventListener('resize', scheduleAISelectionLaunch, {passive: true});
+  window.visualViewport?.addEventListener('scroll', scheduleAISelectionLaunch, {passive: true});
+  document.addEventListener('vylk:preferences-section', (event) => {
+    if (event.detail !== 'ai') return;
+    if (!aiSettingsLoading)
+      aiSettingsLoading = import('/js/ui/ai-settings.js')
+        .then((module) => {
+          aiSettings = module.create({
+            document,
+            api,
+            enabled: () => prefs.aiEnabled,
+            setEnabled: async (enabled) => {
+              if (!enabled && !(await confirmAIExit())) return false;
+              await savePref('aiEnabled', enabled);
+              await syncNow();
+              await refreshAIUI();
+            },
+            onChanged: refreshAIUI,
+            beforeMutation: async (id) => {
+              if (!aiController || (id && aiController.configurationID() !== id)) return true;
+              if (!(await confirmAIExit())) return false;
+              aiController?.close();
+              return true;
+            },
+          });
+          return aiSettings;
+        })
+        .catch((error) => {
+          aiSettingsLoading = null;
+          throw error;
+        });
+    void aiSettingsLoading
+      .then((settings) => settings.refresh())
+      .catch((error) => {
+        $('#ai-settings-status').textContent = error.message;
+      });
+  });
 
   $('#shortcut-confirm-close').addEventListener('click', () =>
     closeModal($('#shortcut-confirm-modal')),
@@ -2371,7 +2661,10 @@
     return serviceWorkerRegistrationPromise;
   }
 
+  window.addEventListener('offline', updateAIButton);
   window.addEventListener('online', async () => {
+    updateAIButton();
+    void refreshAIUI();
     if (window.isSecureContext === false) {
       await refreshInsecureVaultAccess();
       if (!screens.login.classList.contains('hidden')) return;

@@ -23,8 +23,17 @@
 .preview-drag-handle,
 .login-recovery-chip-remove,
 .meta-toggle,
-.vault-option {
+.vault-option,
+.ai-launch,
+.ai-review-header,
+.ai-context-chip {
   --icon-size: var(--icon-size-sm);
+}
+
+.ai-composer .ai-send,
+.ai-query-status,
+.ai-test-result {
+  --icon-size: var(--icon-size-md);
 }
 
 .vault-status-icon {

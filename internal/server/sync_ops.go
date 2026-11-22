@@ -93,6 +93,7 @@ func (a *app) handleSyncPush(w http.ResponseWriter, r *http.Request) {
 	var notesChanged, preferencesChanged bool
 	defer func() {
 		if preferencesChanged {
+			a.refreshAIEnabled()
 			a.publishChange("preferences")
 		}
 		if notesChanged {
