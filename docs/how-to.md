@@ -80,17 +80,19 @@ AI Assist sends text from a note to an AI service that you choose. The AI can an
 
 You need an API key from an AI service. A chat subscription, such as ChatGPT Plus or Claude Pro, does not include an API key. The service bills API use separately.
 
-1. Create an API key on the website of the service.
+1. Create an API key on the API keys page of the service. The table has a link for each service.
 2. In vylk, open **Preferences**, select **AI**, and turn on **Enable AI Assist**.
 3. Select **Add configuration**.
 4. Enter a **Name**, the **Endpoint**, the **Model**, and the **API Key**. Use the endpoint from the table. For a model name, see the website of the service or [models.dev](https://models.dev/).
 5. Select **Test**. When **OK** appears, select **Save**.
 
-| Service    | Endpoint                       |
-| ---------- | ------------------------------ |
-| OpenRouter | `https://openrouter.ai/api/v1` |
-| OpenAI     | `https://api.openai.com/v1`    |
-| Anthropic  | `https://api.anthropic.com/v1` |
+| Service    | Endpoint                       | API keys                                                     |
+| ---------- | ------------------------------ | ------------------------------------------------------------ |
+| OpenRouter | `https://openrouter.ai/api/v1` | [OpenRouter API keys](https://openrouter.ai/settings/keys)   |
+| OpenAI     | `https://api.openai.com/v1`    | [OpenAI API keys](https://platform.openai.com/api-keys)      |
+| Anthropic  | `https://api.anthropic.com/v1` | [Claude Console keys](https://platform.claude.com/settings/keys) |
+
+To try AI Assist at no cost, use OpenRouter with the model `openrouter/free`. Free models have usage limits.
 
 Other services that support the OpenAI API format also work, including a model that runs on your own computer. The first configuration that you save after a successful test becomes the default. To use another configuration, select **Set default** next to it.
 
