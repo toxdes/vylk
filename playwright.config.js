@@ -1,45 +1,24 @@
 import {existsSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import path from 'node:path';
 import {chromium, defineConfig} from '@playwright/test';
 
-const port = 18080;
 const chromePath = process.env.CHROME_PATH || chromium.executablePath();
 if (!existsSync(chromePath))
   throw new Error(`Chrome was not found at ${chromePath}. Run "bunx playwright install chromium".`);
 
-const dataRoot = path.join(tmpdir(), `vylk-browser-${process.pid}`);
-
+// Servers are per worker (test/browser/server-fixture.js), so files run in parallel.
 export default defineConfig({
   testDir: './test/browser',
-  testIgnore: ['**/vault*.spec.js'],
+  globalSetup: './test/browser/global-setup.js',
   timeout: 45_000,
   expect: {timeout: 10_000},
-  fullyParallel: false,
-  workers: 1,
+  fullyParallel: true,
+  workers: process.env.CI ? 4 : 6,
   reporter: process.env.CI ? 'line' : 'list',
   use: {
-    baseURL: `http://127.0.0.1:${port}`,
     headless: true,
     // Keep interaction and geometry checks independent of animation progress.
     contextOptions: {reducedMotion: 'reduce'},
     launchOptions: {executablePath: chromePath},
     trace: 'retain-on-failure',
-  },
-  webServer: {
-    command: 'go run ./cmd/vylk',
-    cwd: process.cwd(),
-    url: `http://127.0.0.1:${port}/`,
-    timeout: 120000,
-    reuseExistingServer: false,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      VYLK_NO_BROWSER: '1',
-      VYLK_PASSWORD: 'browser-test-password',
-      VYLK_DIR: path.join(dataRoot, 'notes'),
-      VYLK_DB: path.join(dataRoot, 'vylk.db'),
-      GOCACHE: path.join(tmpdir(), 'vylk-browser-go-cache'),
-    },
   },
 });

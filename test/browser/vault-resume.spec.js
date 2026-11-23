@@ -1,4 +1,7 @@
-import {expect, test} from '@playwright/test';
+import {expect, test} from './server-fixture.js';
+
+// Encryption converts the whole server, so this file gets its own.
+test.use({serverScope: 'vault-resume'});
 import {useEditorFixture} from './editor-fixture.js';
 
 test('resumes an interrupted vault conversion after a page reload', async ({page}) => {

@@ -1,4 +1,4 @@
-import {expect, test} from '@playwright/test';
+import {expect, test} from './server-fixture.js';
 import {useEditorFixture} from './editor-fixture.js';
 
 const password = 'browser-test-password';

@@ -14,7 +14,7 @@
     "lint:css": "stylelint 'frontend/**/*.scss'",
     "lint:html": "htmlhint 'internal/web/static/**/*.html'",
     "test:frontend": "vitest run test && bun test ./internal/web/static",
-    "test:browser": "playwright test --config=playwright.config.js && playwright test --config=playwright.vault.config.js && playwright test --config=playwright.vault-resume.config.js"
+    "test:browser": "playwright test"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

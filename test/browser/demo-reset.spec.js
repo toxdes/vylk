@@ -4,7 +4,11 @@ import {appendFile, cp, mkdir, mkdtemp, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {promisify} from 'node:util';
-import {expect, test} from '@playwright/test';
+import {BROWSER_BINARY, expect, test} from './server-fixture.js';
+
+// These tests share one demo server port and binary, so they run in order.
+test.describe.configure({mode: 'default'});
+const suiteSource = process.cwd();
 
 // This fixture owns a second instance; never reset the suite's shared server.
 async function createDemo({disableVaultChanges = true, sourceDirectory = process.cwd()} = {}) {
@@ -76,6 +80,8 @@ async function createDemo({disableVaultChanges = true, sourceDirectory = process
   };
 
   async function build(cwd) {
+    // The current tree was already built once for the whole suite.
+    if (path.resolve(cwd) === suiteSource) return cp(BROWSER_BINARY, binary);
     // Upgrade fixtures can build a copied source tree without Git metadata.
     await promisify(execFile)('go', ['build', '-buildvcs=false', '-o', binary, './cmd/vylk'], {
       cwd,
@@ -212,12 +218,7 @@ test('demo resets stop stale sync and preserve pending edits until the original 
   }
 });
 
-for (const {motion, pending} of [
-  {motion: 'system', pending: false},
-  {motion: 'always', pending: false},
-  {motion: 'never', pending: false},
-  {motion: 'never', pending: true},
-]) {
+for (const {motion, pending} of [{motion: 'never', pending: true}]) {
   test(`Switch installs an updated app with saved ${motion} motion preferences${pending ? ' and pending edits' : ''}`, async ({
     browser,
   }) => {

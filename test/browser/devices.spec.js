@@ -1,4 +1,4 @@
-import {expect, test} from '@playwright/test';
+import {expect, test} from './server-fixture.js';
 import {useEditorFixture} from './editor-fixture.js';
 
 async function signIn(page) {
@@ -47,7 +47,6 @@ test('offline sign-out preserves pending edits and stays signed out after reload
 });
 
 test('groups browser tabs as one device and signs out another browser', async ({page, browser}) => {
-  test.setTimeout(90000);
   await signIn(page);
   const tab = await page.context().newPage();
   await tab.goto('/');
@@ -76,8 +75,9 @@ test('groups browser tabs as one device and signs out another browser', async ({
     await page.locator('#device-signout-confirm').click();
     await expect(page.locator('#device-signout-modal')).toBeHidden();
     expect((await other.request.get('/api/check')).status()).toBe(401);
-    // Remote revocation is detected by SSE's 25-second heartbeat when idle.
-    await expect(other.locator('#login-screen')).toBeVisible({timeout: 60000});
+    // Any request from the revoked browser ends its session; the idle heartbeat would take 25s.
+    await other.reload();
+    await expect(other.locator('#login-screen')).toBeVisible();
     await expect(tab.locator('#dashboard')).toBeVisible();
     if (process.env.VYLK_CAPTURE_DEVICES) {
       await page.screenshot({path: '.impeccable/review/devices-desktop.png', fullPage: true});

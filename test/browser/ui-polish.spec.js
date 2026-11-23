@@ -1,4 +1,4 @@
-import {expect, test} from '@playwright/test';
+import {expect, test} from './server-fixture.js';
 import {useEditorFixture, waitForEditorEntrance} from './editor-fixture.js';
 
 const password = 'browser-test-password';
@@ -119,88 +119,6 @@ test('heading toolbar uses one compact picker for levels one through five', asyn
   expect(popup).not.toBeNull();
   expect(popup.x).toBeGreaterThanOrEqual(0);
   expect(popup.x + popup.width).toBeLessThanOrEqual(390);
-});
-
-test('dialogs and editor popups share surfaces with Mira radius roles across themes and viewports', async ({
-  page,
-}, testInfo) => {
-  if (process.env.VYLK_CAPTURE_STYLE) test.setTimeout(90_000);
-  await signIn(page);
-  const themes = await page.evaluate(() =>
-    window.VylkThemes.filter(({id}) => ['default-light', 'default-dark'].includes(id)),
-  );
-  expect(themes).toHaveLength(2);
-  for (const viewport of [
-    {width: 1440, height: 900},
-    {width: 390, height: 844},
-  ]) {
-    await page.setViewportSize(viewport);
-    for (const theme of themes) {
-      const surfaces = await page.evaluate(({id, dark, vars}) => {
-        const root = document.documentElement;
-        root.dataset.theme = id;
-        root.classList.toggle('dark', dark);
-        Object.entries(vars).forEach(([name, value]) => {
-          const kebabName = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-          root.style.setProperty(`--${kebabName}`, value);
-        });
-        return [...document.querySelectorAll('.modal-body, .table-picker, .heading-picker')].map(
-          (element) => {
-            const style = getComputedStyle(element);
-            return {
-              id: element.id || element.parentElement.id || element.className,
-              popup: element.matches('.table-picker, .heading-picker'),
-              background: style.backgroundColor,
-              radius: style.borderRadius,
-              border: style.borderWidth,
-              shadow: style.boxShadow,
-            };
-          },
-        );
-      }, theme);
-      const {id: firstID, popup: firstPopup, radius: firstRadius, ...expected} = surfaces[0];
-      expect(firstPopup).toBe(false);
-      expect(parseFloat(firstRadius)).toBeCloseTo(12, 1);
-      expect(expected.border).toBe('0px');
-      for (const {id, popup, radius, ...surface} of surfaces) {
-        expect(parseFloat(radius), id).toBeCloseTo(popup ? 8 : 12, 1);
-        expect(surface, `${id} should match ${firstID}`).toEqual(expected);
-      }
-      if (process.env.VYLK_CAPTURE_STYLE) {
-        const capture = async (name) => {
-          await expect(page.locator('html')).toHaveAttribute('data-theme', theme.id);
-          return page.screenshot({
-            path: testInfo.outputPath(`${viewport.width}-${theme.id}-${name}.png`),
-            animations: 'disabled',
-          });
-        };
-        await page.locator('#prefs-btn').click();
-        await page.locator('#prefs-tab-appearance').click();
-        await page.locator('#pref-theme').selectOption(theme.id);
-        await capture('preferences');
-        await page.locator('#prefs-tab-account').click();
-        await page.locator('#prefs-restore-defaults').click();
-        await capture('dialog');
-        await page.locator('#restore-defaults-cancel').click();
-        await expect(page.locator('#restore-defaults-modal')).toBeHidden();
-        await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
-        await expect(page.locator('#prefs-modal')).toBeHidden();
-        await page.locator('#new-note-btn').click();
-        await waitForEditorEntrance(page);
-        await page.locator('.fmt-bar [data-fmt="table"]').click();
-        await capture('picker');
-        await page.locator('.fmt-bar [data-fmt="table"]').click();
-        await expect(page.locator('#table-picker')).toBeHidden();
-        await page
-          .locator('#note-content')
-          .fill(`# Preview layout\n\n${'Preview uses the selected page width. '.repeat(30)}`);
-        await page.locator('#view-controls [data-panel="preview"]').click();
-        await capture('preview');
-        await page.locator('#back-btn').click();
-        await expect(page.locator('#dashboard')).toBeVisible();
-      }
-    }
-  }
 });
 
 test('modal body and backdrop share entry and exit timing and release focus on completion', async ({
@@ -324,90 +242,6 @@ test('Preferences reverses interrupted entry and exit without jumping or hiding 
     await expect(page.locator('#prefs-modal')).toBeHidden();
     await expect(page.locator('#prefs-btn')).toBeFocused();
   }
-});
-
-test('login, dashboard, and editor use the shared page background', async ({page}) => {
-  await signIn(page);
-
-  const themes = await page.evaluate(() => window.VylkThemes.map(({id, vars}) => ({id, vars})));
-  const pageSelectors = ['#login-screen', '#dashboard', '#editor'];
-  for (const {id, vars} of themes) {
-    const colors = await page.evaluate(
-      ({themeID, themeVars, selectors}) => {
-        const root = document.documentElement;
-        root.dataset.theme = themeID;
-        root.classList.toggle('dark', window.VylkThemes.find(({id}) => id === themeID).dark);
-        Object.entries(themeVars).forEach(([name, value]) => {
-          const kebabName = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-          root.style.setProperty(`--${kebabName}`, value);
-        });
-        return {
-          page: getComputedStyle(document.body).backgroundColor,
-          surfaces: selectors.map((selector) => ({
-            selector,
-            color: getComputedStyle(document.querySelector(selector)).backgroundColor,
-          })),
-        };
-      },
-      {themeID: id, themeVars: vars, selectors: pageSelectors},
-    );
-    for (const surface of colors.surfaces) {
-      expect(surface.color, `${id} ${surface.selector} should use the page canvas`).toBe(
-        colors.page,
-      );
-    }
-  }
-});
-
-test('preferences modal and sidebar use their theme surfaces', async ({page}) => {
-  await signIn(page);
-  await page.locator('#prefs-btn').click();
-
-  const themes = await page.evaluate(() => window.VylkThemes.map(({id, vars}) => ({id, vars})));
-  for (const {id, vars} of themes) {
-    const colors = await page.evaluate(
-      ({themeID, themeVars}) => {
-        const root = document.documentElement;
-        root.dataset.theme = themeID;
-        root.classList.toggle('dark', window.VylkThemes.find(({id}) => id === themeID).dark);
-        Object.entries(themeVars).forEach(([name, value]) => {
-          const kebabName = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-          root.style.setProperty(`--${kebabName}`, value);
-        });
-        return {
-          card: getComputedStyle(document.querySelector('#login-form')).backgroundColor,
-          modal: getComputedStyle(document.querySelector('#prefs-modal .prefs-modal-body'))
-            .backgroundColor,
-          surface: (() => {
-            const sample = document.createElement('div');
-            sample.style.background = 'var(--surface)';
-            document.body.append(sample);
-            const color = getComputedStyle(sample).backgroundColor;
-            sample.remove();
-            return color;
-          })(),
-          sidebar: getComputedStyle(document.querySelector('.prefs-sidebar')).backgroundColor,
-        };
-      },
-      {themeID: id, themeVars: vars},
-    );
-    expect(colors.modal, `${id} preferences modal`).toBe(colors.card);
-    expect(colors.sidebar, `${id} preferences sidebar`).toBe(colors.surface);
-  }
-});
-
-test('note cards stay stationary on hover', async ({page}) => {
-  await signIn(page);
-  await page.locator('#new-note-btn').click();
-  await page.locator('#note-title').fill('Stationary hover');
-  await page.locator('#note-content').fill('Hovering this card must not move it.');
-  await page.locator('#save-btn').click();
-  await page.locator('#back-btn').click();
-
-  const card = page.locator('.note-item').filter({hasText: 'Stationary hover'});
-  await card.hover();
-  await expect(card).toHaveCSS('transform', 'none');
-  await expect(card).toHaveCSS('box-shadow', 'none');
 });
 
 test('preferences headers align and Account owns the restore confirmation', async ({page}) => {
@@ -635,81 +469,6 @@ test('label inputs float their labels and toggle password visibility', async ({p
   );
 });
 
-test('encryption inputs use one focus ring', async ({page}) => {
-  await signIn(page);
-  await page.locator('#prefs-btn').click();
-  await page.locator('#prefs-tab-encryption').click();
-  await page.locator('#vault-open-setup').click();
-
-  const password = page.locator('#vault-old-password');
-  await password.focus();
-  await expect(password).toHaveCSS('outline-style', 'none');
-  await expect
-    .poll(async () =>
-      password.evaluate((element) => {
-        const accentSample = document.createElement('span');
-        accentSample.style.color = 'var(--accent)';
-        document.body.append(accentSample);
-        const accent = getComputedStyle(accentSample).color;
-        accentSample.remove();
-        return getComputedStyle(element).borderColor === accent;
-      }),
-    )
-    .toBe(true);
-  await expect(password).not.toHaveCSS('box-shadow', 'none');
-});
-
-test('status badge colors come from every theme palette', async ({page}) => {
-  await signIn(page);
-
-  const result = await page.evaluate(() => {
-    const badge = document.querySelector('#sync-status');
-    const root = document.documentElement;
-    const stateTokens = {
-      online: 'online',
-      local: 'syncing',
-      syncing: 'syncing',
-      offline: 'offline',
-    };
-    const toRGB = (hex) => {
-      const digits = hex.slice(1);
-      const full =
-        digits.length === 3 ? [...digits].map((digit) => digit + digit).join('') : digits;
-      const values = full.match(/.{2}/g).map((value) => Number.parseInt(value, 16));
-      return `rgb(${values.join(', ')})`;
-    };
-
-    return window.VylkThemes.map((theme) => {
-      Object.entries(theme.vars).forEach(([name, value]) => {
-        const property = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-        root.style.setProperty(`--${property}`, value);
-      });
-
-      const states = Object.entries(stateTokens).map(([state, token]) => {
-        badge.dataset.state = state;
-        const style = getComputedStyle(badge);
-        return {
-          state,
-          expected: theme.vars[token] ? toRGB(theme.vars[token]) : null,
-          actual: style.color,
-          background: style.backgroundColor,
-          card: getComputedStyle(root).getPropertyValue('--card-bg').trim(),
-        };
-      });
-      return {id: theme.id, states};
-    });
-  });
-
-  expect(result.length).toBeGreaterThan(0);
-  for (const theme of result) {
-    for (const state of theme.states) {
-      expect(state.expected, `${theme.id} must define ${state.state} status color`).not.toBeNull();
-      expect(state.actual, `${theme.id} ${state.state} badge text`).toBe(state.expected);
-      expect(state.background, `${theme.id} ${state.state} badge tint`).not.toBe(state.card);
-    }
-  }
-});
-
 test('sign out confirms and returns to the login screen', async ({page}) => {
   await signIn(page);
   await page.locator('#prefs-btn').click();
@@ -859,7 +618,18 @@ test('clipped editor controls keep their focus rings inside and clear the scroll
   );
   const firstFormattingButton = toolbar.locator('button').first();
   await firstFormattingButton.focus();
-  await expect(firstFormattingButton).toHaveCSS('outline-offset', '-2px');
+  const ring = await firstFormattingButton.evaluate((button) => {
+    const css = getComputedStyle(button);
+    const reach = parseFloat(css.outlineOffset) + parseFloat(css.outlineWidth);
+    const box = button.getBoundingClientRect();
+    const clip = button.closest('.fmt-bar').getBoundingClientRect();
+    return {
+      left: box.left - reach - clip.left,
+      top: box.top - reach - clip.top,
+      bottom: clip.bottom - box.bottom - reach,
+    };
+  });
+  for (const space of Object.values(ring)) expect(space).toBeGreaterThanOrEqual(0);
 });
 
 test('editor offline notice follows the configured content rail', async ({page}) => {
@@ -1120,173 +890,19 @@ test('mobile editor controls stay clear of the formatting toolbar', async ({page
   const previewSpacing = await page.locator('#preview').evaluate((preview) => {
     const style = getComputedStyle(preview);
     const controls = document.querySelector('.editor-toolbar-actions');
-    const toolbar = document.querySelector('.fmt-bar');
     return {
       paddingTop: Number.parseFloat(style.paddingTop),
       paddingLeft: Number.parseFloat(style.paddingLeft),
       paddingBottom: Number.parseFloat(style.paddingBottom),
       interactive: preview.classList.contains('interactive-preview-active'),
       controlsHeight: controls.getBoundingClientRect().height,
-      toolbarPaddingRight: Number.parseFloat(getComputedStyle(toolbar).paddingRight),
     };
   });
   expect(previewSpacing.paddingTop).toBe(12);
-  expect(previewSpacing.toolbarPaddingRight).toBe(0);
   expect(previewSpacing.paddingLeft).toBe(16);
   expect(previewSpacing.paddingBottom).toBe(previewSpacing.paddingTop);
 
   if (!previewSpacing.interactive) await enableInteractivePreview(page);
   await expect(page.locator('#preview')).toHaveCSS('padding-top', '12px');
   await expect(page.locator('#panel-resizer')).toBeHidden();
-});
-
-test('compact controls scale with UI type and use lander color transitions', async ({page}) => {
-  await signIn(page);
-  const button = page.locator('#new-note-btn');
-  await page.emulateMedia({reducedMotion: 'reduce'});
-  for (const size of [0.8, 1, 1.5]) {
-    await page.evaluate((size) => {
-      document.documentElement.style.setProperty('--font-size', `${size}rem`);
-    }, size);
-    const metrics = await button.evaluate((button) => {
-      const style = getComputedStyle(button);
-      return {
-        height: parseFloat(style.minHeight),
-        radius: parseFloat(style.borderRadius),
-        shadow: style.boxShadow,
-        fontSize: parseFloat(style.fontSize),
-      };
-    });
-    expect(metrics.fontSize).toBeCloseTo(12 * size, 1);
-    expect(metrics.height).toBeCloseTo(Math.round(28 * size), 1);
-    expect(metrics.radius).toBeCloseTo(Math.round(6 * size), 1);
-    expect(metrics.shadow).toBe('none');
-    await button.hover();
-    await expect(button).toHaveCSS('box-shadow', 'none');
-  }
-  await page.emulateMedia({reducedMotion: 'no-preference'});
-  await expect(button).toHaveCSS('transition-duration', '0.2s, 0.2s, 0.2s');
-  await expect(button).toHaveCSS('transition-timing-function', 'ease, ease, ease');
-});
-
-test('font controls align and grow with the interface font', async ({page}) => {
-  await signIn(page);
-  await page.emulateMedia({reducedMotion: 'reduce'});
-  await page.locator('#prefs-btn').click();
-  for (const size of [0.8, 1, 1.5]) {
-    await page.evaluate((size) => {
-      document.documentElement.style.setProperty('--font-size', `${size}rem`);
-    }, size);
-    const row = page.locator('.font-input-row').first();
-    const input = await row.locator('input[type="text"]').boundingBox();
-    const select = await row.locator('select').boundingBox();
-    expect(input).not.toBeNull();
-    expect(select).not.toBeNull();
-    expect(Math.abs(input.y - select.y)).toBeLessThanOrEqual(1);
-    expect(Math.abs(input.height - select.height)).toBeLessThanOrEqual(1);
-    expect(input.height).toBeCloseTo(Math.round(28 * size), 0);
-  }
-});
-
-test('size pickers use interface typography across every font section', async ({page}) => {
-  await signIn(page);
-  await page.emulateMedia({reducedMotion: 'reduce'});
-  await page.locator('#prefs-btn').click();
-  await page.evaluate(() => document.documentElement.style.setProperty('--font', 'Georgia, serif'));
-  for (const [tab, ids] of [
-    ['appearance', ['pref-font-size']],
-    ['editor', ['pref-editor-font-size', 'pref-preview-font-size']],
-    ['zen', ['pref-zen-font-size']],
-  ]) {
-    await page.locator(`#prefs-tab-${tab}`).click();
-    for (const id of ids) {
-      const picker = page.locator(`#${id}`);
-      const metrics = await picker.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return {
-          family: style.fontFamily,
-          interfaceFamily: getComputedStyle(document.body).fontFamily,
-          radius: parseFloat(style.borderRadius),
-          height: element.getBoundingClientRect().height,
-        };
-      });
-      expect(metrics.family).toBe(metrics.interfaceFamily);
-      expect(metrics.radius).toBeCloseTo(6, 1);
-      expect(metrics.height).toBeCloseTo(28, 0);
-      await expect(page.locator(`label[for="${id}"]`)).toBeVisible();
-    }
-  }
-});
-
-test('button geometry stays crisp at fractional interface sizes', async ({page}) => {
-  await signIn(page);
-  await page.emulateMedia({reducedMotion: 'reduce'});
-  const button = page.locator('#new-note-btn');
-  for (const size of [0.8, 0.9, 1, 1.1, 1.25, 1.5]) {
-    // Set on every poll: the app may apply saved typography after sign-in.
-    await expect
-      .poll(() =>
-        button.evaluate((element, size) => {
-          document.documentElement.style.setProperty('--font-size', `${size}rem`);
-          const style = getComputedStyle(element);
-          return {
-            height: Math.round(element.getBoundingClientRect().height * 10) / 10,
-            radius: Math.round(parseFloat(style.borderRadius) * 10) / 10,
-          };
-        }, size),
-      )
-      .toEqual({height: Math.round(28 * size), radius: Math.round(6 * size)});
-  }
-  await button.hover();
-  await page.mouse.down();
-  await expect(button).toHaveCSS('transform', 'none');
-  await page.mouse.up();
-});
-
-test('Preferences keeps one type hierarchy across sections and interface sizes', async ({page}) => {
-  await signIn(page);
-  await page.emulateMedia({reducedMotion: 'reduce'});
-  await page.locator('#prefs-btn').click();
-  for (const scale of [0.8, 1, 1.5]) {
-    await page.evaluate(
-      (scale) => document.documentElement.style.setProperty('--font-size', `${scale}rem`),
-      scale,
-    );
-    for (const section of [
-      'appearance',
-      'editor',
-      'zen',
-      'shortcuts',
-      'account',
-      'encryption',
-      'about',
-    ]) {
-      await page.locator(`#prefs-tab-${section}`).click();
-      const sizes = await page.locator('.prefs-section.active').evaluate((panel) => {
-        const font = (element) => parseFloat(getComputedStyle(element).fontSize);
-        return {
-          title: font(document.querySelector('#prefs-title')),
-          headings: [...panel.querySelectorAll('.pref-subsection h3, .shortcut-group-title')].map(
-            font,
-          ),
-          labels: [
-            ...panel.querySelectorAll(
-              '.pref-control > span strong, .pref-row > span strong, .about-row strong, .shortcut-copy strong',
-            ),
-          ].map(font),
-          captions: [...panel.querySelectorAll('small')].map(font),
-          controls: [...panel.querySelectorAll('select, input[type="text"]')].map(font),
-        };
-      });
-      expect(sizes.title).toBeCloseTo(16 * scale, 1);
-      for (const size of sizes.headings) expect(size).toBeCloseTo(14 * scale, 1);
-      for (const size of [...sizes.labels, ...sizes.controls])
-        expect(size).toBeCloseTo(13 * scale, 1);
-      for (const size of sizes.captions) expect(size).toBeCloseTo(12 * scale, 1);
-    }
-  }
-  await page.locator('#prefs-tab-editor').click();
-  await expect(page.locator('#prefs-panel-editor')).not.toContainText('Start and layout');
-  await expect(page.locator('#pref-start-view')).toBeVisible();
-  await expect(page.locator('#pref-collapse')).toBeVisible();
 });

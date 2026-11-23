@@ -4,9 +4,7 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.js'],
     environment: 'node',
-    // Behavior suites intentionally share the browser's fixed IndexedDB name.
-    // Serial files preserve the real single-origin storage model and prevent cleanup races.
-    fileParallelism: false,
+    // Each file gets its own module graph, so its in-memory IndexedDB is private to that file.
     testTimeout: 10000,
   },
 });

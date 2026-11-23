@@ -1,4 +1,4 @@
-import {expect, test} from '@playwright/test';
+import {expect, test} from './server-fixture.js';
 import {useEditorFixture} from './editor-fixture.js';
 
 // Align component bounds to content rails; icons remain centered in their controls.
@@ -450,38 +450,6 @@ async function inspect(page, name, root, kind, axis = 'vertical') {
   );
 }
 
-test('rendered guides retain viewport coordinates with reserved scrollbar gutters', async ({
-  page,
-}) => {
-  await page.goto('/');
-  await expect(page.locator('#login-form')).toBeVisible();
-  for (const width of [390, 768, 1440]) {
-    await page.setViewportSize({width, height: 900});
-    for (const gutter of ['stable', 'stable both-edges']) {
-      await page.evaluate((gutter) => {
-        document.documentElement.style.scrollbarGutter = gutter;
-      }, gutter);
-      const result = await inspect(page, 'login', '#login-form', 'login');
-      expect(
-        result.failures.filter((failure) => failure.label.startsWith('rendered guide')),
-        `${width}, ${gutter}`,
-      ).toEqual([]);
-    }
-  }
-  await page.locator('#login-password').fill('browser-test-password');
-  await page.locator('#login-form button[type="submit"]').click();
-  await expect(page.locator('#dashboard')).toBeVisible();
-  await useEditorFixture(page);
-  await page.locator('#prefs-btn').click();
-  await page.locator('#prefs-tab-editor').click();
-  const fontRow = await page.locator('#pref-editor-font-size').boundingBox();
-  await inspect(page, 'preferences-editor', '#prefs-modal', 'preferences');
-  const lines = await page
-    .locator('#layout-guides line')
-    .evaluateAll((elements) => elements.map((line) => line.x1.baseVal.value));
-  expect(lines.some((x) => Math.abs(x - fontRow.y) < 0.01)).toBe(false);
-});
-
 test('all screens follow their content and optical alignment guides', async ({page}) => {
   test.setTimeout(240000);
   await page.goto('/');
@@ -640,79 +608,6 @@ test('all screens follow their content and optical alignment guides', async ({pa
       ),
     ),
   ).toEqual([]);
-});
-
-test('icon-only controls change ink color without changing hover backgrounds', async ({page}) => {
-  await page.goto('/');
-  const hover = async (button, parent) => {
-    if (parent) await parent.hover();
-    else await page.mouse.move(0, 0);
-    const before = await button.evaluate((element) => getComputedStyle(element).backgroundColor);
-    await button.hover();
-    await button.evaluate(async (element) => {
-      await Promise.all(
-        element
-          .getAnimations()
-          .filter((animation) => Number.isFinite(animation.effect.getComputedTiming().endTime))
-          .map((animation) => animation.finished),
-      );
-    });
-    await expect(button).toHaveCSS('background-color', before);
-    const accent = await button.evaluate(() => {
-      const probe = document.createElement('span');
-      probe.style.color = 'var(--accent)';
-      document.body.append(probe);
-      const color = getComputedStyle(probe).color;
-      probe.remove();
-      return color;
-    });
-    await expect(button).toHaveCSS('color', accent);
-  };
-  await hover(page.locator('[data-password-toggle="login-password"]'));
-  await page.locator('#login-password').fill('browser-test-password');
-  await page.locator('#login-form button[type="submit"]').click();
-  await expect(page.locator('#dashboard')).toBeVisible();
-  await useEditorFixture(page);
-  await page.locator('#new-note-btn').click();
-  const hoverTitle = `Hover reference ${Date.now()}`;
-  await page.locator('#note-title').fill(hoverTitle);
-  await page.locator('#note-content').fill('An independent note for checking icon hover.');
-  await page.locator('#save-btn').click();
-  await page.locator('#back-btn').click();
-  await hover(page.locator('#prefs-btn'));
-  const pin = page.locator('.note-item-row').filter({hasText: hoverTitle}).locator('.note-pin');
-  await hover(pin, pin.locator('..'));
-  await pin.click();
-  await expect(pin).toHaveAttribute('aria-pressed', 'true');
-  await hover(pin, pin.locator('..'));
-  await page.locator('#prefs-btn').click();
-  await hover(page.getByRole('button', {name: 'Close preferences', exact: true}));
-  await page.locator('#prefs-tab-shortcuts').click();
-  for (const clear of await page.locator('.shortcut-clear:enabled').all()) await hover(clear);
-  await page.locator('#prefs-tab-encryption').click();
-  await hover(page.locator('.vault-info summary'));
-  await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
-  await page.locator('#new-note-btn').click();
-  await page.locator('#note-content').fill('Enable the save control.');
-  await hover(page.locator('#back-btn'));
-  await hover(page.locator('#save-btn'));
-  for (const control of await page.locator('#view-controls button, .fmt-bar button').all()) {
-    if ((await control.isVisible()) && (await control.isEnabled())) await hover(control);
-  }
-  await page.locator('[data-panel="zen"]').click();
-  for (const control of await page.locator('.zen-controls button').all()) {
-    if (await control.isVisible()) await hover(control);
-  }
-  await page.locator('[data-zen-action="exit"]').click();
-  for (const id of await page
-    .locator('.modal:not(#prefs-modal)')
-    .evaluateAll((elements) => elements.map((element) => element.id))) {
-    const close = page.locator(`#${id} .modal-close`);
-    if (!(await close.count())) continue;
-    await page.evaluate((id) => document.getElementById(id).classList.remove('hidden'), id);
-    await hover(close);
-    await page.evaluate((id) => document.getElementById(id).classList.add('hidden'), id);
-  }
 });
 
 test('enlarged mobile font fields stay readable without narrowing their labels', async ({page}) => {

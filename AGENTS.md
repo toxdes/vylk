@@ -33,7 +33,7 @@
 
 ## Pre-push checks
 
-- Before every push, run the entire test suite against the final changes being pushed: `go test ./...`, `bun run test:frontend`, and `bun run test:browser`. The browser command must complete all configured suites, including the vault and vault-resume suites.
+- Before every push, run the entire test suite against the final changes being pushed: `go test ./...`, `bun run test:frontend`, and `bun run test:browser`. The browser command runs every spec, vault suites included, with a server per worker.
 - Formatting, linting, generated-CSS verification, `go vet ./...`, and `go tool staticcheck ./...` must also pass before pushing.
 - Focused tests, static browser fixtures, and results from another branch do not replace the full suite. If changes are made after validation, rerun the checks against the final version.
 - Do not push if any test or required check fails, is skipped, cannot run, or has not finished. Report the failure or verification gap, fix it, and rerun the full checks before pushing. Treat flaky failures as failures; do not ignore or suppress them to push.
