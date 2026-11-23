@@ -63,7 +63,7 @@
 .view-controls {
   display: flex;
   align-items: center;
-  gap: var(--space-0-5);
+  gap: var(--space-3);
 }
 
 .view-control,
@@ -71,35 +71,27 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+#panel-save-slot #save-btn {
   width: var(--control-compact-height);
   height: var(--control-compact-height);
   min-height: var(--control-compact-height);
   padding: 0;
-  border-radius: var(--radius-micro);
+  border-radius: var(--radius-sm);
 }
 
 .view-control {
-  background: transparent;
   color: var(--muted);
 }
 
-.view-control:hover {
-  background: transparent;
-  color: var(--accent);
-}
-
-.view-control[aria-pressed='true'] {
-  background: transparent;
+.view-control:is(:hover, [aria-pressed='true']) {
   color: var(--accent);
 }
 
 #editor:not(.zen-mode) {
   --editor-content-gutter: var(--space-5);
   --editor-writing-inset: var(--space-3);
-}
-
-#editor:not(.zen-mode) .fmt-bar button:focus-visible {
-  outline-offset: -0.125rem;
 }
 
 #editor:not(.zen-mode) .panel-preview .preview {
@@ -337,7 +329,7 @@
 
 #editor.zen-mode .zen-md-code {
   padding: 0.12em 0.35em;
-  border-radius: var(--radius-micro);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--fg) 9%, transparent);
   font-family: var(--mono);
   font-size: 0.875em;
@@ -389,7 +381,7 @@
   height: var(--zen-control-size);
   padding: 0;
   place-items: center;
-  border-radius: var(--radius-micro);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   transition:
@@ -457,7 +449,7 @@
     top: calc(max(0.5rem, env(safe-area-inset-top)) + 3.25rem);
     width: calc(100vw - 1.5rem);
     max-width: none;
-    border-radius: var(--radius);
+    border-radius: var(--radius-card);
   }
 
   .zen-controls {

@@ -42,4 +42,65 @@ describe('interface spacing policy', () => {
     }
     expect(failures).toEqual([]);
   });
+  test('UI font sizes use the type scale', () => {
+    const failures = [];
+    for (const file of files(root)) {
+      // Tokens define the scale; note, preview, and Zen typography follow the user's document sizes.
+      if (/\/_(?:tokens|editor-content|editor-overlay|zen-[\w-]+)\.scss$/.test(file)) continue;
+      const source = readFileSync(file, 'utf8');
+      for (const block of source.matchAll(/([^{};]+)\{([^{}]*)\}/g)) {
+        const selector = block[1].replace(/\/\*[\s\S]*?\*\//g, '').trim();
+        if (/^(?:html|body)$|\.preview\b|#note-content/.test(selector)) continue;
+        for (const [, value] of block[2].matchAll(/(?:^|[;\s])font-size:\s*([^;]+);/g)) {
+          if (!/^(?:var\(--text-[\w-]+\)|inherit)$/.test(value.trim()))
+            failures.push(`${file.slice(root.length)}: ${selector} { font-size: ${value} }`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+  // Weight, line height, and colour come from tokens; note, preview, and Zen styles are exempt.
+  const tokenOnly = [
+    ['font-weight', /^(?:var\(--weight-[\w-]+\)|inherit)$/],
+    ['line-height', /^(?:var\(--(?:leading-[\w-]+|control-height)\)|inherit|normal)$/],
+  ];
+  for (const [property, allowed] of tokenOnly) {
+    test(`UI ${property} uses tokens`, () => {
+      const failures = [];
+      for (const file of files(root)) {
+        if (/\/_(?:tokens|editor-content|editor-overlay|zen-[\w-]+)\.scss$/.test(file)) continue;
+        const source = readFileSync(file, 'utf8');
+        for (const [, value] of source.matchAll(
+          new RegExp(`(?:^|[;\\s{])${property}:\\s*([^;]+);`, 'g'),
+        ))
+          if (!allowed.test(value.trim()))
+            failures.push(`${file.slice(root.length)}: ${property}: ${value}`);
+      }
+      expect(failures).toEqual([]);
+    });
+  }
+  test('UI colours come from tokens', () => {
+    const failures = [];
+    for (const file of files(root)) {
+      if (/\/_(?:tokens|editor-content|editor-overlay|zen-[\w-]+)\.scss$/.test(file)) continue;
+      const source = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const [literal] of source.matchAll(/#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\(/gi))
+        failures.push(`${file.slice(root.length)}: ${literal}`);
+    }
+    expect(failures).toEqual([]);
+  });
+  test('shared button typography has one owner', () => {
+    const failures = [];
+    for (const file of files(root)) {
+      if (file.endsWith('/_controls.scss')) continue;
+      const source = readFileSync(file, 'utf8');
+      for (const block of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const selector = block[1].replace(/:not\([^)]*\)/g, '');
+        if (!/\.btn-(?:primary|secondary|text)\b(?!-)/.test(selector)) continue;
+        if (/\bfont(?:-size|-weight)?:/.test(block[2]))
+          failures.push(`${file.slice(root.length)}: ${block[1].trim()}`);
+      }
+    }
+    expect(failures).toEqual([]);
+  });
 });

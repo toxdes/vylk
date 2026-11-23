@@ -20,6 +20,23 @@
   --space-3: calc(0.75 * var(--font-size));
   --space-4: var(--font-size);
   --space-6: calc(1.5 * var(--font-size));
+
+  /* Type scale: 2xs badges and keys; xs UI text; sm titles; md page headings; xl display. */
+  --text-2xs: calc(0.625 * var(--font-size));
+  --text-xs: calc(0.75 * var(--font-size));
+  --text-sm: calc(0.875 * var(--font-size));
+  --text-md: var(--font-size);
+  --text-xl: calc(1.5 * var(--font-size));
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.4;
+  --leading-normal: 1.5;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* The wordmark only. */
+  --weight-bold: 700;
   --icon-size-sm: calc(0.75 * var(--font-size));
   --icon-size-md: calc(0.875 * var(--font-size));
   --icon-size-lg: var(--font-size);
@@ -29,15 +46,16 @@
   --panel-padding: var(--space-4);
   --field-gap: var(--space-2);
   --group-gap: var(--space-4);
-  --radius-xs: calc(0.125 * var(--font-size));
   --radius-card: calc(0.5 * var(--font-size));
   --control-touch-size: max(2.75rem, calc(2.75 * var(--font-size)));
   --control-height: calc(1.75 * var(--font-size));
   --settings-control-width: calc(11 * var(--font-size));
   --control-compact-height: calc(1.5 * var(--font-size));
-  --radius-action: calc(0.375 * var(--font-size));
-  --radius-field: calc(0.375 * var(--font-size));
-  --radius-micro: calc(0.25 * var(--font-size));
+  --badge-height: calc(1.25 * var(--font-size));
+  --radius-control: calc(0.375 * var(--font-size));
+
+  /* Radius roles: sm (chips, badges, cells), control, card, overlay, pill. */
+  --radius-sm: calc(0.25 * var(--font-size));
   --control-duration: 200ms;
   --control-ease: ease;
   --motion-duration: 180ms;
@@ -46,9 +64,10 @@
   --overlay-exit-duration: 140ms;
   --overlay-enter-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --overlay-exit-ease: cubic-bezier(0.4, 0, 1, 1);
-  --overlay-radius: calc(0.75 * var(--font-size));
+  --radius-overlay: calc(0.75 * var(--font-size));
   --overlay-shadow: 0 0.75rem 2rem rgb(15 23 42 / 0.2);
   --overlay-backdrop: rgb(15 23 42 / 0.38);
+  --float-shadow: 0 0.625rem 1.5rem rgb(15 23 42 / 0.16);
   --bg: #fafafa;
   --fg: #0a4067;
   --muted: #5f6f82;
@@ -59,7 +78,6 @@
   --danger-hover: color-mix(in srgb, var(--danger) 82%, #000);
   --card-bg: #fff;
   --surface: var(--bg);
-  --radius: var(--radius-card);
   --font: ui-sans-serif, system-ui, -apple-system, blinkmacsystemfont, 'Segoe UI', sans-serif;
   --mono: ui-monospace, sfmono-regular, menlo, monaco, consolas, 'Liberation Mono', monospace;
   --shadow: 0 0.0625rem 0.1875rem rgb(0, 0, 0, 0.06);
@@ -67,6 +85,25 @@
   --surface-hover: color-mix(in srgb, var(--fg) 5%, var(--surface));
   --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--card-bg));
   --focus-ring: color-mix(in srgb, var(--accent) 24%, transparent);
+  --focus-outline: 0.125rem solid var(--accent);
+
+  /* Text on filled colours; appearance.js picks white or dark ink per theme for contrast. */
+  --on-accent: #fff;
+  --on-danger: #fff;
+  --on-offline: #fff;
+  --on-syncing: #fff;
+  --accent-active: color-mix(in srgb, var(--accent) 72%, #000);
+  --switch-thumb: #fff;
+  --field-bg: var(--card-bg);
+  --field-border: var(--border-strong);
+  --field-focus-shadow: 0 0 0 0.125rem var(--focus-ring);
+
+  /* Themes supply --online, --syncing, and --offline; semantic aliases follow them. */
+  --success: var(--online, #167a42);
+  --warning: var(--syncing, #a65f00);
+  --status-online: var(--success);
+  --status-syncing: var(--warning);
+  --status-offline: var(--offline, #c24141);
   color-scheme: light;
 }
 
@@ -90,12 +127,50 @@
   :root {
     --control-height: round(nearest, 1.75 * var(--font-size), 0.0625rem);
     --control-compact-height: round(nearest, 1.5 * var(--font-size), 0.0625rem);
-    --radius-xs: round(nearest, 0.125 * var(--font-size), 0.0625rem);
+    --badge-height: round(nearest, 1.25 * var(--font-size), 0.0625rem);
     --radius-card: round(nearest, 0.5 * var(--font-size), 0.0625rem);
-    --radius-action: round(nearest, 0.375 * var(--font-size), 0.0625rem);
-    --radius-field: round(nearest, 0.375 * var(--font-size), 0.0625rem);
-    --radius-micro: round(nearest, 0.25 * var(--font-size), 0.0625rem);
-    --radius: var(--radius-card);
-    --overlay-radius: round(nearest, 0.75 * var(--font-size), 0.0625rem);
+    --radius-control: round(nearest, 0.375 * var(--font-size), 0.0625rem);
+    --radius-sm: round(nearest, 0.25 * var(--font-size), 0.0625rem);
+    --radius-overlay: round(nearest, 0.75 * var(--font-size), 0.0625rem);
+  }
+}
+
+/* Layout rails: each shell aligns to the same responsive content width. */
+:root {
+  --content-max-width: 76.25rem;
+  --zen-content-max-width: 76.25rem;
+  --page-gutter: var(--space-4);
+  --font-size: 1rem;
+  --editor-font-size: 1rem;
+  --preview-font-size: 1rem;
+}
+
+:root[data-content-width='compact'] {
+  --content-max-width: 54rem;
+}
+
+:root[data-content-width='wide'] {
+  --content-max-width: 90rem;
+}
+
+:root[data-content-width='full'] {
+  --content-max-width: 100%;
+}
+
+:root[data-zen-page-width='compact'] {
+  --zen-content-max-width: 54rem;
+}
+
+:root[data-zen-page-width='wide'] {
+  --zen-content-max-width: 90rem;
+}
+
+:root[data-zen-page-width='full'] {
+  --zen-content-max-width: 100%;
+}
+
+@media (max-width: 40em) {
+  :root {
+    --page-gutter: var(--space-3);
   }
 }

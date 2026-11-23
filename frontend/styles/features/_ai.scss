@@ -45,7 +45,7 @@
   background: var(--card-bg);
   box-shadow: var(--shadow);
   font-family: var(--font);
-  font-size: var(--font-size);
+  font-size: var(--text-md);
 }
 
 .ai-context-mirror {
@@ -91,7 +91,7 @@
   padding: 0;
   place-items: center;
   border: 0.0625rem solid var(--border-strong);
-  border-radius: var(--radius-action);
+  border-radius: var(--radius-control);
   color: var(--fg);
   background: var(--card-bg);
 
@@ -116,12 +116,6 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--control-compact-height);
-  height: var(--control-compact-height);
-  min-height: var(--control-compact-height);
-  padding: 0;
-  border-radius: var(--radius-micro);
-  background: transparent;
   color: var(--muted);
 
   &:hover:not(:disabled) {
@@ -149,16 +143,8 @@
     align-items: center;
     flex: 1;
     gap: var(--space-1-5);
-    font-size: calc(0.8125 * var(--font-size));
-  }
-
-  // Compact, like the toolbar view controls.
-  .icon-btn {
-    width: var(--control-compact-height);
-    height: var(--control-compact-height);
-    min-height: var(--control-compact-height);
-    padding: 0;
-    border-radius: var(--radius-micro);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
   }
 }
 
@@ -204,8 +190,8 @@
 
   .ai-context-count {
     flex: none;
-    font-size: 0.875em;
-    font-weight: 400;
+    font-size: var(--text-2xs);
+    font-weight: var(--weight-regular);
     white-space: nowrap;
     color: var(--muted);
   }
@@ -234,7 +220,7 @@
   display: flex;
   flex-direction: column;
   font-family: var(--font);
-  font-size: var(--font-size);
+  font-size: var(--text-md);
 
   .modal-heading {
     flex: none;
@@ -249,7 +235,7 @@
   align-items: center;
   gap: var(--space-1) var(--space-3);
   font: inherit;
-  font-size: 0.8125em;
+  font-size: var(--text-xs);
 }
 
 .ai-scope-label {
@@ -263,7 +249,7 @@
 .ai-provider-picker {
   min-width: 0;
   border: 0;
-  border-radius: var(--radius-micro);
+  border-radius: var(--radius-sm);
   color: var(--fg);
   background: var(--card-bg);
   font: inherit;
@@ -274,7 +260,7 @@
   }
 
   &:focus-visible {
-    outline: 0.125rem solid var(--accent);
+    outline: var(--focus-outline);
     outline-offset: 0.125rem;
   }
 }
@@ -286,7 +272,7 @@
 .ai-provider-picker {
   max-width: 35%;
   padding: var(--space-0-5) var(--space-1);
-  font-size: calc(0.75 * var(--font-size));
+  font-size: var(--text-xs);
 }
 
 .zen-selection-toolbar .ai-selection-launch {
@@ -310,7 +296,7 @@
   gap: var(--space-2);
   padding: 0 var(--panel-padding) var(--panel-padding);
   color: color-mix(in srgb, var(--fg) 80%, var(--card-bg));
-  font-size: 0.875em;
+  font-size: var(--text-xs);
   overflow-wrap: anywhere;
   text-align: center;
 
@@ -323,7 +309,7 @@
   margin: 0;
   padding: var(--space-3) var(--panel-padding);
   color: var(--fg);
-  font-size: 0.875em;
+  font-size: var(--text-xs);
 }
 
 .ai-composer .ai-send {
@@ -368,8 +354,9 @@
 }
 
 .ai-note-review {
-  --ai-diff-removed: #b91c1c;
-  --ai-diff-added: #166534;
+  /* Diff ink follows the theme's status colours, pulled toward the text colour for contrast. */
+  --ai-diff-removed: color-mix(in srgb, var(--danger) 70%, var(--fg));
+  --ai-diff-added: color-mix(in srgb, var(--success) 70%, var(--fg));
   flex: 1;
   padding: var(--panel-padding);
   font-family: inherit;
@@ -393,11 +380,6 @@
     color: var(--ai-diff-added);
     text-decoration: none;
   }
-}
-
-.dark .ai-note-review {
-  --ai-diff-removed: #fca5a5;
-  --ai-diff-added: #86efac;
 }
 
 .ai-hunk {
@@ -460,19 +442,19 @@
 
   p {
     margin: 0 0 var(--space-1);
-    font-size: 0.875em;
-    font-weight: 600;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
   }
 
   // Suggested prompts follow the secondary button pattern.
   button {
     padding: var(--space-2) var(--space-2-5);
     border: 0.0625rem solid var(--border-strong);
-    border-radius: var(--radius-action);
+    border-radius: var(--radius-control);
     background: var(--card-bg);
     color: var(--fg);
     font: inherit;
-    font-size: 0.875em;
+    font-size: var(--text-xs);
     text-align: left;
 
     &:hover:not(:disabled) {
@@ -481,7 +463,7 @@
     }
 
     &:focus-visible {
-      outline: 0.125rem solid var(--accent);
+      outline: var(--focus-outline);
       outline-offset: 0.125rem;
     }
   }
@@ -538,7 +520,7 @@
 
   h3 {
     margin: 0 0 var(--space-1);
-    font-size: 1em;
+    font-size: var(--text-sm);
   }
 
   // Fields keep example placeholders, so labels stay in the floated position.
@@ -553,7 +535,7 @@
 
   small {
     color: var(--muted);
-    font-size: 0.8125em;
+    font-size: var(--text-xs);
   }
 }
 
@@ -604,27 +586,14 @@
   align-items: center;
   gap: var(--space-1);
   min-width: var(--space-10);
-  color: #15803d;
-  font-size: 0.8125em;
-  font-weight: 600;
-}
-
-.dark .ai-test-result {
-  color: #86efac;
+  color: var(--success);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
 }
 
 #prefs-panel-ai a {
   color: var(--ai-accent-text);
   text-underline-offset: 0.125em;
-}
-
-/* Bright dark-theme accents fail contrast behind white button text. */
-.dark #prefs-panel-ai .btn-primary {
-  background: color-mix(in srgb, var(--accent) 75%, #000);
-
-  &:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 65%, #000);
-  }
 }
 
 .ai-test-spinner {
@@ -693,11 +662,11 @@
     [role='tab'] {
       min-height: var(--control-touch-size);
       padding: var(--space-1-5) var(--space-3);
-      border-radius: var(--radius-action);
+      border-radius: var(--radius-control);
       background: transparent;
       color: var(--fg);
       font: inherit;
-      font-size: 0.875em;
+      font-size: var(--text-xs);
     }
 
     [aria-selected='true'] {
@@ -706,7 +675,7 @@
     }
 
     button:focus-visible {
-      outline: 0.125rem solid var(--accent);
+      outline: var(--focus-outline);
       outline-offset: 0.125rem;
     }
 
@@ -720,7 +689,7 @@
       height: var(--control-touch-size);
       padding: var(--space-1-5);
       font: inherit;
-      font-size: 0.8125em;
+      font-size: var(--text-xs);
 
       &[hidden] {
         display: none;
@@ -800,8 +769,14 @@
   background: var(--card-bg);
   border-bottom: 0.0625rem solid var(--border);
   font-family: var(--font);
-  font-size: var(--font-size);
+  font-size: var(--text-md);
   white-space: normal;
+
+  // Matches the AI panel title.
+  strong {
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+  }
 }
 
 .ai-note-review .ai-actions {
@@ -827,30 +802,20 @@
   margin-inline-end: auto;
   color: var(--muted);
   font-family: var(--font);
-  font-size: 0.8125em;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
 }
 
 .ai-note-review del .ai-diff-word {
-  background: #ffd0d0;
-  color: #7f1d1d;
-  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--ai-diff-removed) 24%, var(--card-bg));
+  color: color-mix(in srgb, var(--ai-diff-removed) 50%, var(--fg));
+  border-radius: var(--radius-sm);
 }
 
 .ai-note-review ins .ai-diff-word {
-  background: #acf2bd;
-  color: #14532d;
-  border-radius: var(--radius-xs);
-}
-
-.dark .ai-note-review del .ai-diff-word {
-  background: #6d2e36;
-  color: #fee2e2;
-}
-
-.dark .ai-note-review ins .ai-diff-word {
-  background: #255c3b;
-  color: #dcfce7;
+  background: color-mix(in srgb, var(--ai-diff-added) 24%, var(--card-bg));
+  color: color-mix(in srgb, var(--ai-diff-added) 50%, var(--fg));
+  border-radius: var(--radius-sm);
 }
 
 // Kept for dismissal after another device changed the text they targeted.

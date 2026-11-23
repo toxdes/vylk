@@ -25,24 +25,25 @@ textarea,
   gap: var(--control-gap);
   padding: var(--space-1) var(--control-padding-inline);
   border: 0.0625rem solid transparent;
-  border-radius: var(--radius-action);
-  font-size: calc(0.75 * var(--font-size));
-  font-weight: 600;
-  line-height: 1.25;
+  border-radius: var(--radius-control);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
   transition:
     background var(--control-duration) var(--control-ease),
     border-color var(--control-duration) var(--control-ease),
     color var(--control-duration) var(--control-ease);
 }
 
+/* Text actions are ink only, like icon buttons: no fill, so no padding to offset alignment. */
 .btn-text {
+  padding-inline: 0;
   background: transparent;
   color: var(--muted);
 }
 
 .btn-text:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  color: var(--fg);
+  color: var(--accent);
 }
 
 .btn-text.danger {
@@ -50,14 +51,13 @@ textarea,
 }
 
 .btn-text.danger:hover {
-  background: color-mix(in srgb, var(--danger) 12%, transparent);
-  color: var(--danger);
+  color: var(--danger-hover);
 }
 
 .btn-primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .btn-primary:hover {
@@ -66,13 +66,14 @@ textarea,
 }
 
 .btn-primary:active {
-  border-color: color-mix(in srgb, var(--accent) 72%, #000);
-  background: color-mix(in srgb, var(--accent) 72%, #000);
+  border-color: var(--accent-active);
+  background: var(--accent-active);
 }
 
 .btn-primary.danger {
   border-color: var(--danger);
   background: var(--danger);
+  color: var(--on-danger);
 }
 
 .btn-primary.danger:hover {
@@ -111,7 +112,35 @@ textarea,
 
 .icon-btn {
   gap: 0;
-  line-height: 1;
+  line-height: var(--leading-none);
+}
+
+/* Icon-only buttons are the glyph: hover changes colour, so padding would only offset alignment. */
+:is(.prefs-btn, .icon-btn, .modal-close, .note-pin, .ai-launch, .fmt-bar button, .view-control) {
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* Beside a title, centre the glyph on the title's first line (titles use the control line height). */
+:is(.modal-heading > .modal-close, .note-item-row > .note-pin) {
+  margin-block-start: calc((var(--control-height) - var(--icon-size-md)) / 2);
+}
+
+:is(
+  .prefs-btn,
+  .icon-btn,
+  .modal-close,
+  .note-pin,
+  .ai-launch,
+  .fmt-bar button,
+  .view-control
+):focus-visible {
+  outline-offset: var(--space-0-5);
 }
 
 .btn-text.icon-btn {
