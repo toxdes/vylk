@@ -42,6 +42,10 @@ export async function useEditorFixture(page) {
     },
     await current.json(),
   );
+  // Startup restores the route after its remote check, then opens the event
+  // stream. Wait for that, or a click on slow runners is undone by the restore.
+  const startup = page.waitForRequest((request) => request.url().endsWith('/api/events'));
   await page.reload();
+  await startup;
   await expect(page.locator('#dashboard')).toBeVisible();
 }

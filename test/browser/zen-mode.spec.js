@@ -562,6 +562,8 @@ test('Zen mode keeps actionable connection feedback visible without showing rout
 }) => {
   await signIn(page);
   await openZenMode(page);
+  // A sync that finishes later hides the notice, so wait for the note to save.
+  await expect(page.locator('#editor-status')).toHaveAttribute('data-state', 'online');
 
   await page.evaluate(() => {
     document.querySelector('#editor > .offline-notice').classList.remove('hidden');
