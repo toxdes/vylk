@@ -246,6 +246,12 @@
   line-height: 1;
 }
 
+/* The placeholder shares the empty note's only line, so it keeps the writing line height. */
+#editor.zen-mode .zen-source-editor.is-empty .zen-md-blank {
+  min-height: 1.65em;
+  line-height: inherit;
+}
+
 #editor.zen-mode .zen-md-marker {
   color: color-mix(in srgb, var(--muted) 72%, transparent);
 }

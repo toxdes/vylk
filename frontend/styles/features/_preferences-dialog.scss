@@ -57,7 +57,7 @@
   width: var(--switch-thumb);
   height: var(--switch-thumb);
   border-radius: 50%;
-  background: var(--switch-thumb);
+  background: var(--switch-thumb-color);
   content: '';
   transition: transform var(--control-duration) var(--control-ease);
 }

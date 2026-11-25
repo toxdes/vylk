@@ -197,7 +197,7 @@
 }
 
 .fmt-sep {
-  width: calc(0.0625 * var(--ui-unit));
+  width: 0.0625rem;
   height: calc(1.125 * var(--ui-unit));
   margin: 0 var(--space-0-5);
   background: var(--border);

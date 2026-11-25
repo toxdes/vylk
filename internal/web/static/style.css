@@ -90,7 +90,7 @@
   --on-offline: #fff;
   --on-syncing: #fff;
   --accent-active: color-mix(in srgb, var(--accent) 72%, #000);
-  --switch-thumb: #fff;
+  --switch-thumb-color: #fff;
   --field-bg: var(--card-bg);
   --field-border: var(--border-strong);
   --field-focus-shadow: 0 0 0 0.125rem var(--focus-ring);
@@ -1414,7 +1414,7 @@ header h1 {
 }
 
 .fmt-sep {
-  width: calc(0.0625 * var(--ui-unit));
+  width: 0.0625rem;
   height: calc(1.125 * var(--ui-unit));
   margin: 0 var(--space-0-5);
   background: var(--border);
@@ -2214,7 +2214,7 @@ header h1 {
   width: var(--switch-thumb);
   height: var(--switch-thumb);
   border-radius: 50%;
-  background: var(--switch-thumb);
+  background: var(--switch-thumb-color);
   content: '';
   transition: transform var(--control-duration) var(--control-ease);
 }
@@ -3846,6 +3846,12 @@ option {
 #editor.zen-mode .zen-md-blank {
   min-height: 1em;
   line-height: 1;
+}
+
+/* The placeholder shares the empty note's only line, so it keeps the writing line height. */
+#editor.zen-mode .zen-source-editor.is-empty .zen-md-blank {
+  min-height: 1.65em;
+  line-height: inherit;
 }
 
 #editor.zen-mode .zen-md-marker {
