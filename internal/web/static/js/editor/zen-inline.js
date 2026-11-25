@@ -14,13 +14,13 @@
     return source.match(/^[ \t]*(?:[-+*]|\d{1,9}[.)])[ \t]+/)?.[0] || '';
   }
 
-  function append(parent, text, className = '') {
+  function append(parent, text, className = '', hidden = true) {
     if (!text) return;
     const node = className ? document.createElement('span') : document.createTextNode(text);
     if (className) {
       node.className = className;
       node.textContent = text;
-      node.setAttribute('aria-hidden', 'true');
+      if (hidden) node.setAttribute('aria-hidden', 'true');
     }
     parent.append(node);
   }
@@ -45,26 +45,24 @@
 
   // Keep hidden syntax in text nodes: DOM ranges and the source model then
   // share offsets, including nested styles and escaped link destinations.
-  function renderTokens(parent, tokens, base, state) {
+  // A top-level span touching the caret shows its syntax, with everything it
+  // contains, so every source offset stays reachable and editable as typed.
+  function renderTokens(parent, tokens, base, state, revealed = null) {
     let offset = base;
     for (const token of tokens) {
       const span = tokenSpan(token, offset, state);
-      if (
-        !span ||
-        (state.reveal &&
-          span.start < state.reveal.end &&
-          span.end > state.reveal.start &&
-          span.start >= state.reveal.start &&
-          span.end <= state.reveal.end)
-      ) {
+      if (!span) {
         append(parent, token.raw);
         offset += token.raw.length;
         continue;
       }
       const {end, contentStart, contentEnd, link, className} = span;
-      state.spans.push({start: offset, end, contentStart, contentEnd, kind: token.type});
-      const syntaxClass = `zen-md-marker zen-md-inline-syntax ${link ? 'zen-md-link-syntax' : 'zen-md-format-syntax'}`;
-      append(parent, state.source.slice(offset, contentStart), syntaxClass);
+      const shown =
+        revealed ?? (state.caret !== null && offset <= state.caret && state.caret <= end);
+      if (shown && revealed === null) state.revealed.push(`${offset}-${end}`);
+      state.spans.push({start: offset, end, contentStart, contentEnd, kind: token.type, shown});
+      const syntaxClass = `zen-md-marker ${shown ? 'zen-md-shown-syntax' : 'zen-md-inline-syntax'} ${link ? 'zen-md-link-syntax' : 'zen-md-format-syntax'}`;
+      append(parent, state.source.slice(offset, contentStart), syntaxClass, !shown);
       parent.lastChild.dataset.zenBoundary = 'start';
       const content = document.createElement(link ? 'a' : 'span');
       content.className = className;
@@ -73,19 +71,20 @@
         content.target = '_blank';
         content.rel = 'noopener noreferrer';
       }
-      if (token.tokens) renderTokens(content, token.tokens, contentStart, state);
+      if (token.tokens) renderTokens(content, token.tokens, contentStart, state, shown);
       else append(content, state.source.slice(contentStart, contentEnd));
       parent.append(content);
-      append(parent, state.source.slice(contentEnd, end), syntaxClass);
+      append(parent, state.source.slice(contentEnd, end), syntaxClass, !shown);
       parent.lastChild.dataset.zenBoundary = 'end';
       offset = end;
     }
   }
 
-  function render(element, source, {literal = false, reveal = null} = {}) {
+  // `caret` is the line-local caret offset, or null when the caret is elsewhere.
+  function render(element, source, {literal = false, caret = null} = {}) {
     element.className = 'zen-editor-line';
     element.replaceChildren();
-    const state = {source, links: [], spans: [], bodyStart: 0, reveal};
+    const state = {source, links: [], spans: [], revealed: [], bodyStart: 0, caret};
     lines.set(element, state);
     if (!source.trim()) {
       element.classList.add('zen-md-blank');
@@ -134,11 +133,7 @@
     if (!/[*_~`[]/.test(text)) return append(parent, text);
     const tokens = global.marked.Lexer.lexInline(text);
     state.links = global.VylkMarkdownLinks.ranges(text, tokens)
-      .filter(
-        (link) =>
-          text.slice(link.labelStart, link.labelEnd).trim() &&
-          !(reveal && base + link.start >= reveal.start && base + link.end <= reveal.end),
-      )
+      .filter((link) => text.slice(link.labelStart, link.labelEnd).trim())
       .map((link) => ({
         ...link,
         start: base + link.start,
@@ -152,6 +147,23 @@
 
   function spans(element) {
     return lines.get(element)?.spans || [];
+  }
+
+  // Identifies which top-level spans a caret at `caret` would reveal, so a
+  // caller re-renders a line only when moving the caret changes what shows.
+  function revealKey(element, caret) {
+    const state = lines.get(element);
+    if (!state) return '';
+    if (caret === undefined) return state.revealed.join(',');
+    let depthEnd = -1;
+    const keys = [];
+    for (const span of state.spans) {
+      if (span.start < depthEnd) continue;
+      depthEnd = span.end;
+      if (caret !== null && span.start <= caret && caret <= span.end)
+        keys.push(`${span.start}-${span.end}`);
+    }
+    return keys.join(',');
   }
 
   function links(element) {
@@ -512,6 +524,7 @@
 
   global.VylkZenInline = {
     render,
+    revealKey,
     spans,
     links,
     fragment,

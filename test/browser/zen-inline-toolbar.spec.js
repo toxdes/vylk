@@ -107,13 +107,13 @@ test('native Select All deletes and replaces the entire document and stays undoa
   expect(await page.evaluate(() => window.__zen.value)).toBe(source);
 });
 
-test('link label boundaries delete adjacent characters and split retains the destination', async ({
+test('link syntax at the caret deletes as typed and split retains the destination', async ({
   page,
 }) => {
   await fixture(page, 'x[Docs](/docs)y');
   await select(page, 2);
   await page.keyboard.press('Backspace');
-  expect(await page.evaluate(() => window.__zen.value)).toBe('[Docs](/docs)y');
+  expect(await page.evaluate(() => window.__zen.value)).toBe('xDocs](/docs)y');
   await page.keyboard.press('Control+z');
   await select(page, 4);
   await page.keyboard.press('Enter');
@@ -428,7 +428,7 @@ test('typing a complete link renders it, and editing adjacent text keeps offsets
   );
 });
 
-test('completed inline formatting hides markers during typing and keeps edits undoable', async ({
+test('completed inline formatting hides markers once the caret leaves and keeps edits undoable', async ({
   page,
 }) => {
   await fixture(page, '');
@@ -438,7 +438,7 @@ test('completed inline formatting hides markers during typing and keeps edits un
     await page.keyboard.type(marker + 'Hello');
     expect(await editor.innerText()).toBe(marker + 'Hello');
     await page.keyboard.type(marker);
-    expect(await editor.innerText()).toBe('Hello');
+    expect(await editor.innerText()).toBe(marker + 'Hello' + marker);
     expect(await page.evaluate(() => window.__zen.value)).toBe(marker + 'Hello' + marker);
     await page.keyboard.type(' world');
     expect(await page.evaluate(() => window.__zen.value)).toBe(
@@ -447,31 +447,17 @@ test('completed inline formatting hides markers during typing and keeps edits un
     expect(await editor.innerText()).toBe('Hello world');
     await select(page, marker.length + 2);
     await page.keyboard.type('X');
-    expect(await editor.innerText()).toBe('HeXllo world');
+    expect(await editor.innerText()).toBe(marker + 'HeXllo' + marker + ' world');
     await page.keyboard.press('Control+z');
-    expect(await editor.innerText()).toBe('Hello world');
+    expect(await page.evaluate(() => window.__zen.value)).toBe(
+      marker + 'Hello' + marker + ' world',
+    );
     await select(page, 0, marker.length * 2 + 5);
     await page.keyboard.press('Backspace');
     expect(await page.evaluate(() => window.__zen.value)).toBe(' world');
     await page.keyboard.press('Control+z');
     expect(await editor.innerText()).toBe('Hello world');
   }
-});
-
-test('native caret navigation skips hidden syntax in both directions', async ({page}) => {
-  await fixture(page, 'A **bold** Z');
-  const editor = page.locator('#zen-source-editor');
-  await select(page, 0);
-  for (let index = 0; index < 8; index++) await page.keyboard.press('ArrowRight');
-  await page.keyboard.type('X');
-  expect(await editor.innerText()).toBe('A bold ZX');
-  await page.keyboard.press('Home');
-  await page.keyboard.press('Delete');
-  expect(await editor.innerText()).toBe(' bold ZX');
-  await page.keyboard.press('End');
-  for (let index = 0; index < 8; index++) await page.keyboard.press('ArrowLeft');
-  await page.keyboard.type('Y');
-  expect(await editor.innerText()).toBe('Y bold ZX');
 });
 
 test('list hanging indents preserve native character navigation in both directions', async ({

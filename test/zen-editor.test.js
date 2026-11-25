@@ -85,8 +85,8 @@ test.each(['insertReplacementText', 'insertFromDictation'])(
   '%s uses its target range instead of the live caret',
   (inputType) => {
     const editor = createEditor('teh [Docs](/docs)');
-    const node = editor.lines[0].element.firstChild;
     editor.setSelection(editor.length);
+    const node = editor.lines[0].element.firstChild;
     editor.onBeforeInput({
       inputType,
       data: 'the',
@@ -123,8 +123,8 @@ test('a non-cancelable insertion reconciles the browser edit into the note', () 
 
 test('a non-cancelable replacement reconciles the target away from the caret', () => {
   const editor = createEditor('teh [Docs](/docs)');
-  const node = editor.lines[0].element.firstChild;
   editor.setSelection(editor.length);
+  const node = editor.lines[0].element.firstChild;
   editor.onBeforeInput({
     inputType: 'insertReplacementText',
     data: 'the',
@@ -174,8 +174,8 @@ test('undoing composition restores the original backward selection', () => {
 
 test('dropped text uses the browser target range even when input data is null', () => {
   const editor = createEditor('word [Docs](/docs)');
-  const node = editor.lines[0].element.firstChild;
   editor.setSelection(editor.length);
+  const node = editor.lines[0].element.firstChild;
   editor.onBeforeInput({
     inputType: 'insertFromDrop',
     data: null,
@@ -192,8 +192,8 @@ test('dropped text uses the browser target range even when input data is null', 
 
 test('replacement input reads plain text from its data transfer when data is null', () => {
   const editor = createEditor('teh [Docs](/docs)');
-  const node = editor.lines[0].element.firstChild;
   editor.setSelection(editor.length);
+  const node = editor.lines[0].element.firstChild;
   editor.onBeforeInput({
     inputType: 'insertReplacementText',
     data: null,
@@ -321,7 +321,7 @@ test('completed links render labels and retain exact source offsets and undo', (
   for (const offset of [0, 4, 5, 7, 12, 20, source.indexOf('\n'), source.length]) {
     editor.setSelection(offset);
     const point = editor.domPoint(offset);
-    expect(point.node.parentElement?.closest('.zen-md-link-syntax')).toBeFalsy();
+    expect(point.node.parentElement?.closest('.zen-md-inline-syntax')).toBeFalsy();
     expect(editor.selectionStart).toBe(offset);
   }
   const untouched = editor.lines[1].element;
@@ -351,19 +351,21 @@ test.each([
   ['_', 'zen-md-em'],
   ['~~', 'zen-md-strike'],
   ['`', 'zen-md-code'],
-])('completed %s syntax is hidden without changing source or undo', (marker, className) => {
+])('completed %s syntax shows at the caret and hides after it', (marker, className) => {
   const editor = createEditor(`${marker}Hello\nUntouched`);
   const untouched = editor.lines[1].element;
   expect(editor.element.querySelector('.zen-md-inline-syntax')).toBeNull();
   editor.setSelection(marker.length + 5);
   editor.replaceSelection(marker);
   expect(editor.element.querySelector(`.${className}`).textContent).toBe('Hello');
-  expect(editor.lines[0].element.querySelectorAll('.zen-md-inline-syntax')).toHaveLength(2);
+  expect(editor.lines[0].element.querySelectorAll('.zen-md-shown-syntax')).toHaveLength(2);
   expect(editor.lines[0].element.textContent).toBe(`${marker}Hello${marker}`);
   expect(editor.selectionStart).toBe(marker.length * 2 + 5);
   expect(editor.lines[1].element).toBe(untouched);
   editor.replaceSelection(' after');
   expect(editor.value).toBe(`${marker}Hello${marker} after\nUntouched`);
+  expect(editor.lines[0].element.querySelectorAll('.zen-md-inline-syntax')).toHaveLength(2);
+  expect(editor.lines[0].element.querySelector('.zen-md-shown-syntax')).toBeNull();
   editor.undo();
   editor.undo();
   expect(editor.value).toBe(`${marker}Hello\nUntouched`);
@@ -475,38 +477,44 @@ test.each(['**', '*', '~~', '`'])(
   },
 );
 
-test('deleting the final visible nested character removes all empty wrappers', () => {
+test('deleting the final selected nested character removes all empty wrappers', () => {
   const editor = createEditor('**[~~😀~~](https://example.com)**');
-  const offset = editor.value.indexOf('😀') + 2;
-  editor.setSelection(offset);
+  const offset = editor.value.indexOf('😀');
+  editor.setSelection(offset, offset + 2);
   editor.deleteBackward(editor.selection());
   expect(editor.value).toBe('');
   editor.undo();
   expect(editor.value).toBe('**[~~😀~~](https://example.com)**');
 });
 
-test('hidden inline boundaries delete adjacent visible text, with one-step undo', () => {
+test('syntax shown at the caret deletes as typed, with one-step undo', () => {
   const editor = createEditor('A **Hello** B');
   editor.setSelection(4);
   editor.deleteBackward(editor.selection());
-  expect(editor.value).toBe('A**Hello** B');
+  expect(editor.value).toBe('A *Hello** B');
   editor.undo();
   editor.setSelection(9);
   editor.deleteForward(editor.selection());
-  expect(editor.value).toBe('A **Hello**B');
+  expect(editor.value).toBe('A **Hello* B');
   editor.undo();
   editor.setSelection(11);
   editor.deleteBackward(editor.selection());
-  expect(editor.value).toBe('A **Hell** B');
+  expect(editor.value).toBe('A **Hello* B');
   editor.undo();
   editor.setSelection(2);
   editor.deleteForward(editor.selection());
-  expect(editor.value).toBe('A **ello** B');
+  expect(editor.value).toBe('A *Hello** B');
+  editor.undo();
+  expect(editor.value).toBe('A **Hello** B');
 });
 
-test('typing a space at the end of bold text keeps the formatting valid', () => {
+test('typing at the caret inserts exactly where the shown syntax puts it', () => {
   const editor = createEditor('**ab**');
   editor.setSelection(4);
+  editor.replaceSelection(' ');
+  expect(editor.value).toBe('**ab **');
+  editor.undo();
+  editor.setSelection(6);
   editor.replaceSelection(' ');
   expect(editor.value).toBe('**ab** ');
   editor.undo();
@@ -584,13 +592,13 @@ test.each([
   expect(editor.value).toBe(text);
 });
 
-test('deleting at hidden link boundaries preserves visible text and stays undoable', () => {
+test('deleting at link boundaries edits shown syntax and stays undoable', () => {
   const editor = createEditor('A [label](https://example.com) B');
   const link = editor.linkAt(4);
   editor.setSelection(link.labelStart);
   editor.deleteBackward(editor.selection());
-  expect(editor.value).toBe('A[label](https://example.com) B');
-  expect(editor.selectionStart).toBe(1);
+  expect(editor.value).toBe('A label](https://example.com) B');
+  expect(editor.selectionStart).toBe(2);
   editor.undo();
   editor.setSelection(link.labelStart, link.labelEnd);
   editor.deleteForward(editor.selection());
@@ -598,7 +606,7 @@ test('deleting at hidden link boundaries preserves visible text and stays undoab
   editor.undo();
   editor.setSelection(link.end);
   editor.deleteBackward(editor.selection());
-  expect(editor.value).toBe('A [labe](https://example.com) B');
+  expect(editor.value).toBe('A [label](https://example.com B');
 });
 
 test('copy preserves formatting and includes a destination for a whole link label', () => {
@@ -697,11 +705,11 @@ test.each(['delete', 'type', 'cut'])(
   },
 );
 
-test.each(['😀', 'word'])('deleting the final linked %s removes its hidden wrapper', (label) => {
+test.each(['😀', 'word'])('deleting the final linked %s keeps its shown syntax', (label) => {
   const editor = createEditor(`[${label}](https://example.com)`);
   editor.setSelection(label.length + 1);
   editor.deleteBackward(editor.selection(), label === 'word');
-  expect(editor.value).toBe('');
+  expect(editor.value).toBe('[](https://example.com)');
   editor.undo();
   expect(editor.value).toBe(`[${label}](https://example.com)`);
 });
