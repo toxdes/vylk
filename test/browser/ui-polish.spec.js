@@ -148,23 +148,31 @@ test('modal body and backdrop share entry and exit timing and release focus on c
     );
   });
   await modal.evaluate((element) => {
-    window.modalExits = [];
-    element.addEventListener('animationstart', (event) => {
-      if (!['overlay-content-out', 'modal-backdrop-out'].includes(event.animationName)) return;
-      const animation = event.target.getAnimations()[0];
-      window.modalExits.push({
-        duration: animation.effect.getTiming().duration,
-        easing: animation.effect.getKeyframes()[0].easing,
-      });
+    window.modalExits = null;
+    const observer = new MutationObserver(() => {
+      if (!element.classList.contains('is-closing')) return;
+      observer.disconnect();
+      // Read the exit effects before Chromium dispatches animation events.
+      window.modalExits = ['.modal-body', '.modal-backdrop'].flatMap((selector) =>
+        element
+          .querySelector(selector)
+          .getAnimations()
+          .map((animation) => ({
+            name: animation.animationName,
+            duration: animation.effect.getTiming().duration,
+            easing: animation.effect.getKeyframes()[0].easing,
+          })),
+      );
     });
+    observer.observe(element, {attributeFilter: ['class']});
   });
   await page.getByRole('button', {name: 'Close preferences', exact: true}).click();
-  await expect.poll(() => page.evaluate(() => window.modalExits.length)).toBe(2);
-  const exits = await page.evaluate(() => window.modalExits);
-  expect(exits).toEqual([
-    {duration: 140, easing: 'cubic-bezier(0.4, 0, 1, 1)'},
-    {duration: 140, easing: 'cubic-bezier(0.4, 0, 1, 1)'},
-  ]);
+  await expect
+    .poll(() => page.evaluate(() => window.modalExits))
+    .toEqual([
+      {name: 'overlay-content-out', duration: 140, easing: 'cubic-bezier(0.4, 0, 1, 1)'},
+      {name: 'modal-backdrop-out', duration: 140, easing: 'cubic-bezier(0.4, 0, 1, 1)'},
+    ]);
   await expect(modal).toBeHidden();
   await expect(opener).toBeFocused();
 });
