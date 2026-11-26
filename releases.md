@@ -7,8 +7,8 @@ identify PR merges or GitHub Release publication, as labelled.
 
 ## v3.1.3
 
-Published: 2026-11-26
-Source: [GitHub Release v3.1.3](https://github.com/toxdes/vylk/releases/tag/v3.1.3)
+Merged: 2026-11-26
+Source: [Pull request #44](https://github.com/toxdes/vylk/pull/44)
 
 1. feat(ai): Add opt-in AI Assist for notes with your own API key, read-only note tools, and reviewable edit suggestions.
 2. feat(zen): Format at the caret, navigate inline Markdown with the keyboard, and edit links without losing selections.
