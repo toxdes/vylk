@@ -732,7 +732,7 @@ describe('font preferences', () => {
     );
   });
 
-  test('requests a Google family without assuming unsupported weights or styles', async () => {
+  test('requests every UI weight in upright and italic from Google', async () => {
     const app = track(await createApp());
     const head = app.window.document.head;
     const append = head.append.bind(head);
@@ -754,8 +754,9 @@ describe('font preferences', () => {
     await app.hooks.savePref('fontFamily', 'Crimson Pro');
     await app.hooks.applyFonts();
 
-    expect(stylesheet.href).toContain('family=Crimson+Pro&display=swap');
-    expect(stylesheet.href).not.toContain('ital,wght');
+    expect(stylesheet.href).toBe(
+      'https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap',
+    );
   });
 
   test('keeps Google fetching independent for each font slot', async () => {
@@ -781,7 +782,7 @@ describe('font preferences', () => {
 
     const requested = [...app.window.document.querySelectorAll('[data-vylk-font]')];
     expect(requested).toHaveLength(1);
-    expect(requested[0].href).toContain('family=Fira+Code&display=swap');
+    expect(requested[0].href).toContain('family=Fira+Code:');
     expect(app.window.document.querySelector('#pref-font-google').checked).toBe(false);
     expect(app.window.document.querySelector('#pref-preview-font-google').checked).toBe(false);
   });
@@ -950,10 +951,10 @@ describe('editor display preferences', () => {
     await app.hooks.savePref('contentWidth', 'wide');
     expect(root.dataset.contentWidth).toBe('wide');
     expect(styleSource).toContain(':root[data-content-width="wide"]');
-    expect(styleSource).toContain('.dashboard-body{max-width:var(--content-max-width)}');
-    expect(styleSource).toContain(
-      '.editor-body{max-width:var(--content-max-width);margin-inline:auto}',
-    );
+    for (const shell of ['.dashboard-body', '.editor-body', '.header-inner'])
+      expect(styleSource).toMatch(
+        new RegExp(`${shell.replace('.', '\\.')}\\{[^}]*var\\(--content-max-width\\)`),
+      );
 
     app.hooks.cancelScheduledSync();
     const pending = await app.hooks.pendingOperations();

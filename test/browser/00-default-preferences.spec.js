@@ -1,4 +1,4 @@
-import {expect, test} from '@playwright/test';
+import {expect, test} from './server-fixture.js';
 
 test('fresh accounts open in write view with the requested editor and Zen defaults', async ({
   page,

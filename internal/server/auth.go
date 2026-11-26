@@ -32,6 +32,8 @@ type app struct {
 	noteCache              *notepkg.Cache
 	rl                     *auth.RateLimiter
 	events                 *event.Broker
+	// Closed when the server shuts down; event streams never end on their own.
+	streamsClosed chan struct{}
 }
 
 func (a *app) isSecureRequest(r *http.Request) bool {

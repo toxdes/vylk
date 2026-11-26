@@ -1,5 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
-import {expect, test} from '@playwright/test';
+import {expect, test} from './server-fixture.js';
+
+// Encryption converts the whole server, so this file gets its own.
+test.use({serverScope: 'vault'});
 import {useEditorFixture} from './editor-fixture.js';
 
 async function expectCredentialModalToFit(page, modalID, fieldLabelID) {

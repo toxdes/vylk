@@ -23,7 +23,7 @@
   scrollbar-gutter: stable both-edges;
   background: var(--card-bg);
   border: 0;
-  border-radius: var(--overlay-radius);
+  border-radius: var(--radius-overlay);
   box-shadow: var(--overlay-shadow);
 }
 
@@ -51,8 +51,8 @@
 
 .modal-heading :is(h2, h3) {
   margin: 0;
-  font-size: 1.125em;
-  font-weight: 700;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   letter-spacing: -0.015em;
   line-height: var(--control-height);
 }
@@ -60,8 +60,8 @@
 .modal-copy {
   margin: 0 0 var(--space-4);
   color: var(--muted);
-  font-size: calc(0.875 * var(--font-size));
-  line-height: 1.5;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
 }
 
 .modal-copy + .modal-copy {

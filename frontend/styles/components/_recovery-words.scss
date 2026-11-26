@@ -7,20 +7,20 @@
   gap: var(--control-gap);
   padding: var(--space-1) var(--control-padding-inline);
   border: 0.0625rem solid var(--border);
-  border-radius: var(--radius-micro);
+  border-radius: var(--radius-sm);
   background: var(--card-bg);
   color: var(--fg);
   font: inherit;
-  font-size: calc(0.8125 * var(--font-size));
-  line-height: 1.25;
+  font-size: var(--text-xs);
+  line-height: var(--leading-tight);
 }
 
 .vault-recovery-number {
   color: var(--muted);
-  font-size: 0.8em;
+  font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
 }
 
 .vault-recovery-word {
-  font-weight: 600;
+  font-weight: var(--weight-medium);
 }

@@ -57,6 +57,36 @@ func TestEventsStreamSendsAnImmediateHeartbeat(t *testing.T) {
 	}
 }
 
+func TestEventsStreamEndsWhenTheServerShutsDown(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "notes.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+	if err := initDB(db); err != nil {
+		t.Fatalf("init db: %v", err)
+	}
+	a := &app{db: db, sessions: auth.NewSessionStore(db), streamsClosed: make(chan struct{})}
+	token, err := a.sessions.CreateDevice("", "Test browser")
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	r := httptest.NewRequest(http.MethodGet, "/api/events", nil)
+	r.AddCookie(&http.Cookie{Name: "session", Value: token})
+	w := &sseTestRecorder{ResponseRecorder: httptest.NewRecorder()}
+	done := make(chan struct{})
+	go func() {
+		a.auth(a.handleEvents)(w, r)
+		close(done)
+	}()
+	close(a.streamsClosed)
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("event stream outlived server shutdown")
+	}
+}
+
 func TestSSEChangeIncludesDurableSequence(t *testing.T) {
 	w := httptest.NewRecorder()
 	if err := writeSSEChange(w, event.Change{Type: "notes", Sequence: 42}); err != nil {

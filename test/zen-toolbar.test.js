@@ -63,7 +63,9 @@ test.each([
 
 function visibleText(element) {
   const copy = element.cloneNode(true);
-  copy.querySelectorAll('.zen-md-inline-syntax').forEach((marker) => marker.remove());
+  copy
+    .querySelectorAll('.zen-md-inline-syntax, .zen-md-shown-syntax')
+    .forEach((marker) => marker.remove());
   return copy.textContent;
 }
 
@@ -72,7 +74,7 @@ function characters(element) {
   const walker = element.ownerDocument.createTreeWalker(element, 4);
   let node;
   while ((node = walker.nextNode())) {
-    if (node.parentElement.closest('.zen-md-inline-syntax')) continue;
+    if (node.parentElement.closest('.zen-md-inline-syntax, .zen-md-shown-syntax')) continue;
     const marks = ['strong', 'em', 'strike', 'code'].filter((kind) =>
       node.parentElement.closest(`.zen-md-${kind}`),
     );
@@ -86,12 +88,13 @@ function characters(element) {
   return result;
 }
 
+// Browsers report the selection change that hides caret-revealed syntax.
 function selectVisible(editor, window, from, to, direction = 'forward') {
   const nodes = [];
   const walker = window.document.createTreeWalker(editor.element, 4);
   let node;
   while ((node = walker.nextNode()))
-    if (!node.parentElement.closest('.zen-md-inline-syntax'))
+    if (!node.parentElement.closest('.zen-md-inline-syntax, .zen-md-shown-syntax'))
       for (let offset = 0; offset < node.length; offset++) nodes.push({node, offset});
   const first = nodes[from];
   const last = nodes[to - 1];
@@ -103,6 +106,7 @@ function selectVisible(editor, window, from, to, direction = 'forward') {
       direction === 'backward' ? first.node : last.node,
       direction === 'backward' ? first.offset : last.offset + 1,
     );
+  window.document.dispatchEvent(new window.Event('selectionchange'));
 }
 
 function expectCoverage(editor, before, from, to, kind, removing) {

@@ -1,4 +1,4 @@
-import {expect, test} from '@playwright/test';
+import {expect, test} from './server-fixture.js';
 import {useEditorFixture} from './editor-fixture.js';
 
 const password = 'browser-test-password';
@@ -281,4 +281,26 @@ test('direct encryption dialog URL returns to Preferences on close', async ({pag
   await expect(page.locator('#vault-setup-modal')).toBeHidden();
   await expect(page).toHaveURL(/\/preferences\/encryption$/);
   await expect(page.locator('#prefs-modal')).toBeVisible();
+});
+
+test('a note opened from the cached dashboard survives the startup server check', async ({
+  page,
+}) => {
+  await signIn(page);
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await page.route('**/api/check', async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.reload();
+  await expect(page.locator('#dashboard')).toBeVisible();
+  await page.locator('#new-note-btn').click();
+  await expect(page.locator('#note-title')).toBeVisible();
+  const events = page.waitForRequest((request) => request.url().endsWith('/api/events'));
+  release();
+  await events;
+  await expect(page.locator('#note-title')).toBeVisible();
+  await page.locator('#note-title').fill('Kept');
+  await expect(page.locator('#note-title')).toHaveValue('Kept');
 });

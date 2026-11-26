@@ -388,6 +388,15 @@ export async function createApp({
     runScripts: 'outside-only',
   });
   const {window} = dom;
+  // jsdom's selector engine walks the whole tree for '#id'; its getElementById is indexed.
+  // Plain id lookups dominate app startup, so route them through the index.
+  const plainID = /^#[A-Za-z][\w-]*$/;
+  const querySelector = window.Document.prototype.querySelector;
+  window.Document.prototype.querySelector = function (selector) {
+    return plainID.test(selector)
+      ? this.getElementById(selector.slice(1))
+      : querySelector.call(this, selector);
+  };
   // Existing interaction tests exercise an explicit split-view setup, not
   // first-run policy. Pass preferences: {} to exercise production defaults.
   window.localStorage.setItem('vylk-prefs', JSON.stringify(preferences));

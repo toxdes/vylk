@@ -98,6 +98,7 @@ func Main() {
 		noteCache:              notepkg.NewCache(),
 		rl:                     rl,
 		events:                 event.NewBroker(),
+		streamsClosed:          make(chan struct{}),
 	}
 	if err := app.recoverFileOperations(); err != nil {
 		log.Fatalf("recover pending file operations: %v", err)
@@ -126,6 +127,8 @@ func Main() {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
+	// Shutdown waits for open requests; end event streams so it need not wait out its timeout.
+	srv.RegisterOnShutdown(func() { close(app.streamsClosed) })
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

@@ -11,16 +11,16 @@
   padding: var(--space-8);
   background: var(--card-bg);
   border: 0.0625rem solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   box-shadow: var(--shadow);
 }
 
 #login-form h1 {
   text-align: center;
-  font-size: calc(1.5 * var(--font-size));
-  font-weight: 700;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
   letter-spacing: -0.025em;
-  line-height: 1.2;
+  line-height: var(--leading-tight);
 }
 
 #login-form h1 {
@@ -36,40 +36,25 @@
   display: none;
 }
 
-#login-credentials > button[type='submit'] {
+#login-credentials > .btn-primary {
   width: 100%;
-  min-height: var(--control-height);
-  padding: var(--space-1) var(--space-3);
-  border: 0;
-  border-radius: var(--radius-action);
-  background: var(--accent);
-  color: #fff;
-  font-size: calc(0.9375 * var(--font-size));
-  font-weight: 600;
-  line-height: 1.35;
-  transition: background var(--control-duration) var(--control-ease);
-}
-
-#login-credentials > button[type='submit']:hover {
-  background: var(--accent-hover);
 }
 
 #login-secure-context-notice {
   margin: 0;
-  color: var(--text);
-  font-size: calc(0.9375 * var(--font-size));
-  line-height: 1.5;
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
 }
 
 #login-secure-context-notice a {
   color: var(--accent);
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   text-decoration: underline;
   text-underline-offset: 0.18em;
 }
 
 #login-secure-context-notice a:focus-visible {
-  outline: 0.125rem solid var(--accent);
+  outline: var(--focus-outline);
   outline-offset: 0.125rem;
 }
 
@@ -83,7 +68,7 @@
   background: transparent;
   color: var(--accent);
   font: inherit;
-  font-size: calc(0.875 * var(--font-size));
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
@@ -97,7 +82,7 @@
 }
 
 #login-form .login-forgot-password:focus-visible {
-  outline: 0.125rem solid var(--accent);
+  outline: var(--focus-outline);
   outline-offset: 0.125rem;
 }
 
@@ -130,7 +115,7 @@ body:has(
 
 .login-recovery-count {
   color: var(--muted);
-  font-size: calc(0.875 * var(--font-size));
+  font-size: var(--text-xs);
 }
 
 .login-recovery-words {
@@ -142,7 +127,7 @@ body:has(
   padding: var(--space-1-5);
   overflow-y: auto;
   border: 0.0625rem solid var(--border);
-  border-radius: var(--radius-action);
+  border-radius: var(--radius-control);
   background: var(--surface);
   scrollbar-gutter: stable both-edges;
 }
@@ -154,7 +139,7 @@ body:has(
 .login-recovery-words:empty::before {
   content: 'Entered words appear here';
   color: var(--muted);
-  font-size: calc(0.875 * var(--font-size));
+  font-size: var(--text-xs);
 }
 
 .login-recovery-chip {
@@ -171,7 +156,7 @@ body:has(
   box-sizing: border-box;
   flex: none;
   border: 0.0625rem dashed color-mix(in srgb, var(--accent) 58%, var(--border));
-  border-radius: var(--radius-micro);
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   pointer-events: none;
 }
@@ -181,14 +166,14 @@ body:has(
   z-index: 140;
   margin: 0;
   opacity: 0.96;
-  box-shadow: 0 0.6rem 1.4rem rgb(15 23 42 / 0.16);
+  box-shadow: var(--float-shadow);
   pointer-events: none;
   cursor: grabbing;
   will-change: transform;
 }
 
 .login-recovery-chip:focus-visible {
-  outline: 0.125rem solid var(--accent);
+  outline: var(--focus-outline);
   outline-offset: 0.125rem;
 }
 
@@ -198,11 +183,11 @@ body:has(
   height: var(--space-4);
   padding: 0;
   place-items: center;
-  border-radius: var(--radius-micro);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
-  font-size: calc(1 * var(--font-size));
-  line-height: 1;
+  font-size: var(--text-md);
+  line-height: var(--leading-none);
 }
 
 .login-recovery-chip-remove:hover {
@@ -220,11 +205,11 @@ body:has(
   margin: var(--space-3) auto 0;
   padding: var(--space-2-5) var(--space-3);
   border: 0.0625rem solid var(--border);
-  border-radius: var(--radius-field);
+  border-radius: var(--radius-control);
   background: var(--card-bg);
   color: var(--fg);
-  font-size: calc(0.875 * var(--font-size));
-  line-height: 1.4;
+  font-size: var(--text-xs);
+  line-height: var(--leading-snug);
 }
 
 .recovery-signin-notice > div {
@@ -246,6 +231,12 @@ body:has(
   min-height: calc(1.25 * var(--ui-unit));
   margin: var(--space-1-5) 0 0;
   color: var(--danger);
-  font-size: calc(0.875 * var(--font-size));
+  font-size: var(--text-xs);
   text-align: center;
+}
+
+@media (max-width: 40em) {
+  #login-form {
+    padding: var(--space-6) var(--space-4);
+  }
 }

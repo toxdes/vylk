@@ -2,6 +2,8 @@
   'use strict';
 
   const FONT_CACHE_NAME = 'vylk-fonts';
+  // Every weight the UI styles use, upright and italic.
+  const GOOGLE_FONT_FACES = 'ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700';
   const SYSTEM_FONT_STACK =
     'ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
   const SYSTEM_SERIF_STACK = 'ui-serif,Georgia,Cambria,"Times New Roman",Times,serif';
@@ -71,6 +73,18 @@
     const themeByID = new Map(themes.map((theme) => [theme.id, theme]));
     let fontApplyQueue = Promise.resolve();
 
+    // Text on a filled colour: white when it meets WCAG AA (4.5:1), otherwise dark ink.
+    function readableOn(hex) {
+      const match = /^#([0-9a-f]{6})$/i.exec(hex || '');
+      if (!match) return '#fff';
+      const channel = (offset) => {
+        const value = Number.parseInt(match[1].slice(offset, offset + 2), 16) / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      };
+      const luminance = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+      return 1.05 / (luminance + 0.05) >= 4.5 ? '#fff' : '#111';
+    }
+
     function kebabCase(value) {
       return value.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
     }
@@ -92,12 +106,16 @@
           'color-mix(in srgb,var(--accent) 82%,#000)',
         );
       }
+      const fills = {...theme.vars, accent: prefs.accentColor || theme.vars.accent};
+      for (const fill of ['accent', 'danger', 'offline', 'syncing'])
+        documentRoot.style.setProperty(`--on-${fill}`, readableOn(fills[fill]));
       select('meta[name="theme-color"]')?.setAttribute('content', theme.vars.bg);
     }
 
     function fontCSSURL(fontFamily) {
       const family = encodeURIComponent(fontFamily).replace(/%20/g, '+');
-      return `https://fonts.googleapis.com/css2?family=${family}&display=swap`;
+      // Google ignores listed faces a family lacks, so this is as safe as a bare request.
+      return `https://fonts.googleapis.com/css2?family=${family}:${GOOGLE_FONT_FACES}&display=swap`;
     }
 
     function isSystemFont(fontFamily) {

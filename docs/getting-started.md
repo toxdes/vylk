@@ -152,7 +152,7 @@ If the terminal shows `address already in use`, another program uses port 8080. 
 
 ## Write your first note
 
-1. Select **+ New note**.
+1. Select **New note**.
 2. In **Title**, enter `Shopping list`.
 3. In **Tags**, enter `home`.
 4. In the large text area, enter this text:

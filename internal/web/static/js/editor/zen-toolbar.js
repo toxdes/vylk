@@ -352,7 +352,9 @@
       hide();
       if (insertion !== value.slice(start, end))
         editor.replaceRange(start, end, insertion, {inputType: 'insertReplacementText'});
-      restore(editor, {start: start + insertion.length, end: start + insertion.length});
+      // Select the label: a caret at the link's edge would show its raw syntax.
+      const labelStart = start + (unlink ? 0 : 1);
+      restore(editor, {start: labelStart, end: labelStart + label.length});
       if (insertion !== value.slice(start, end) && editor.history.length)
         editor.history.at(-1).selectionAfter = editor.selection();
     }

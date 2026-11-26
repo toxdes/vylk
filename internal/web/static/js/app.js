@@ -2568,6 +2568,7 @@
         }
       }
       await restoreCachedStartup();
+      const startupRoute = navigationController.routeGeneration();
       localStartupReady = true;
       $('#app').classList.remove('booting');
 
@@ -2579,7 +2580,10 @@
         // authenticated screen. Rendering the dashboard first caused a brief
         // fallback-theme paint where borders and surfaces could appear missing.
         await loadPrefs();
-        await restoreRoute({fetchRemote: true});
+        // The cached screen is interactive during the server check; keep where
+        // the user went instead of restoring the startup route over it.
+        if (navigationController.routeGeneration() === startupRoute)
+          await restoreRoute({fetchRemote: true});
         connectServerEvents();
         scheduleSync({reconcile: true});
       } else if (authenticationRequired) {

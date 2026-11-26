@@ -42,13 +42,17 @@
     }
 
     async function load() {
+      const revisionBefore = Number(getPreferences()?.revision || 0);
       let remote = null;
       try {
         remote = await api('/api/prefs');
       } catch (error) {
         console.warn('preferences unavailable; using cached preferences', error);
       }
-      if (remote && !(await hasPendingOperation('__prefs__'))) {
+      // A local save acknowledged during the fetch is newer than this snapshot.
+      const revision = Number(getPreferences()?.revision || 0);
+      const stale = revision !== revisionBefore && Number(remote?.revision || 0) < revision;
+      if (remote && !stale && !(await hasPendingOperation('__prefs__'))) {
         let cached = {};
         try {
           cached = JSON.parse(localStorage.getItem('vylk-prefs') || '{}');

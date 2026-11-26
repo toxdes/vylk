@@ -116,6 +116,8 @@ func (a *app) handleEvents(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-a.streamsClosed:
+			return
 		case <-ticker.C:
 			if !a.sessions.Valid(sessionToken(r)) {
 				expireSession()

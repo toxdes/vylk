@@ -140,11 +140,8 @@ SOFTWARE.
         <path d="M17 8l4 4l-4 4" />
         <path d="M14 4l-4 16" />
       </symbol>
-      <symbol id="icon-codeblock" viewBox="0 0 24 24">
-        <path d="M9 12h6" />
-        <path d="M12 9v6" />
-        <path d="M6 19a2 2 0 0 1 -2 -2v-4l-1 -1l1 -1v-4a2 2 0 0 1 2 -2" />
-        <path d="M18 19a2 2 0 0 0 2 -2v-4l1 -1l-1 -1v-4a2 2 0 0 0 -2 -2" />
+      <symbol id="icon-heading" viewBox="0 0 24 24">
+        <path d="M7 12h10M7 5v14M17 5v14M15 19h4M15 5h4M5 19h4M5 5h4" />
       </symbol>
       <symbol id="icon-h1" viewBox="0 0 24 24">
         <path d="M19 18v-8l-2 2" />
@@ -300,7 +297,7 @@ SOFTWARE.
                 </svg>
               </button>
             </div>
-            <button type="submit">Sign in</button>
+            <button type="submit" class="btn-primary">Sign in</button>
             <button id="login-forgot-password" type="button" class="login-forgot-password" hidden>
               Forgot password?
             </button>
@@ -512,7 +509,9 @@ SOFTWARE.
         </div>
         <div class="dashboard-body">
           <div class="toolbar">
-            <button id="new-note-btn" class="btn-primary" type="button">+ New note</button>
+            <button id="new-note-btn" class="btn-primary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>New note
+            </button>
           </div>
           <div id="tag-bar" role="group" aria-label="Filter notes"></div>
           <ul id="note-list" aria-label="Notes"></ul>
@@ -2264,13 +2263,6 @@ SOFTWARE.
                 <svg class="icon" aria-hidden="true"><use href="#icon-strikethrough"></use></svg>
               </button>
               <span class="fmt-sep"></span>
-              <button type="button" data-fmt="code" title="Inline code" aria-label="Inline code">
-                <svg class="icon" aria-hidden="true"><use href="#icon-code"></use></svg>
-              </button>
-              <button type="button" data-fmt="codeblock" title="Code block" aria-label="Code block">
-                <svg class="icon" aria-hidden="true"><use href="#icon-codeblock"></use></svg>
-              </button>
-              <span class="fmt-sep"></span>
               <button
                 type="button"
                 data-fmt="heading"
@@ -2280,16 +2272,14 @@ SOFTWARE.
                 aria-haspopup="dialog"
                 aria-expanded="false"
               >
-                H
+                <svg class="icon" aria-hidden="true"><use href="#icon-heading"></use></svg>
               </button>
-              <span class="fmt-sep"></span>
               <button type="button" data-fmt="link" title="Link" aria-label="Link">
                 <svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>
               </button>
               <button type="button" data-fmt="image" title="Image" aria-label="Image">
                 <svg class="icon" aria-hidden="true"><use href="#icon-image"></use></svg>
               </button>
-              <span class="fmt-sep"></span>
               <button type="button" data-fmt="ul" title="Bullet list" aria-label="Bullet list">
                 <svg class="icon" aria-hidden="true"><use href="#icon-list"></use></svg>
               </button>
@@ -2299,7 +2289,6 @@ SOFTWARE.
               <button type="button" data-fmt="task" title="Task list" aria-label="Task list">
                 <svg class="icon" aria-hidden="true"><use href="#icon-check-square"></use></svg>
               </button>
-              <span class="fmt-sep"></span>
               <button
                 type="button"
                 data-fmt="blockquote"

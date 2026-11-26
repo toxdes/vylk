@@ -7,6 +7,8 @@
     ? new global.Intl.Segmenter(undefined, {granularity: 'grapheme'})
     : null;
 
+  const rightToLeft = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufeff]/;
+
   function deletionBoundary(text, offset, backward) {
     if (
       backward &&
@@ -158,6 +160,9 @@
       this.typingAnchorFrame = null;
       this.anchorAnimationFrame = null;
       this.anchorAnimation = null;
+      this.caretLine = null;
+      this.caretOffset = null;
+      this.pointerSelecting = false;
       element.contentEditable = 'true';
       element.spellcheck = true;
       element.setAttribute('role', 'textbox');
@@ -175,6 +180,9 @@
       });
       element.addEventListener('pointerdown', (event) => {
         if (event.button === 0 && event.isPrimary !== false) {
+          // Revealing syntax mid-drag would move text under the pointer.
+          global.clearTimeout(this.pointerRevealTimer);
+          this.pointerSelecting = true;
           this.typingGroup = false;
           this.cancelTypingAnchor();
           this.smoothNextTypingAnchor = true;
@@ -224,6 +232,8 @@
       });
       element.addEventListener('compositionend', () => this.finishComposition());
       document.addEventListener('selectionchange', () => this.updateActiveLine());
+      for (const type of ['pointerup', 'pointercancel'])
+        document.addEventListener(type, () => this.finishPointerSelection());
       this.setValue('');
       this.selectionController = global.VylkZenSelection?.create({
         editor: this,
@@ -271,7 +281,7 @@
 
     resetSession() {
       if (this.composing) this.finishComposition({commit: false});
-      this.closeRevealedPair();
+      this.caretLine = null;
       this.clearEditingState();
       this.history = [];
       this.future = [];
@@ -280,7 +290,7 @@
 
     setValue(value, selectionStart = 0, selectionEnd = selectionStart) {
       this.clearEditingState();
-      this.revealedPair = null;
+      this.caretLine = null;
       this.documentRevision = (this.documentRevision || 0) + 1;
       this.composing = false;
       this.composition = null;
@@ -306,7 +316,7 @@
     renderLine(line) {
       renderLineContent(line.element, line.text, {
         literal: line.fenced,
-        reveal: this.revealedPair?.line === line ? this.revealedPair : null,
+        caret: this.caretLine === line ? this.caretOffset : null,
       });
       line.element.classList.toggle('is-active', this.activeLine === line.element);
     }
@@ -324,39 +334,45 @@
       }
     }
 
-    updateRevealedPair(line, start, end, inserted, inputType) {
-      const pair = this.revealedPair;
-      if (pair?.line === line && start > pair.start && end < pair.end && !inserted.includes('\n')) {
-        pair.end += inserted.length - (end - start);
-        return;
+    // A collapsed caret shows the syntax of spans it touches, so every source
+    // offset is reachable and edits there are literal. Range selections keep
+    // syntax hidden and edit rendered text. Returns whether a line re-rendered,
+    // which invalidates the native selection's DOM points.
+    syncReveal(selection) {
+      if (this.composing || this.nativeEdit || this.pointerSelecting) return false;
+      const location = this.offsets.locate(selection.start);
+      const line = selection.start === selection.end ? this.lines[location.line] : null;
+      const previous = this.caretLine;
+      this.caretLine = line;
+      this.caretOffset = location.offset;
+      const reveal = global.VylkZenInline.revealKey;
+      let changed = false;
+      if (previous && previous !== line && this.lines[previous.index] === previous) {
+        if (reveal(previous.element)) {
+          this.renderLine(previous);
+          changed = true;
+        }
       }
-      if (pair) {
-        this.revealedPair = null;
-        if (pair.line !== line) this.renderLine(pair.line);
+      if (line && reveal(line.element) !== reveal(line.element, location.offset)) {
+        this.renderLine(line);
+        changed = true;
       }
-      if (
-        line.fenced ||
-        start !== end ||
-        !inserted ||
-        inserted.includes('\n') ||
-        !['insertText', 'insertCompositionText'].includes(inputType)
-      )
-        return;
-      const opening = line.text.slice(0, start).match(/(?:\*{1,2}|_{1,2}|~~|`+)$/)?.[0];
-      if (!opening || !line.text.startsWith(opening, start)) return;
-      const left = start - opening.length;
-      const right = start + opening.length;
-      if (line.text[left - 1] === opening[0] || line.text[right] === opening[0]) return;
-      if ((line.text.slice(0, left).match(/\\+$/)?.[0].length || 0) % 2) return;
-      this.revealedPair = {line, start: left, end: right + inserted.length};
+      return changed;
     }
 
-    closeRevealedPair(selection = this.selection()) {
-      const pair = this.revealedPair;
-      if (!pair) return;
-      this.revealedPair = null;
-      this.renderLine(pair.line);
-      this.setSelection(selection.start, selection.end, selection.direction);
+    // Wait out a possible double click: revealing syntax between its clicks
+    // would move the word under the pointer.
+    finishPointerSelection() {
+      if (!this.pointerSelecting) return;
+      global.clearTimeout(this.pointerRevealTimer);
+      this.pointerRevealTimer = global.setTimeout(() => this.flushPointerReveal(), 250);
+    }
+
+    flushPointerReveal() {
+      if (!this.pointerSelecting) return;
+      global.clearTimeout(this.pointerRevealTimer);
+      this.pointerSelecting = false;
+      this.updateActiveLine();
     }
 
     applyValue(value, start = 0, end = start, direction = 'forward') {
@@ -678,15 +694,23 @@
       return entries;
     }
 
+    // Edits step around syntax the writer cannot see; shown syntax is edited as typed.
+    hiddenSpans(start, end = start) {
+      return this.inlineSpans(start, end).filter((span) => !span.shown);
+    }
+
     replaceVisibleRange(start, end, inserted, options) {
       if (start === end && /^\s+$/u.test(inserted) && !inserted.includes('\n')) {
-        for (const span of [...this.inlineSpans(start)].reverse())
+        for (const span of [...this.hiddenSpans(start)].reverse())
           if (start === span.contentEnd && ['strong', 'em', 'del'].includes(span.kind))
             start = end = span.end;
       }
       if (start === end && !inserted.includes('\n'))
         return this.replaceRange(start, end, inserted, options);
-      const spans = this.inlineSpans(start, end);
+      // A line break closes and reopens every span it splits, shown or hidden.
+      const spans = inserted.includes('\n')
+        ? this.inlineSpans(start, end)
+        : this.hiddenSpans(start, end);
       if (!spans.length) return this.replaceRange(start, end, inserted, options);
       // Read only boundary fragments; backspace must not join the whole note.
       const change = global.VylkZenInline.visibleEdit(
@@ -703,6 +727,13 @@
     }
 
     setSelection(start, end = start, direction = 'forward') {
+      this.lastSelection = {start: Math.min(start, end), end: Math.max(start, end), direction};
+      this.placeSelection(start, end, direction);
+      if (this.syncReveal(this.lastSelection)) this.placeSelection(start, end, direction);
+      this.updateActiveLine();
+    }
+
+    placeSelection(start, end, direction) {
       const selection = global.getSelection?.();
       if (!selection) return;
       const first = this.domPoint(direction === 'backward' ? end : start);
@@ -718,8 +749,6 @@
         selection.removeAllRanges();
         selection.addRange(range);
       }
-      this.lastSelection = {start: Math.min(start, end), end: Math.max(start, end), direction};
-      this.updateActiveLine();
     }
 
     caretRect() {
@@ -892,13 +921,6 @@
         replacement +
         this.lines[last.line].text.slice(last.offset);
       const nextTexts = combined.split('\n');
-      this.updateRevealedPair(
-        this.lines[first.line],
-        first.offset,
-        last.line === first.line ? last.offset : this.lines[first.line].text.length,
-        replacement,
-        first.line === last.line ? inputType : '',
-      );
       if (first.line === last.line && nextTexts.length === 1) {
         const line = this.lines[first.line];
         const startPoint = this.domPoint(safeStart);
@@ -911,7 +933,6 @@
         const fence = fenceState(nextTexts[0], this.lines[first.line - 1]?.fenceAfter || null);
         if (
           !syntaxChanged &&
-          this.revealedPair?.line !== line &&
           fence.literal === line.fenced &&
           sameFence(fence.next, line.fenceAfter) &&
           !structuralStyleChanged &&
@@ -944,6 +965,8 @@
           return;
         }
         line.text = nextTexts[0];
+        // Render once with the caret where the edit leaves it.
+        if (this.caretLine === line) this.caretOffset = first.offset + replacement.length;
         this.renderLines(first.line, 1);
         this.offsets.set(first.line, line.text.length + 1);
         this.cachedValue = null;
@@ -992,7 +1015,7 @@
 
     deleteInlineBoundary(selection, backward) {
       if (selection.start !== selection.end) return false;
-      const spans = this.inlineSpans(selection.start);
+      const spans = this.hiddenSpans(selection.start);
       for (const span of [...spans].reverse()) {
         if (
           backward ? selection.start === span.contentStart : selection.start === span.contentEnd
@@ -1291,6 +1314,7 @@
     }
 
     onKeyDown(event) {
+      this.flushPointerReveal();
       if (!this.active || this.composing || event.isComposing || event.keyCode === 229) return;
       if (
         [
@@ -1307,6 +1331,7 @@
         this.pendingFormats = null;
         this.typingGroup = false;
         this.cancelTypingAnchor();
+        if (this.stepCaret(event)) return;
       }
       const mod = event.ctrlKey || event.metaKey;
       if (mod && event.shiftKey && event.key.toLowerCase() === 'v') this.pastePlain = true;
@@ -1324,6 +1349,47 @@
         event.preventDefault();
         this.replaceSelection('\t', 'insertText');
       }
+    }
+
+    // Step a collapsed caret one source character. Native movement cannot tell
+    // the two sides of hidden syntax apart, so it could skip an offset.
+    stepCaret(event) {
+      if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return false;
+      if (event.key === 'Home' || event.key === 'End') return this.moveToLineEdge(event);
+      const backward = event.key === 'ArrowLeft';
+      if (!backward && event.key !== 'ArrowRight') return false;
+      const selection = this.selection();
+      if (selection.start !== selection.end) return false;
+      const location = this.offsets.locate(selection.start);
+      const text = this.lines[location.line].text;
+      if (rightToLeft.test(text)) return false;
+      let caret = selection.start + (backward ? -1 : 1);
+      if (backward ? location.offset > 0 : location.offset < text.length)
+        caret =
+          this.offsets.prefix(location.line) + deletionBoundary(text, location.offset, backward);
+      if (caret < 0 || caret > this.length) return false;
+      event.preventDefault();
+      this.setSelection(caret);
+      this.ensureSelectionVisible();
+      return true;
+    }
+
+    // Home and End follow visual (wrapped) lines, then pass hidden syntax at
+    // that edge, which the browser may leave on either side.
+    moveToLineEdge(event) {
+      const native = global.getSelection?.();
+      if (typeof native?.modify !== 'function') return false;
+      const backward = event.key === 'Home';
+      event.preventDefault();
+      native.modify('move', backward ? 'backward' : 'forward', 'lineboundary');
+      let caret = this.selection().start;
+      for (const span of [...this.hiddenSpans(caret)].reverse()) {
+        if (backward && caret === span.contentStart) caret = span.start;
+        if (!backward && caret === span.contentEnd) caret = span.end;
+      }
+      this.setSelection(caret);
+      this.ensureSelectionVisible();
+      return true;
     }
 
     onKeyUp(event) {
@@ -1486,20 +1552,15 @@
 
     updateActiveLine() {
       const selection = global.getSelection?.();
-      const pair = this.revealedPair;
       if (
-        pair &&
-        !this.composing &&
-        !this.nativeEdit &&
         selection?.anchorNode &&
         this.element.contains(selection.anchorNode) &&
         selection.focusNode &&
         this.element.contains(selection.focusNode)
       ) {
         const offsets = this.selection();
-        const base = this.offsets.prefix(pair.line.index);
-        if (offsets.end <= base + pair.start || offsets.start >= base + pair.end)
-          this.closeRevealedPair(offsets);
+        if (this.syncReveal(offsets))
+          this.placeSelection(offsets.start, offsets.end, offsets.direction);
       }
       const lineElement =
         selection?.focusNode && this.element.contains(selection.focusNode)

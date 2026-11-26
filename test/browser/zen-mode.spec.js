@@ -1,4 +1,4 @@
-import {expect, test} from '@playwright/test';
+import {expect, test} from './server-fixture.js';
 import {useEditorFixture} from './editor-fixture.js';
 
 const password = 'browser-test-password';
@@ -285,7 +285,9 @@ test('Zen mode styles Markdown without replacing its editable source', async ({p
   expect(styles.strike).toContain('line-through');
   expect(styles.quoteBorder).toBe('1px');
 
+  // End reaches the true line end, past the closing backtick it reveals.
   await editor.press('End');
+  await page.keyboard.press('ArrowLeft');
   await page.keyboard.type('!');
   await expect(editor.locator('.zen-md-code')).toHaveText('code!');
   await editor.press('Control+Z');
@@ -367,10 +369,13 @@ test('Zen mode styles inline tokens only after their closing marker is typed', a
     ).toHaveCount(0);
 
     await page.keyboard.type(entry.marker);
+    for (const selector of entry.selectors) await expect(editor.locator(selector)).toHaveCount(1);
+    // Syntax stays visible while the caret touches it.
+    expect(await editor.innerText()).toBe(incomplete + entry.marker);
+    await page.keyboard.type(' ');
     for (const selector of entry.selectors)
       await expect(editor.locator(selector)).toHaveText(entry.text, {useInnerText: true});
-    expect(await editor.innerText()).toBe(entry.text);
-    await expect(editor).toHaveText(incomplete + entry.marker);
+    expect(await editor.innerText()).toBe(entry.text + ' ');
   }
 });
 
@@ -557,6 +562,8 @@ test('Zen mode keeps actionable connection feedback visible without showing rout
 }) => {
   await signIn(page);
   await openZenMode(page);
+  // A sync that finishes later hides the notice, so wait for the note to save.
+  await expect(page.locator('#editor-status')).toHaveAttribute('data-state', 'online');
 
   await page.evaluate(() => {
     document.querySelector('#editor > .offline-notice').classList.remove('hidden');

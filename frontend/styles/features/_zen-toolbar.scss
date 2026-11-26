@@ -5,7 +5,7 @@
   max-width: calc(100vw - 1rem);
   padding: var(--space-1-5);
   border: 0.0625rem solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-card);
   background: var(--card-bg);
   box-shadow: 0 0.625rem 1.5rem rgb(15 23 42 / 0.16);
   color: var(--fg);
@@ -35,7 +35,7 @@
   flex: 0 0 auto;
   padding: 0;
   place-items: center;
-  border-radius: var(--radius-micro);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--fg);
 }
