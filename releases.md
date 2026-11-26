@@ -17,7 +17,7 @@ Source: [Pull request #44](https://github.com/toxdes/vylk/pull/44)
 5. fix(server): Close live event streams during shutdown.
 6. docs: Rewrite the user guides and HTTP API reference, and add AI provider key links and a free OpenRouter model.
 7. ci(release): Require matching release notes before merging a version bump or dispatching deployment hooks.
-8. test: Stabilize editor test teardown and modal animation timing checks.
+8. test: Stabilize editor teardown, modal animation timing, and the vault transition on an insecure tab.
 
 ## v3.1.2
 
