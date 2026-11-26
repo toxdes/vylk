@@ -374,6 +374,27 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await page.locator('#login-form button[type="submit"]').click();
   await expect(page.locator('#dashboard')).toBeVisible();
 
+  const legacyNotice = insecureLegacyPage.locator('#login-secure-context-notice');
+  if (!(await legacyNotice.isVisible())) {
+    await Promise.all([
+      insecureLegacyPage.waitForResponse(
+        async (response) =>
+          new URL(response.url()).pathname === '/api/vault/bootstrap' &&
+          response.ok() &&
+          ['cleaning', 'encrypted'].includes((await response.json()).mode),
+      ),
+      (async () => {
+        await insecureLegacyPage.bringToFront();
+        await insecureLegacyPage.evaluate(() => {
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+      })(),
+    ]);
+  }
+  await expect(legacyNotice).toBeVisible({timeout: 20_000});
+  await expect(insecureLegacyPage.locator('#login-credentials')).toBeHidden();
+  await insecureLegacyContext.close();
+
   const insecureContext = await browser.newContext();
   await insecureContext.addInitScript(() => {
     Object.defineProperty(window, 'isSecureContext', {configurable: true, value: false});
@@ -388,14 +409,6 @@ test('encrypts an existing note and syncs ciphertext between independent devices
     'https://vylk.toxdes.com/docs/encryption.html',
   );
   await insecureContext.close();
-
-  await insecureLegacyPage.evaluate(() => {
-    Object.defineProperty(document, 'visibilityState', {configurable: true, value: 'visible'});
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
-  await expect(insecureLegacyPage.locator('#login-secure-context-notice')).toBeVisible();
-  await expect(insecureLegacyPage.locator('#login-credentials')).toBeHidden();
-  await insecureLegacyContext.close();
 
   await page.locator('#prefs-btn').click();
   await page.locator('#prefs-tab-encryption').click();

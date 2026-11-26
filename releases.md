@@ -5,6 +5,20 @@ identify PR merges or GitHub Release publication, as labelled.
 
 <!-- prettier-ignore-start -->
 
+## v3.1.3
+
+Merged: 2026-11-26
+Source: [Pull request #44](https://github.com/toxdes/vylk/pull/44)
+
+1. feat(ai): Add opt-in AI Assist for notes with your own API key, read-only note tools, and reviewable edit suggestions.
+2. feat(zen): Format at the caret, navigate inline Markdown with the keyboard, and edit links without losing selections.
+3. ui: Unify spacing, typography, and controls, improve color contrast, and load real Google Fonts weights.
+4. feat(vault): Verify the app password before generating a recovery key during encryption setup.
+5. fix(server): Close live event streams during shutdown.
+6. docs: Rewrite the user guides and HTTP API reference, and add AI provider key links and a free OpenRouter model.
+7. ci(release): Require matching release notes before merging a version bump or dispatching deployment hooks.
+8. test: Stabilize editor teardown, modal animation timing, and the vault transition on an insecure tab.
+
 ## v3.1.2
 
 Merged: 2026-10-31

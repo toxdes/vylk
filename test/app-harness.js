@@ -3,6 +3,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {JSDOM} from 'jsdom';
 import {indexedDB, IDBKeyRange} from 'fake-indexeddb';
+import {vi} from 'vitest';
 import {markOperationAttempted} from './offline-store-fixture.js';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -316,6 +317,8 @@ globalThis.__vylkTestHooks = {
   highlightBlock: previewHighlighter.highlight,
   calculatePreviewScrollAdjustment: previewNavigation.scrollAdjustment,
   closeDatabase: closeOfflineDatabaseConnection,
+  cancelScheduledSave: noteSaver.cancelScheduled,
+  hasPendingSave: noteSaver.hasPendingSave,
   cancelScheduledSync: syncCoordinator.cancelScheduled,
   waitForSyncIdle: syncCoordinator.waitForIdle,
   waitForPreferenceIdle: window.__vylkTestFixtures.waitForPreferences,
@@ -602,6 +605,14 @@ export async function createApp({
     releaseSyncCompletion,
     close: async () => {
       defaultFontObserver.disconnect();
+      window.__vylkTestHooks.cancelScheduledSave();
+      await vi.waitFor(
+        () => {
+          if (window.__vylkTestHooks.hasPendingSave())
+            throw new Error('Note save is still pending');
+        },
+        {timeout: 5000},
+      );
       window.__vylkTestHooks.cancelScheduledSync();
       window.__vylkTestHooks.cancelActiveSyncRequests();
       await window.__vylkTestHooks.waitForPreferenceIdle();
