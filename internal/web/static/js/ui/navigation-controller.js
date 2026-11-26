@@ -309,6 +309,8 @@
       restoreCachedStartup,
       restoreRoute,
       restoring: () => restoringHistoryRoute,
+      // Advances whenever the user navigates or a restore starts.
+      routeGeneration: () => routeRestoreGeneration,
     };
   }
 
