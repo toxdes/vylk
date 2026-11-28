@@ -222,6 +222,15 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await insecureLegacyPage.locator('#prefs-btn').click();
   await insecureLegacyPage.locator('#prefs-tab-encryption').click();
   await expect(insecureLegacyPage.locator('#vault-open-setup')).toBeDisabled();
+
+  // A tab already on the sign-in form before encryption must switch to the HTTPS notice.
+  const insecureSignedOutContext = await browser.newContext();
+  await insecureSignedOutContext.addInitScript(() => {
+    Object.defineProperty(window, 'isSecureContext', {configurable: true, value: false});
+  });
+  const insecureSignedOutPage = await insecureSignedOutContext.newPage();
+  await insecureSignedOutPage.goto('/');
+  await expect(insecureSignedOutPage.locator('#login-credentials')).toBeVisible();
   await expect(insecureLegacyPage.locator('.vault-secure-context-note')).toBeVisible();
   await expect(insecureLegacyPage.locator('.vault-secure-context-note')).toContainText(
     'Open Vylk over HTTPS to set up end-to-end encryption.',
@@ -394,6 +403,14 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await expect(legacyNotice).toBeVisible({timeout: 20_000});
   await expect(insecureLegacyPage.locator('#login-credentials')).toBeHidden();
   await insecureLegacyContext.close();
+
+  await insecureSignedOutPage.bringToFront();
+  await insecureSignedOutPage.evaluate(() => {
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(insecureSignedOutPage.locator('#login-secure-context-notice')).toBeVisible();
+  await expect(insecureSignedOutPage.locator('#login-credentials')).toBeHidden();
+  await insecureSignedOutContext.close();
 
   const insecureContext = await browser.newContext();
   await insecureContext.addInitScript(() => {
