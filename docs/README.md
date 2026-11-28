@@ -1,6 +1,6 @@
 # vylk documentation
 
-These files are the only source of the vylk documentation. The [website](https://vylk.toxdes.com/docs/) renders them from each release tag.
+These files are the only source of the vylk documentation. The [website](https://vylk.app/docs/) renders them from each release tag.
 
 | Page | Type | Reader |
 | --- | --- | --- |

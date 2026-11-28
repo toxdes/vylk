@@ -229,7 +229,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await expect(insecureLegacyPage.locator('.vault-secure-context-note a')).toHaveText('Learn More');
   await expect(insecureLegacyPage.locator('.vault-secure-context-note a')).toHaveAttribute(
     'href',
-    'https://vylk.toxdes.com/docs/encryption.html',
+    'https://vylk.app/docs/encryption.html',
   );
 
   await page.locator('#new-note-btn').click();
@@ -406,7 +406,7 @@ test('encrypts an existing note and syncs ciphertext between independent devices
   await expect(insecurePage.locator('#login-secure-context-notice a')).toHaveText('Learn More');
   await expect(insecurePage.locator('#login-secure-context-notice a')).toHaveAttribute(
     'href',
-    'https://vylk.toxdes.com/docs/encryption.html',
+    'https://vylk.app/docs/encryption.html',
   );
   await insecureContext.close();
 
