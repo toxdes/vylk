@@ -2614,15 +2614,16 @@
   init();
 
   async function refreshInsecureVaultAccess() {
-    if (
-      window.isSecureContext !== false ||
-      !vaultSession.config() ||
-      !screens.login.classList.contains('hidden')
-    )
-      return;
+    if (window.isSecureContext !== false || !vaultSession.config()) return;
     try {
       await vaultSession.bootstrap();
       if (!vaultSession.requiresSecureContext()) return;
+      // The sign-in form may predate encryption; replace it with the HTTPS notice.
+      if (!screens.login.classList.contains('hidden')) {
+        vaultSession.lock();
+        showLoginScreen();
+        return;
+      }
       if (isDirty && !(await saveCurrentNote(false))) {
         showToast('Save or copy your open note before leaving this page.', 'warning');
         return;
