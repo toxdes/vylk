@@ -21,7 +21,7 @@ const (
 	NameEnv             = "VYLK_APP_NAME"
 	DefaultName         = "VYLK"
 	AppNamePlaceholder  = "__VYLK_APP_NAME__"
-	SiteBaseURL         = "https://vylk.toxdes.com"
+	SiteBaseURL         = "https://vylk.app"
 	DocsURL             = SiteBaseURL + "/docs/encryption.html"
 	DocsURLPlaceholder  = "__VYLK_DOCS_URL__"
 	MaxNameRunes        = 64

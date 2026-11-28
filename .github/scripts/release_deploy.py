@@ -22,7 +22,7 @@ HOOK_PREFIX = "VYLK_DEPLOY_HOOK_"
 HOOK_URL_SUFFIX = "_URL"
 INSTALLATION_NOTES = (
     "## Installation\n"
-    "Check [install instructions](https://vylk.toxdes.com/docs/#install).\n"
+    "Check [install instructions](https://vylk.app/docs/#install).\n"
 )
 MAX_RETRIES = 5
 RETRY_DELAY_SECONDS = 5 * 60

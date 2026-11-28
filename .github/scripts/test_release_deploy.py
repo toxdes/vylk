@@ -295,7 +295,7 @@ class ReleaseBodyTests(unittest.TestCase):
             "abc",
             "Release v3.0.5",
             "## Installation\n"
-            "Check [install instructions](https://vylk.toxdes.com/docs/#install).\n\n"
+            "Check [install instructions](https://vylk.app/docs/#install).\n\n"
             "## What's changed\n- Improvements",
         )
 

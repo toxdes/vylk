@@ -1,6 +1,6 @@
 # vylk
 
-[Website](https://vylk.toxdes.com) · [Demo](https://demo.vylk.toxdes.com) · [Documentation](https://vylk.toxdes.com/docs/)
+[Website](https://vylk.app) · [Demo](https://demo.vylk.app) · [Documentation](https://vylk.app/docs/)
 
 A lightweight, self-hosted Markdown notes app. One binary, your notes, all your devices.
 

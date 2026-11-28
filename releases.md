@@ -70,7 +70,7 @@ Published: 2026-09-23
 Source: [GitHub Release v3.0.4](https://github.com/toxdes/vylk/releases/tag/v3.0.4)
 
 ## Installation 
-Check [install instructions](https://vylk.toxdes.com/docs/#install).
+Check [install instructions](https://vylk.app/docs/#install).
 ## What's Changed
 * refactor: human friendly code; UI elements touch-up by @toxdes in https://github.com/toxdes/vylk/pull/16
 * release: v3.0.4 by @toxdes in https://github.com/toxdes/vylk/pull/17
